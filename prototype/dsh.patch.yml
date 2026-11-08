@@ -23,3 +23,14 @@
           Authorization: !!js '`Bearer ${process.env.BOBBOT_MCP_TOKEN}`'
         toolCallTimeoutMs: 1200000
         failOnStartupError: true
+    # Skills the owner installs live as folders with a SKILL.md and are picked up without a restart.
+    - id: skill-registry
+      name: '@deepseek-ai/dsh-skill'
+    - id: skill-filesystem
+      name: '@deepseek-ai/dsh-skill-filesystem'
+      config:
+        includeDefaultRoots: false
+        customSkillDirs:
+          - !!js process.env.BOBBOT_SKILLS_DIR
+    - id: tool-skill
+      name: '@deepseek-ai/dsh-tool-skill'

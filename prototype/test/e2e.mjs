@@ -35,7 +35,7 @@ async function modelResponse(body, res) {
   const emit = (event, payload) => res.write(`event: ${event}\ndata: ${JSON.stringify({ type: event, ...payload })}\n\n`)
   emit('message_start', { message: { id: `m${requests.length}`, type: 'message', role: 'assistant', model: body.model, content: [], stop_reason: null, usage: { input_tokens: 1000, output_tokens: 0 } } })
   if (resolved.tool) {
-    emit('content_block_start', { index: 0, content_block: { type: 'tool_use', id: `t${requests.length}`, name: `mcp__bobbot__${resolved.tool}`, input: {} } })
+    emit('content_block_start', { index: 0, content_block: { type: 'tool_use', id: `t${requests.length}`, name: resolved.tool.startsWith('mcp__') || resolved.tool === 'skill' ? resolved.tool : `mcp__bobbot__${resolved.tool}`, input: {} } })
     emit('content_block_delta', { index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify(resolved.input) } })
   } else {
     emit('content_block_start', { index: 0, content_block: { type: 'text', text: '' } })
@@ -57,7 +57,7 @@ const fake = http.createServer((req, res) => {
 await new Promise(r => fake.listen(0, '127.0.0.1', r))
 
 // ---- server under test ----
-const env = { ...process.env, BOBBOT_DATA: data, PORT: String(PORT), HOST: '127.0.0.1', DEEPSEEK_API_KEY: 'test-key', DEEPSEEK_BASE_URL: `http://127.0.0.1:${fake.address().port}` }
+const env = { ...process.env, BOBBOT_DATA: data, PORT: String(PORT), HOST: '127.0.0.1', DEEPSEEK_API_KEY: 'test-key', BOBBOT_TICK_MS: '1000', DEEPSEEK_BASE_URL: `http://127.0.0.1:${fake.address().port}` }
 const setPin = pin => spawnSync(process.execPath, ['set-pin.mjs', pin], { cwd: root, env, encoding: 'utf8' })
 const server = spawn(process.execPath, ['server.mjs'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] })
 let log = ''
@@ -358,6 +358,296 @@ try {
     assert.ok(requests.length > before, 'model was not called')
     assert.ok(JSON.stringify(requests.at(-1).messages).includes('remember-marker-42'), 'the earlier message was forgotten')
     await waitAfter(second, e => e.type === 'status' && e.status === 'idle' && e.cid === cid)
+  })
+
+  console.log('Clerk')
+  const clerkView = async () => (await getJson('/api/clerk')).body
+  const lastSent = () => JSON.stringify(requests.at(-1).messages)
+  let reminderId, taskId
+  await check('a reminder is created from chat, after a card that shows the schedule', async () => {
+    const t0 = Date.now()
+    script.push(
+      use('clerk_create', { title: 'Call mom', kind: 'reminder', text: 'Call mom now', schedule: { type: 'daily', time: '23:59' } }),
+      say('Reminder set.'),
+    )
+    assert.equal((await post('/api/chat', { text: 'remind me every day to call mom' })).status, 200)
+    const ask = await decide(true, e => e.kind === 'clerk')
+    assert.equal(ask.action, 'create'); assert.equal(ask.jobKind, 'reminder'); assert.deepEqual(ask.schedule, { type: 'daily', time: '23:59' })
+    assert.match(ask.detail, /Every day at 23:59/); assert.match(ask.detail, /Call mom now/); assert.ok(ask.firstRun > Date.now())
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'Reminder set.')
+    const view = await clerkView()
+    assert.equal(view.jobs.length, 1); reminderId = view.jobs[0].id
+    assert.ok(view.jobs[0].nextRun > Date.now() && view.jobs[0].enabled)
+    assert.match(lastSent(), /\[Current time: \d{4}-\d{2}-\d{2} \d{2}:\d{2}, \w+day\. The user's time zone: [\w/_+-]+\.\]/, 'the current time was not sent')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
+  })
+  await check('a bad schedule, unknown channel or past time is refused without asking the user', async () => {
+    const t0 = Date.now()
+    const asked = events.filter(e => e.type === 'approval').length
+    script.push(
+      use('clerk_create', { title: 'x', kind: 'task', text: 'x', schedule: { type: 'weekly', days: [9], time: '08:00' } }),
+      use('clerk_create', { title: 'x', kind: 'task', text: 'x', schedule: { type: 'daily', time: '08:00' }, channels: ['Nope'] }),
+      use('clerk_create', { title: 'x', kind: 'reminder', text: 'x', schedule: { type: 'once', at: '2020-01-01T09:00' } }),
+      say('refused all'),
+    )
+    assert.equal((await post('/api/chat', { text: 'try bad schedules' })).status, 200)
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'refused all')
+    const seen = lastSent()
+    for (const expected of ['Bad schedule', 'Unknown channel', 'already passed']) assert.ok(seen.includes(expected), `missing "${expected}"`)
+    assert.equal(events.filter(e => e.type === 'approval').length, asked)
+    assert.equal((await clerkView()).jobs.length, 1)
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
+  })
+  await check('"run now" on a reminder fills the inbox and the unread count', async () => {
+    const run = await post('/api/clerk/job/run', { id: reminderId })
+    assert.equal(run.status, 200); assert.equal(run.data.result, 'done')
+    const view = await clerkView()
+    assert.equal(view.inbox[0].text, 'Call mom now'); assert.equal(view.unread, 1); assert.equal(view.jobs[0].lastStatus, 'ok')
+    assert.equal((await getJson('/api/state')).body.unread, 1)
+    assert.equal((await post('/api/clerk/inbox/read')).status, 200)
+    assert.equal((await clerkView()).unread, 0)
+  })
+  await check('a task runs alone: it can fetch the web, but cannot ask, run commands, install or change the schedule', async () => {
+    const t0 = Date.now()
+    script.push(
+      use('clerk_create', { title: 'Morning weather', kind: 'task', text: 'Check the weather in Shanghai and say whether to bring an umbrella.', schedule: { type: 'daily', time: '23:58' } }),
+      say('Task set.'),
+    )
+    assert.equal((await post('/api/chat', { text: 'every morning check the weather' })).status, 200)
+    await decide(true, e => e.kind === 'clerk')
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'Task set.')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
+    taskId = (await clerkView()).jobs.find(j => j.kind === 'task').id
+
+    const asked = events.filter(e => e.type === 'approval').length
+    const t1 = Date.now()
+    script.push(
+      use('web_fetch', { url: 'https://example.com/' }),
+      use('run_command', { command: 'echo should-not-run' }),
+      use('install_package', { manager: 'npm', packages: ['left-pad'] }),
+      use('clerk_delete', { id: reminderId }),
+      use('browser_request_human', { reason: 'login please' }),
+      say('Take an umbrella.'),
+    )
+    const run = await post('/api/clerk/job/run', { id: taskId })
+    assert.equal(run.status, 200); assert.equal(run.data.result, 'started')
+    await waitAfter(t1, e => e.type === 'message' && e.text === 'Take an umbrella.')
+    await waitAfter(t1, e => e.type === 'status' && e.status === 'idle')
+    const seen = lastSent()
+    assert.ok(seen.includes('Example Domain'), 'web_fetch result missing')
+    assert.ok((seen.match(/scheduled run/g) ?? []).length >= 3, 'the unattended refusals are missing')
+    assert.ok(seen.includes('Nobody is available to help'), 'login request was not refused')
+    assert.equal(events.filter(e => e.type === 'approval').length, asked, 'a scheduled run asked for approval')
+    assert.ok(!seen.includes('should-not-run\\n'), 'a command ran during a scheduled run')
+    assert.equal((await clerkView()).jobs.length, 2, 'a scheduled run changed the schedule')
+    const view = await clerkView()
+    const task = view.jobs.find(j => j.id === taskId)
+    assert.equal(task.lastStatus, 'ok'); assert.equal(task.lastResult, 'Take an umbrella.')
+    assert.equal(view.inbox[0].text, 'Take an umbrella.'); assert.equal(view.inbox[0].title, 'Morning weather')
+    const convo = (await getJson('/api/conversations')).body.items.find(c => c.id === task.cid)
+    assert.ok(convo?.job, 'the run has no conversation of its own')
+  })
+  await check('organized results are shown as cards in the chat, kept with the run, and sent to the inbox', async () => {
+    const t0 = Date.now()
+    script.push(
+      use('show_card', { title: 'Shanghai today', tag: 'Weather', subtitle: 'Light rain in the afternoon', fields: [{ label: 'Temperature', value: '14-19C' }, { label: 'Rain chance', value: '70%' }], items: ['Light jacket', 'Bring an umbrella'], note: 'Updated 08:00' }),
+      use('show_card', { title: '' }),
+      say('Take an umbrella.'),
+    )
+    assert.equal((await post('/api/clerk/job/run', { id: taskId })).data.result, 'started')
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'Take an umbrella.')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
+    const shown = events.find(e => e.type === 'card' && e.at >= t0 && e.card.title === 'Shanghai today')
+    assert.ok(shown, 'the card was not shown')
+    assert.equal(shown.card.fields.length, 2); assert.deepEqual(shown.card.items, ['Light jacket', 'Bring an umbrella'])
+    assert.ok(lastSent().includes('Bad card'), 'the empty card was not refused')
+    const view = await clerkView()
+    assert.equal(view.inbox[0].cards.length, 1); assert.equal(view.inbox[0].cards[0].title, 'Shanghai today')
+    const task = view.jobs.find(j => j.id === taskId)
+    const saved = (await getJson(`/api/conversations/${task.cid}`)).body.events
+    assert.ok(saved.some(e => e.type === 'card' && e.card.title === 'Shanghai today'), 'the card is not saved with the conversation')
+  })
+  await check('creating and listing schedules show job cards in the chat', async () => {
+    assert.ok(events.some(e => e.type === 'card' && e.card.kind === 'job' && e.card.job.title === 'Call mom'), 'no card after creating the reminder')
+    const t0 = Date.now()
+    script.push(use('clerk_list', {}), say('Here they are.'))
+    assert.equal((await post('/api/chat', { text: 'what is scheduled?' })).status, 200)
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'Here they are.')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
+    const cards = events.filter(e => e.type === 'card' && e.card.kind === 'job' && e.at >= t0).map(e => e.card.job.title).sort()
+    assert.deepEqual(cards, ['Call mom', 'Morning weather'])
+    assert.ok(lastSent().includes('Morning weather'), 'Bob did not get the list as text')
+  })
+  await check('while a task runs, other tasks and chats wait', async () => {
+    const t0 = Date.now()
+    script.push(async () => { await sleep(2500); return say('slow task done') })
+    assert.equal((await post('/api/clerk/job/run', { id: taskId })).data.result, 'started')
+    assert.equal((await post('/api/clerk/job/run', { id: taskId })).status, 409)
+    assert.equal((await post('/api/chat', { text: 'meanwhile' })).data.error, 'BUSY_OTHER')
+    assert.equal((await post('/api/clerk/job/delete', { id: taskId })).status, 409)
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'slow task done')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
+  })
+  await check('jobs can be paused, resumed and deleted, and the time zone can change', async () => {
+    assert.equal((await post('/api/clerk/job/toggle', { id: taskId, enabled: false })).status, 200)
+    let job = (await clerkView()).jobs.find(j => j.id === taskId)
+    assert.equal(job.enabled, false); assert.equal(job.nextRun, null)
+    assert.equal((await post('/api/clerk/job/toggle', { id: taskId, enabled: true })).status, 200)
+    const before = (await clerkView()).jobs.find(j => j.id === taskId).nextRun
+    assert.equal((await post('/api/clerk/timezone', { timezone: 'Mars/Base' })).status, 400)
+    assert.equal((await post('/api/clerk/timezone', { timezone: 'America/New_York' })).status, 200)
+    job = (await clerkView()).jobs.find(j => j.id === taskId)
+    assert.notEqual(job.nextRun, before, 'the next run did not move with the time zone')
+    assert.equal((await post('/api/clerk/timezone', { timezone: 'Asia/Shanghai' })).status, 200)
+    assert.equal((await post('/api/clerk/job/delete', { id: taskId })).status, 200)
+    assert.equal((await post('/api/clerk/job/delete', { id: taskId })).status, 404)
+  })
+  await check('channels are checked, never shown in full, and a failed send is recorded', async () => {
+    assert.equal((await post('/api/channels', { type: 'lark', name: 'Bad', webhook: 'https://evil.example/hook' })).data.error, 'BAD_WEBHOOK')
+    assert.equal((await post('/api/channels', { type: 'sms', name: 'Bad' })).data.error, 'BAD_TYPE')
+    const added = await post('/api/channels', { type: 'lark', name: 'Team Lark', webhook: 'https://open.feishu.cn/open-apis/bot/v2/hook/not-a-real-token-0001', secret: 'topsecret' })
+    assert.equal(added.status, 200); assert.equal(added.data.channel.signed, true)
+    assert.equal((await post('/api/channels', { type: 'lark', name: 'team lark', webhook: 'https://open.feishu.cn/open-apis/bot/v2/hook/other' })).data.error, 'NAME_TAKEN')
+    const shown = JSON.stringify(await clerkView())
+    assert.ok(!shown.includes('not-a-real-token') && !shown.includes('topsecret'), 'a channel secret reached the page')
+    const t0 = Date.now()
+    script.push(use('clerk_create', { title: 'Team ping', kind: 'reminder', text: 'Stand-up time', schedule: { type: 'daily', time: '23:57' }, channels: ['team lark'] }), say('Ping set.'))
+    assert.equal((await post('/api/chat', { text: 'ping the team' })).status, 200)
+    const ask = await decide(true, e => e.kind === 'clerk')
+    assert.match(ask.detail, /Send to: in-app inbox, Team Lark/)
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'Ping set.')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
+    const ping = (await clerkView()).jobs.find(j => j.title === 'Team ping')
+    assert.deepEqual(ping.channels, ['Team Lark'])
+    assert.equal((await post('/api/clerk/job/run', { id: ping.id })).status, 200)
+    const entry = (await clerkView()).inbox.find(n => n.text === 'Stand-up time')
+    assert.equal(entry.delivery[0].channel, 'Team Lark'); assert.equal(entry.delivery[0].ok, false)
+    assert.ok(entry.delivery[0].error, 'the failure has no reason')
+    const channelId = (await clerkView()).channels[0].id
+    assert.equal((await post('/api/channels/delete', { id: channelId })).status, 200)
+    assert.deepEqual((await clerkView()).jobs.find(j => j.id === ping.id).channels, [])
+  })
+  await check('a one-time reminder fires by itself at its minute and then switches off', async () => {
+    const view = await clerkView()
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: view.timezone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date(Date.now() + 70_000))
+    const p = Object.fromEntries(parts.map(x => [x.type, x.value]))
+    const at = `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`
+    const t0 = Date.now()
+    script.push(use('clerk_create', { title: 'Right on time', kind: 'reminder', text: 'It is time', schedule: { type: 'once', at } }), say('Timer set.'))
+    assert.equal((await post('/api/chat', { text: 'remind me in a minute' })).status, 200)
+    await decide(true, e => e.kind === 'clerk')
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'Timer set.')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
+    for (let i = 0; i < 1000; i++) { // up to 100s
+      if ((await clerkView()).inbox.some(n => n.text === 'It is time')) break
+      await sleep(100)
+    }
+    const after = await clerkView()
+    assert.ok(after.inbox.some(n => n.text === 'It is time'), 'the reminder never fired')
+    const job = after.jobs.find(j => j.title === 'Right on time')
+    assert.equal(job.enabled, false); assert.equal(job.nextRun, null); assert.equal(job.lastStatus, 'ok')
+  })
+
+  console.log('Extensions')
+  const extView = async () => (await getJson('/api/extensions')).body
+  await check('Bob is offered the install tools and DSH\'s skill tool', () => {
+    const names = requests.at(-1).tools.map(t => t.name)
+    for (const tool of ['install_package', 'mcp_add', 'mcp_remove', 'skill_create', 'skill_install', 'skill_remove', 'ext_list', 'web_fetch', 'clerk_create']) {
+      assert.ok(names.includes(`mcp__bobbot__${tool}`), `missing ${tool}`)
+    }
+    assert.ok(names.some(n => /^skill$/i.test(n)), `DSH's skill tool is missing: ${names.join()}`)
+  })
+  await check('package names are checked before anyone is asked', async () => {
+    const t0 = Date.now()
+    const asked = events.filter(e => e.type === 'approval').length
+    script.push(
+      use('install_package', { manager: 'npm', packages: ['x; rm -rf /'] }),
+      use('install_package', { manager: 'npm', packages: ['--registry=http://evil.example'] }),
+      use('install_package', { manager: 'gem', packages: ['rails'] }),
+      say('names refused'),
+    )
+    assert.equal((await post('/api/chat', { text: 'install stuff' })).status, 200)
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'names refused')
+    assert.ok((lastSent().match(/Not allowed/g) ?? []).length >= 3)
+    assert.equal(events.filter(e => e.type === 'approval').length, asked)
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
+  })
+  await check('installing shows the exact command, runs only after approval, and reports a failure honestly', async () => {
+    const t0 = Date.now()
+    script.push(use('install_package', { manager: 'npm', packages: ['bobbot-no-such-package-zzz'] }), say('install attempted'))
+    assert.equal((await post('/api/chat', { text: 'install that package' })).status, 200)
+    const ask = await decide(true, e => e.kind === 'install')
+    assert.equal(ask.detail, 'npm install -g bobbot-no-such-package-zzz'); assert.equal(ask.manager, 'npm')
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'install attempted')
+    assert.match(lastSent(), /Failed \(exit code/)
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
+  })
+  await check('a skill is created only after the user reads it, then shows up for Bob', async () => {
+    const t0 = Date.now()
+    const skill = { name: 'weekly-report', description: 'Write the weekly report in the usual format', instructions: 'Start with three highlights, then risks.' }
+    script.push(use('skill_create', skill), say('skill saved'))
+    assert.equal((await post('/api/chat', { text: 'teach yourself the weekly report' })).status, 200)
+    const ask = await decide(false, e => e.kind === 'skill')
+    assert.match(ask.detail, /three highlights/)
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'skill saved')
+    assert.equal(fs.existsSync(path.join(data, 'skills', 'weekly-report')), false, 'a rejected skill was written')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
+
+    const t1 = Date.now()
+    script.push(use('skill_create', skill), say('skill saved again'))
+    assert.equal((await post('/api/chat', { text: 'please do save it' })).status, 200)
+    await decide(true, e => e.kind === 'skill')
+    await waitAfter(t1, e => e.type === 'message' && e.text === 'skill saved again')
+    await waitAfter(t1, e => e.type === 'status' && e.status === 'idle')
+    assert.match(fs.readFileSync(path.join(data, 'skills', 'weekly-report', 'SKILL.md'), 'utf8'), /name: weekly-report[\s\S]*three highlights/)
+    assert.deepEqual((await extView()).skills.map(k => k.name), ['weekly-report'])
+
+    const before = requests.length
+    const t2 = Date.now()
+    assert.equal((await post('/api/chat', { text: 'what skills do you have?' })).status, 200)
+    for (let i = 0; i < 300 && requests.length === before; i++) await sleep(100)
+    const catalog = JSON.stringify(requests.at(-1))
+    assert.ok(catalog.includes('weekly-report') && catalog.includes('usual format'), 'the new skill is not in Bob\'s catalog')
+    await waitAfter(t2, e => e.type === 'status' && e.status === 'idle')
+  })
+  await check('an MCP server is added after approval, loads on the next message, gets its secret from Settings and can be removed', async () => {
+    await sleep(1500)
+    const t0 = Date.now()
+    const spec = { name: 'fake', command: 'node', args: [path.join(root, 'test', 'fake-mcp.mjs')], env_names: ['FAKE_TOKEN'] }
+    script.push(use('mcp_add', spec), say('server added'))
+    assert.equal((await post('/api/chat', { text: 'add the fake server' })).status, 200)
+    const ask = await decide(true, e => e.kind === 'mcp')
+    assert.match(ask.detail, /node .*fake-mcp\.mjs/); assert.match(ask.detail, /FAKE_TOKEN/); assert.match(ask.detail, /without asking each time/)
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'server added')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
+    let view = await extView()
+    assert.equal(view.mcp[0].name, 'fake'); assert.deepEqual(view.mcp[0].secrets, [{ name: 'FAKE_TOKEN', set: false }])
+
+    assert.equal((await post('/api/extensions/secret', { server: 'fake', name: 'FAKE_TOKEN', value: 's3cret-value' })).status, 200)
+    assert.equal((await post('/api/extensions/secret', { server: 'fake', name: 'OTHER', value: 'x' })).status, 400)
+    assert.ok(!JSON.stringify(await extView()).includes('s3cret-value'), 'a secret reached the page')
+    await sleep(1500)
+
+    const t1 = Date.now()
+    script.push(use('mcp__fake__echo', { text: 'hi' }), use('mcp__fake__show_token', {}), say('used the server'))
+    assert.equal((await post('/api/chat', { text: 'use the fake server' })).status, 200)
+    await waitAfter(t1, e => e.type === 'message' && e.text === 'used the server')
+    const seen = lastSent()
+    assert.ok(seen.includes('echo:hi'), 'the MCP tool result is missing')
+    assert.ok(seen.includes('token:s3cret-value'), 'the secret did not reach the server')
+    assert.ok(requests.at(-1).tools.some(t => t.name === 'mcp__fake__echo'))
+    assert.ok(events.some(e => e.type === 'step' && e.name === 'mcp__fake__echo' && e.at >= t1), 'the MCP call is not shown as a step')
+    await waitAfter(t1, e => e.type === 'status' && e.status === 'idle')
+
+    assert.equal((await post('/api/extensions/mcp/delete', { name: 'fake' })).status, 200)
+    assert.equal((await post('/api/extensions/mcp/delete', { name: 'fake' })).status, 404)
+    await sleep(1500)
+    const before = requests.length
+    const t2 = Date.now()
+    assert.equal((await post('/api/chat', { text: 'still there?' })).status, 200)
+    for (let i = 0; i < 400 && requests.length === before; i++) await sleep(100)
+    assert.ok(!requests.at(-1).tools.some(t => t.name.startsWith('mcp__fake__')), 'the removed server\'s tools are still offered')
+    await waitAfter(t2, e => e.type === 'status' && e.status === 'idle')
   })
 
   console.log('Model settings')

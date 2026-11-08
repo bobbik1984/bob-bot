@@ -8,7 +8,12 @@ import { WebSocketServer } from 'ws'
 import { Agent, Budget, DEFAULT_MODEL, registryPrices } from './agent.mjs'
 import { DATA_DIR, hasPin, issueSession, login, validSession } from './auth.mjs'
 import { assertPublicUrl, CloudBrowser } from './browser.mjs'
+import { findTelegramChat, publicChannel, sendToChannel, validateChannel } from './channels.mjs'
+import { checkCard, cardText } from './cards.mjs'
+import { Clerk, describeSchedule, formatLocal, nextRun, normalizeSchedule } from './clerk.mjs'
 import { createHostTools, MAX_COMMAND_SECONDS } from './host-tools.mjs'
+import { Extensions, checkMcp, checkPackages, checkSkill, installSteps, parseSkillFile, runSteps, showSteps } from './extensions.mjs'
+import { webFetch } from './web-fetch.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const HOST = process.env.HOST || '127.0.0.1'
@@ -30,6 +35,9 @@ const browser = new CloudBrowser(DATA_DIR)
 const agent = new Agent(DATA_DIR)
 const budget = new Budget(DATA_DIR)
 const host = createHostTools(DATA_DIR)
+const clerk = new Clerk(DATA_DIR)
+const extensions = new Extensions(DATA_DIR)
+let extensionsDirty = false // MCP changes load when DSH next starts
 const mcpToken = crypto.randomBytes(32).toString('hex')
 let mcpUrl = ''
 
@@ -63,9 +71,9 @@ function historyOf(id) {
   if (!histories.has(id)) histories.set(id, readJson(histFile(id), []))
   return histories.get(id)
 }
-function createConversation(title = '') {
+function createConversation(title = '', extra = {}) {
   const now = Date.now()
-  const conv = { id: newId(), title, createdAt: now, updatedAt: now }
+  const conv = { id: newId(), title, createdAt: now, updatedAt: now, ...extra }
   convs.push(conv)
   historyOf(conv.id)
   saveConvs()
@@ -78,7 +86,9 @@ function deleteConversation(id) {
   agent.forget(id)
   saveConvs()
 }
-const listConversations = () => [...convs].sort((a, b) => b.updatedAt - a.updatedAt).map(({ id, title, updatedAt }) => ({ id, title, updatedAt }))
+// Chats that never got a message have no title and stay hidden.
+const listConversations = () => convs.filter(c => c.title).sort((a, b) => b.updatedAt - a.updatedAt)
+  .map(({ id, title, updatedAt, job }) => ({ id, title, updatedAt, job: Boolean(job) }))
 
 let runningCid = null // the conversation Bob is working in right now
 let lastPromptCid = null
@@ -126,10 +136,11 @@ function waitForHuman() {
 }
 
 /** Shows the owner an approval card and waits. `kind` is click, type, command, read, list or write. */
-async function requireApproval({ kind, summary, target = '', detail = '', screenshot = false }) {
+async function requireApproval({ kind, summary, target = '', detail = '', screenshot = false, extra = {} }) {
+  if (activeRun) throw new Error('This is a scheduled run, so nobody is there to approve this action. Do not try another way: finish what you can and report what you skipped.')
   const id = crypto.randomUUID()
   const shot = screenshot ? await browser.screenshot().catch(() => null) : null
-  const payload = push({ type: 'approval', id, kind, summary, target, detail: detail.slice(0, 2000), screenshot: shot })
+  const payload = push({ type: 'approval', id, kind, summary, target, detail: detail.slice(0, 2000), screenshot: shot, ...extra })
   pending.set(id, payload)
   const allowed = await new Promise(resolve => {
     const timer = setTimeout(() => { approvals.delete(id); resolve(false) }, APPROVAL_TIMEOUT_MS)
@@ -153,6 +164,37 @@ const TOOLS = [
   ['read_file', 'Read a text file on the server. Relative paths start in your workspace folder, which needs no approval; other files ask the user first.', { path: { type: 'string' }, max_chars: { type: 'integer' } }, ['path']],
   ['write_file', 'Write a text file on the server. Always asks the user first.', { path: { type: 'string' }, content: { type: 'string' }, append: { type: 'boolean' } }, ['path', 'content']],
   ['run_command', 'Run a shell command on the server and return its output. Always asks the user first. Runs in your workspace folder unless cwd is given.', { command: { type: 'string' }, cwd: { type: 'string' }, timeout_seconds: { type: 'integer', description: `Up to ${MAX_COMMAND_SECONDS}` } }, ['command']],
+  ['web_fetch', 'Fetch a public web address with GET and return it as text (weather, news, public APIs). Read-only, no approval needed.', { url: { type: 'string' } }, ['url']],
+  ['clerk_list_channels', 'List the chat channels messages can be sent to (names only), besides the in-app inbox.', {}, []],
+  ['clerk_list', 'List the scheduled tasks and reminders.', {}, []],
+  ['clerk_create', 'Schedule a reminder (a message to deliver) or a task (work for you to do) and show the user a card to confirm it.', {
+    title: { type: 'string', description: 'Short name' },
+    kind: { type: 'string', enum: ['reminder', 'task'] },
+    text: { type: 'string', description: 'Reminder: the exact message. Task: complete, self-contained instructions.' },
+    schedule: { type: 'object', description: 'type once (at "YYYY-MM-DDTHH:MM"), daily (time "HH:MM"), weekly (days [0-6], 0 = Sunday, and time) or monthly (day 1-31 and time). Times are in the user\'s time zone.', properties: { type: { type: 'string', enum: ['once', 'daily', 'weekly', 'monthly'] }, at: { type: 'string' }, time: { type: 'string' }, days: { type: 'array', items: { type: 'integer' } }, day: { type: 'integer' } }, required: ['type'] },
+    channels: { type: 'array', items: { type: 'string' }, description: 'Channel names from clerk_list_channels. Leave empty for the in-app inbox only.' },
+  }, ['title', 'kind', 'text', 'schedule']],
+  ['show_card', 'Show organized information to the user as a card in the chat: weather advice, a comparison, a list of results. Use it instead of a long text block.', {
+    title: { type: 'string' }, subtitle: { type: 'string' }, tag: { type: 'string', description: 'A short label such as Weather or Result' },
+    fields: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, value: { type: 'string' } }, required: ['label', 'value'] }, description: 'Up to 12 label and value pairs' },
+    items: { type: 'array', items: { type: 'string' }, description: 'Up to 12 short bullet points' },
+    note: { type: 'string' },
+  }, ['title']],
+  ['ext_list', 'List the MCP servers and skills that are installed.', {}, []],
+  ['install_package', 'Install packages on the server with npm (global), pip (in BobBot\'s own virtualenv) or apt (needs sudo), after the user confirms the exact command. Package names only.', { manager: { type: 'string', enum: ['npm', 'pip', 'apt'] }, packages: { type: 'array', items: { type: 'string' } } }, ['manager', 'packages']],
+  ['mcp_add', 'Add an MCP server so you gain its tools, after the user confirms. Give command and args for a local server (for example npx with ["-y", "<package>"]), or url for a remote https one. env_names lists secrets it needs, which the user enters in Settings, never in chat. You get the tools after this reply, when Bob restarts.', {
+    name: { type: 'string', description: 'Short id: letters, digits, - and _' },
+    command: { type: 'string' }, args: { type: 'array', items: { type: 'string' } },
+    env_names: { type: 'array', items: { type: 'string' }, description: 'Names of environment variables the server needs, such as GITHUB_TOKEN' },
+    url: { type: 'string', description: 'https address of a remote server instead of command' },
+    bearer_name: { type: 'string', description: 'Name of the secret to send as a bearer token to a remote server' },
+  }, ['name']],
+  ['mcp_remove', 'Remove an MCP server, after the user confirms.', { name: { type: 'string' } }, ['name']],
+  ['skill_create', 'Write a new skill (reusable instructions you can load later) after the user reads and confirms it.', { name: { type: 'string', description: 'lowercase-with-dashes' }, description: { type: 'string', description: 'One sentence on when to use it' }, instructions: { type: 'string' } }, ['name', 'description', 'instructions']],
+  ['skill_install', 'Install a skill from the address of a SKILL.md file (such as a raw GitHub link), after the user confirms.', { url: { type: 'string' } }, ['url']],
+  ['skill_remove', 'Remove an installed skill, after the user confirms.', { name: { type: 'string' } }, ['name']],
+  ['clerk_delete', 'Delete a scheduled job by its id, after the user confirms.', { id: { type: 'string' } }, ['id']],
+  ['clerk_update', 'Pause or resume a scheduled job by its id, after the user confirms.', { id: { type: 'string' }, enabled: { type: 'boolean' } }, ['id', 'enabled']],
 ].map(([name, description, properties, required]) => ({ name, description, inputSchema: { type: 'object', properties, required } }))
 
 async function element(id) {
@@ -194,6 +236,10 @@ async function hostTool(name, args) {
 async function callTool(name, args) {
   if (budget.status().exceeded) throw new Error('The monthly spending limit has been reached. Stop and tell the user.')
   if (['list_files', 'read_file', 'write_file', 'run_command'].includes(name)) return hostTool(name, args)
+  if (name === 'web_fetch') return webFetch(String(args.url ?? ''))
+  if (name === 'show_card') return showCard(args)
+  if (name.startsWith('clerk_')) return clerkTool(name, args)
+  if (['ext_list', 'install_package', 'mcp_add', 'mcp_remove', 'skill_create', 'skill_install', 'skill_remove'].includes(name)) return extTool(name, args)
   await waitForHuman()
   switch (name) {
     case 'browser_navigate':
@@ -223,6 +269,7 @@ async function callTool(name, args) {
       await browser.scroll(args.direction)
       break
     case 'browser_request_human': {
+      if (activeRun) throw new Error('Nobody is available to help during a scheduled run. Finish what you can without it and say what you could not do.')
       const id = crypto.randomUUID()
       pending.set(id, push({ type: 'takeover', id, reason: String(args.reason) }))
       await new Promise((resolve, reject) => {
@@ -262,19 +309,319 @@ async function handleMcp(req, res) {
   return send(res, 200, { jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: 'method not found' } })
 }
 
+// ---- the clerk: scheduled tasks and reminders ----
+const RUN_LIMIT_MS = 10 * 60 * 1000
+let activeRun = null // a scheduled task Bob is running now: { jobId, cid, texts, started, timer }
+
+const humanTime = ms => (ms === null || ms === undefined ? 'never' : formatLocal(ms, clerk.timezone))
+
+/** First line of every message to Bob, so "tomorrow at 3" means what the user means. */
+function nowHeader() {
+  const now = Date.now()
+  const day = new Intl.DateTimeFormat('en-US', { timeZone: clerk.timezone, weekday: 'long' }).format(now)
+  return `[Current time: ${humanTime(now)}, ${day}. The user's time zone: ${clerk.timezone}.]`
+}
+
+function jobLine(job) {
+  const names = job.channels.map(id => clerk.channel(id)?.name).filter(Boolean)
+  return `[${job.id}] ${job.kind} "${job.title}" - ${describeSchedule(job.schedule)} (${clerk.timezone}) - next: ${job.enabled ? humanTime(job.nextRun) : 'paused'} - to: in-app inbox${names.map(n => `, ${n}`).join('')}`
+}
+
+const jobView = j => ({
+  id: j.id, title: j.title, kind: j.kind, text: j.text, schedule: j.schedule, enabled: j.enabled, nextRun: j.nextRun, lastRun: j.lastRun,
+  lastStatus: j.lastStatus, lastResult: j.lastResult, cid: j.cid, running: activeRun?.jobId === j.id,
+  channels: j.channels.map(id => clerk.channel(id)?.name).filter(Boolean),
+})
+const pushJobCard = job => push({ type: 'card', card: { kind: 'job', job: jobView(job), timezone: clerk.timezone } })
+
+/** A card Bob asks for. During a scheduled run it is kept with the result as well. */
+function showCard(args) {
+  let card
+  try { card = checkCard(args) } catch (error) { throw new Error(`Bad card: ${error.message}`) }
+  if (activeRun) activeRun.cards.push(card)
+  push({ type: 'card', card })
+  return 'The card is shown to the user. Add at most one short line of text.'
+}
+
+function clerkView() {
+  return {
+    timezone: clerk.timezone, timezoneChosen: clerk.timezoneChosen, busy: Boolean(runningCid),
+    jobs: clerk.jobs.map(jobView),
+    inbox: clerk.inbox, channels: clerk.channels.map(publicChannel), unread: clerk.unread(),
+  }
+}
+
+/** Puts a message in the in-app inbox and sends it to the job's channels. */
+async function deliver(job, text, cards = []) {
+  const entry = clerk.addInbox({ title: job.title, text, jobId: job.id, cards })
+  broadcast({ type: 'clerk' })
+  const content = [text, ...cards.map(cardText)].filter(Boolean).join('\n\n')
+  const body = content === job.title ? content : `${job.title}\n${content}`
+  const delivery = []
+  for (const id of job.channels) {
+    const channel = clerk.channel(id)
+    if (!channel) continue
+    const sent = await sendToChannel(channel, body)
+    delivery.push({ channel: channel.name, ok: sent.ok, ...(sent.ok ? {} : { error: sent.error }) })
+  }
+  clerk.setDelivery(entry.id, delivery)
+  broadcast({ type: 'clerk' })
+}
+
+function recordRun(job, status, text) {
+  clerk.update(job, { lastRun: Date.now(), lastStatus: status, lastResult: String(text).slice(0, 300) })
+  broadcast({ type: 'clerk' })
+}
+
+async function reportFailure(job, reason) {
+  const text = `This task could not run: ${reason}`
+  await deliver(job, text)
+  recordRun(job, 'failed', text)
+}
+
+/** @returns {'started'|'done'|'busy'} Reminders finish at once; tasks start Bob and finish later in finishRun. */
+async function startJob(job) {
+  if (job.kind === 'reminder') {
+    await deliver(job, job.text)
+    recordRun(job, 'ok', job.text)
+    return 'done'
+  }
+  if (runningCid || activeRun) return 'busy'
+  if (budget.status().exceeded) { await reportFailure(job, 'the monthly spending limit has been reached.'); return 'done' }
+  const cfg = modelConfig()
+  const apiKey = loadKey(cfg.kind)
+  if (!apiKey || !priceOf(cfg)) { await reportFailure(job, 'no model is set up.'); return 'done' }
+  if (!job.cid || !convOf(job.cid)) clerk.update(job, { cid: createConversation(job.title, { job: true }).id })
+  const cid = job.cid
+  activeRun = { jobId: job.id, cid, texts: [], cards: [], started: false, timer: setTimeout(() => finishRun('failed', 'it took longer than 10 minutes, so it was stopped.', { stop: true }), RUN_LIMIT_MS) }
+  runningCid = cid
+  lastPromptCid = cid
+  push({ type: 'message', role: 'user', text: job.text, scheduled: true }, true, cid)
+  try {
+    await ensureAgent(cfg, apiKey)
+    await agent.prompt(cid, `${nowHeader()}\n${job.text}`, { fresh: true })
+  } catch (error) { await finishRun('failed', error.message) }
+  return 'started'
+}
+
+async function finishRun(status, detail = '', { stop = false } = {}) {
+  const run = activeRun
+  if (!run) return
+  activeRun = null
+  clearTimeout(run.timer)
+  if (runningCid === run.cid) runningCid = null
+  if (stop) { agent.stop(); push({ type: 'status', status: 'idle' }, false, run.cid) }
+  const job = clerk.job(run.jobId)
+  if (!job) return
+  if (status === 'ok') {
+    const text = run.texts.at(-1) ?? (run.cards.length ? '' : 'The task finished without an answer.')
+    await deliver(job, text, run.cards)
+    recordRun(job, 'ok', text || cardText(run.cards[0]))
+  } else await reportFailure(job, detail)
+}
+
+let ticking = false
+async function tick() {
+  if (ticking) return
+  ticking = true
+  try {
+    const now = Date.now()
+    const { run, missed } = clerk.due(now)
+    for (const job of missed) {
+      const was = job.nextRun
+      clerk.advance(job, now)
+      await deliver(job, `Missed: "${job.title}" was due at ${humanTime(was)} but the server was off or busy for too long, so it was skipped. It runs again at its next time.`)
+      recordRun(job, 'missed', 'Skipped: the server was off or busy.')
+    }
+    for (const job of run) {
+      if (job.kind === 'task' && (runningCid || activeRun)) continue // Bob is busy: try again on the next tick
+      const due = job.nextRun
+      clerk.advance(job, now) // move on first, so a slow run can never fire twice
+      if (await startJob(job) === 'busy') clerk.update(job, { enabled: true, nextRun: due })
+    }
+  } finally { ticking = false }
+}
+
+/** Checks a job the model proposes, before the user is asked to confirm it. */
+function checkJobInput(args) {
+  const kind = args.kind
+  const title = String(args.title ?? '').trim().slice(0, 60)
+  const text = String(args.text ?? '').trim().slice(0, 4000)
+  if (kind !== 'reminder' && kind !== 'task') throw new Error('kind must be "reminder" or "task".')
+  if (!title || !text) throw new Error('A title and text are required.')
+  let schedule
+  try { schedule = normalizeSchedule(args.schedule ?? {}) } catch (error) {
+    throw new Error(`Bad schedule (${error.message}). Use type once (at "YYYY-MM-DDTHH:MM"), daily (time "HH:MM"), weekly (days 0-6 with 0 = Sunday, and time) or monthly (day 1-31 and time).`)
+  }
+  const first = nextRun(schedule, clerk.timezone, Date.now())
+  if (first === null) throw new Error('That time has already passed. Ask the user for a later time.')
+  return { kind, title, text, schedule, first }
+}
+
+async function clerkTool(name, args) {
+  if (name === 'clerk_list_channels') {
+    const names = clerk.channels.map(c => `${c.name} (${c.type})`)
+    return `In-app inbox is always used.\nOther channels: ${names.join(', ') || 'none set up yet. The user can add one in the Clerk tab.'}`
+  }
+  if (name === 'clerk_list') {
+    for (const job of clerk.jobs.slice(0, 10)) pushJobCard(job) // the user sees them as cards; Bob gets the text below
+    return clerk.jobs.map(jobLine).join('\n') || 'No scheduled jobs.'
+  }
+  if (activeRun) throw new Error('A scheduled run cannot change the schedule.')
+  if (name === 'clerk_create') {
+    const input = checkJobInput(args)
+    let channelIds
+    try { channelIds = clerk.resolveChannels(args.channels ?? []) } catch (error) {
+      if (error.message !== 'UNKNOWN_CHANNEL') throw error
+      throw new Error(`Unknown channel. Available: ${error.available.join(', ') || 'none, only the in-app inbox'}.`)
+    }
+    const where = ['in-app inbox', ...channelIds.map(id => clerk.channel(id).name)].join(', ')
+    await requireApproval({
+      kind: 'clerk', summary: `Add a ${input.kind}: ${input.title}`, target: input.title,
+      detail: `${describeSchedule(input.schedule)} (${clerk.timezone})\nFirst run: ${humanTime(input.first)}\nSend to: ${where}\n\n${input.text}`,
+      extra: { action: 'create', jobKind: input.kind, schedule: input.schedule, firstRun: input.first, timezone: clerk.timezone, to: where },
+    })
+    const job = clerk.addJob({ title: input.title, kind: input.kind, text: input.text, schedule: input.schedule, channels: channelIds })
+    pushJobCard(job)
+    broadcast({ type: 'clerk' })
+    return `Created ${job.id}: ${describeSchedule(job.schedule)} (${clerk.timezone}). Next run: ${humanTime(job.nextRun)}.`
+  }
+  const job = clerk.job(String(args.id ?? ''))
+  if (!job) throw new Error(`No job with id "${args.id}". Call clerk_list to see the ids.`)
+  if (name === 'clerk_delete') {
+    await requireApproval({ kind: 'clerk', summary: `Delete: ${job.title}`, target: job.title, detail: jobLine(job), extra: { action: 'delete', jobKind: job.kind, schedule: job.schedule } })
+    clerk.removeJob(job.id)
+    broadcast({ type: 'clerk' })
+    return `Deleted ${job.id}.`
+  }
+  if (name === 'clerk_update') {
+    const enabled = args.enabled === true
+    await requireApproval({ kind: 'clerk', summary: `${enabled ? 'Resume' : 'Pause'}: ${job.title}`, target: job.title, detail: jobLine(job), extra: { action: enabled ? 'resume' : 'pause', jobKind: job.kind, schedule: job.schedule } })
+    clerk.setEnabled(job.id, enabled)
+    broadcast({ type: 'clerk' })
+    return jobLine(job)
+  }
+  throw new Error(`Unknown tool: ${name}`)
+}
+
+// ---- extensions: packages, MCP servers and skills, installed when the owner asks ----
+const MCP_WARNING = 'Its tools will run without asking each time, so only add servers you trust.'
+
+/** Restart DSH so MCP changes load: at once if Bob is idle, otherwise when the current reply ends. */
+function extensionsChanged() {
+  extensionsDirty = true
+  if (!runningCid && !activeRun) { extensionsDirty = false; agent.stop() }
+  broadcast({ type: 'extensions' })
+}
+
+function extensionsView() {
+  return {
+    mcp: extensions.mcp.map(s => ({ name: s.name, transport: s.transport, summary: s.transport === 'stdio' ? [s.command, ...s.args].join(' ') : s.url, secrets: extensions.secretStatus(s) })),
+    skills: extensions.listSkills(),
+  }
+}
+
+async function extTool(name, args) {
+  if (name === 'ext_list') {
+    const mcp = extensions.mcp.map(s => `${s.name}: ${s.transport === 'stdio' ? [s.command, ...s.args].join(' ') : s.url}${extensions.secretStatus(s).map(x => ` [${x.name}: ${x.set ? 'set' : 'NOT SET, the user must enter it in Settings'}]`).join('')}`)
+    const skills = extensions.listSkills().map(s => `${s.name}: ${s.description}`)
+    return `MCP servers:\n${mcp.join('\n') || '(none)'}\n\nSkills:\n${skills.join('\n') || '(none)'}`
+  }
+  const refused = error => new Error(`Not allowed: ${error.message}${error.detail ? ` (${error.detail})` : ''}.`)
+
+  if (name === 'install_package') {
+    let packages
+    try { packages = checkPackages(args.manager, args.packages) } catch (error) { throw refused(error) }
+    const steps = installSteps(args.manager, packages, { venvDir: extensions.venvDir })
+    await requireApproval({ kind: 'install', summary: `Install ${args.manager} packages: ${packages.join(', ')}`, target: `${args.manager}: ${packages.join(', ')}`, detail: showSteps(steps), extra: { manager: args.manager, packages } })
+    const result = await runSteps(steps, { cwd: host.workspace })
+    if (!result.ok) throw new Error(result.text)
+    return args.manager === 'pip' ? `${result.text}\nInstalled into BobBot's virtualenv. Run its programs with ${extensions.venvDir}/bin/python.` : result.text
+  }
+
+  if (name === 'mcp_add') {
+    let spec
+    try { spec = checkMcp(args) } catch (error) { throw refused(error) }
+    if (spec.transport === 'http') { try { await assertPublicUrl(spec.url) } catch { throw new Error('Not allowed: a remote MCP server must be on a public https address.') } }
+    const needs = spec.transport === 'stdio' ? spec.envNames : spec.bearerName ? [spec.bearerName] : []
+    const detail = [
+      spec.transport === 'stdio' ? `Runs on this server: ${[spec.command, ...spec.args].join(' ')}` : `Remote server: ${spec.url}`,
+      needs.length ? `Needs secrets: ${needs.join(', ')} (enter them in Settings, not in chat)` : 'Needs no secrets.',
+      MCP_WARNING,
+    ].join('\n')
+    await requireApproval({ kind: 'mcp', summary: `Add MCP server: ${spec.name}`, target: spec.name, detail, extra: { action: 'add' } })
+    extensions.addMcp(spec)
+    extensionsChanged()
+    return `Added "${spec.name}". ${needs.length ? `Tell the user to enter ${needs.join(', ')} in Settings > Extensions. ` : ''}Its tools will appear as mcp__${spec.name}__<tool> from the next message, after Bob restarts.`
+  }
+
+  if (name === 'mcp_remove') {
+    const server = extensions.mcp.find(s => s.name === args.name)
+    if (!server) throw new Error(`No MCP server named "${args.name}". Call ext_list.`)
+    await requireApproval({ kind: 'mcp', summary: `Remove MCP server: ${server.name}`, target: server.name, detail: 'Its saved secrets are deleted too.', extra: { action: 'remove' } })
+    extensions.removeMcp(server.name)
+    extensionsChanged()
+    return `Removed "${server.name}". Its tools disappear from the next message.`
+  }
+
+  if (name === 'skill_create' || name === 'skill_install') {
+    let skill
+    let source = ''
+    try {
+      if (name === 'skill_create') skill = checkSkill(args)
+      else {
+        const url = String(args.url ?? '').trim()
+        skill = parseSkillFile(await webFetch(url, { raw: true }), url.split('/').filter(Boolean).at(-2) ?? '')
+        source = `From: ${url}\n`
+      }
+    } catch (error) { throw refused(error) }
+    await requireApproval({ kind: 'skill', summary: `${name === 'skill_create' ? 'Create' : 'Install'} skill: ${skill.name}`, target: skill.name, detail: `${source}${skill.description}\n\n${skill.body.slice(0, 1500)}`, extra: { action: 'add' } })
+    extensions.writeSkill(skill)
+    broadcast({ type: 'extensions' })
+    return `Saved skill "${skill.name}". It is available from your next step.`
+  }
+
+  if (name === 'skill_remove') {
+    const skillName = String(args.name ?? '')
+    if (!extensions.listSkills().some(s => s.name === skillName)) throw new Error(`No skill named "${skillName}". Call ext_list.`)
+    await requireApproval({ kind: 'skill', summary: `Remove skill: ${skillName}`, target: skillName, extra: { action: 'remove' } })
+    extensions.removeSkill(skillName)
+    broadcast({ type: 'extensions' })
+    return `Removed "${skillName}".`
+  }
+  throw new Error(`Unknown tool: ${name}`)
+}
+
+async function ensureAgent(cfg, apiKey) {
+  const extras = extensions.launchExtras()
+  await agent.ensure({ apiKey, mcpUrl, mcpToken, model: cfg.model, baseUrl: cfg.kind === 'custom' ? cfg.baseUrl : undefined, patches: extras.patches, extraEnv: extras.env })
+}
+
 // ---- agent wiring ----
-agent.on('text', (cid, text) => { if (convOf(cid)) push({ type: 'message', role: 'assistant', text }, true, cid) })
+agent.on('text', (cid, text) => {
+  if (!convOf(cid)) return
+  if (activeRun?.cid === cid) activeRun.texts.push(text)
+  push({ type: 'message', role: 'assistant', text }, true, cid)
+})
 agent.on('status', (cid, status) => {
   if (!convOf(cid)) return // sub-sessions and deleted chats
-  if (status === 'running') runningCid = cid
-  else if (runningCid === cid) runningCid = null
+  if (status === 'running') {
+    runningCid = cid
+    if (activeRun?.cid === cid) activeRun.started = true
+  } else {
+    if (runningCid === cid) runningCid = null
+    if (activeRun?.cid === cid && activeRun.started) finishRun('ok')
+    if (extensionsDirty && !runningCid && !activeRun) { extensionsDirty = false; agent.stop() }
+  }
   push({ type: 'status', status }, false, cid)
 })
+agent.on('tool', (cid, name) => { if (convOf(cid) && !name.startsWith('mcp__bobbot__')) push({ type: 'step', name }, true, cid) })
 agent.on('exit', code => {
   const cid = runningCid ?? lastPromptCid
   runningCid = null
   if (cid && convOf(cid)) push({ type: 'error', text: `Agent stopped unexpectedly (${code}). Send a message to restart it.` }, true, cid)
   if (cid) push({ type: 'status', status: 'idle' }, false, cid)
+  if (activeRun) finishRun('failed', 'the assistant stopped unexpectedly.')
 })
 agent.on('usage', (cid, model, usage) => {
   const status = budget.record(model, usage, priceOf(modelConfig()))
@@ -288,6 +635,7 @@ agent.on('usage', (cid, model, usage) => {
     runningCid = null
     push({ type: 'notice', code: 'BUDGET_EXCEEDED' }, true, cid)
     push({ type: 'status', status: 'idle' }, false, cid)
+    if (activeRun) finishRun('failed', 'the monthly spending limit was reached.')
   }
 })
 
@@ -425,7 +773,7 @@ async function route(req, res) {
     const cfg = modelConfig()
     return send(res, 200, {
       authed: ok, pinSet: hasPin(),
-      ...(ok ? { hasKey: Boolean(loadKey(cfg.kind)), keyHint: keyHint(cfg.kind), model: publicModel(cfg), budget: budget.status() } : {}),
+      ...(ok ? { hasKey: Boolean(loadKey(cfg.kind)), keyHint: keyHint(cfg.kind), model: publicModel(cfg), budget: budget.status(), unread: clerk.unread() } : {}),
     })
   }
   if (req.method === 'POST' && !sameOrigin(req)) return send(res, 403, { error: 'BAD_ORIGIN' })
@@ -441,11 +789,13 @@ async function route(req, res) {
   }
   if (req.method === 'GET' && pathname === '/api/events') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no' })
-    res.write(`data: ${JSON.stringify({ type: 'hello', budget: budget.status(), running: runningCid, pending: [...pending.values()] })}\n\n`)
+    res.write(`data: ${JSON.stringify({ type: 'hello', budget: budget.status(), running: runningCid, pending: [...pending.values()], unread: clerk.unread() })}\n\n`)
     clients.add(res)
     req.on('close', () => clients.delete(res))
     return undefined
   }
+  if (req.method === 'GET' && pathname === '/api/clerk') return send(res, 200, clerkView())
+  if (req.method === 'GET' && pathname === '/api/extensions') return send(res, 200, extensionsView())
   if (req.method === 'GET' && pathname === '/api/conversations') {
     return send(res, 200, { items: listConversations(), running: runningCid })
   }
@@ -490,9 +840,9 @@ async function route(req, res) {
       const prior = priorContext(cid)
       push({ type: 'message', role: 'user', text, files: files.map(f => ({ name: f.name, chars: f.text.length })) }, true, cid)
       try {
-        await agent.ensure({ apiKey, mcpUrl, mcpToken, model: cfg.model, baseUrl: cfg.kind === 'custom' ? cfg.baseUrl : undefined })
+        await ensureAgent(cfg, apiKey)
         const context = agent.isFresh(cid) ? prior : ''
-        await agent.prompt(cid, context + promptWithFiles(text || '(see the attached files)', files))
+        await agent.prompt(cid, `${context}${nowHeader()}\n${promptWithFiles(text || '(see the attached files)', files)}`)
       } catch (error) {
         if (runningCid === cid) runningCid = null
         throw error
@@ -554,6 +904,75 @@ async function route(req, res) {
     case '/api/takeover/done':
       takeover?.finish()
       return send(res, 200, { ok: true })
+    case '/api/clerk/timezone': {
+      try { clerk.setTimezone(String(body.timezone ?? '')) } catch { return send(res, 400, { error: 'BAD_TIMEZONE' }) }
+      broadcast({ type: 'clerk' })
+      return send(res, 200, { ok: true, timezone: clerk.timezone })
+    }
+    case '/api/clerk/job/toggle': {
+      if (!clerk.job(body.id)) return send(res, 404, { error: 'NO_JOB' })
+      clerk.setEnabled(body.id, body.enabled === true)
+      broadcast({ type: 'clerk' })
+      return send(res, 200, { ok: true })
+    }
+    case '/api/clerk/job/delete': {
+      if (!clerk.job(body.id)) return send(res, 404, { error: 'NO_JOB' })
+      if (activeRun?.jobId === body.id) return send(res, 409, { error: 'RUNNING' })
+      clerk.removeJob(body.id)
+      broadcast({ type: 'clerk' })
+      return send(res, 200, { ok: true })
+    }
+    case '/api/clerk/job/run': {
+      const job = clerk.job(body.id)
+      if (!job) return send(res, 404, { error: 'NO_JOB' })
+      const result = await startJob(job)
+      if (result === 'busy') return send(res, 409, { error: 'BUSY' })
+      return send(res, 200, { ok: true, result })
+    }
+    case '/api/clerk/inbox/read':
+      clerk.markAllRead()
+      broadcast({ type: 'clerk' })
+      return send(res, 200, { ok: true })
+    case '/api/extensions/secret': {
+      try { extensions.setSecret(String(body.server ?? ''), String(body.name ?? ''), body.value) } catch (error) { return send(res, 400, { error: error.message }) }
+      extensionsChanged()
+      return send(res, 200, { ok: true })
+    }
+    case '/api/extensions/mcp/delete': {
+      if (!extensions.mcp.some(s => s.name === body.name)) return send(res, 404, { error: 'NO_SUCH_SERVER' })
+      extensions.removeMcp(body.name)
+      extensionsChanged()
+      return send(res, 200, { ok: true })
+    }
+    case '/api/extensions/skill/delete': {
+      try { extensions.removeSkill(String(body.name ?? '')) } catch { return send(res, 404, { error: 'NO_SUCH_SKILL' }) }
+      broadcast({ type: 'extensions' })
+      return send(res, 200, { ok: true })
+    }
+    case '/api/channels': {
+      let channel
+      try { channel = validateChannel(body) } catch (error) { return send(res, 400, { error: error.message }) }
+      if (channel.type === 'telegram' && !channel.config.chatId) {
+        try { channel.config.chatId = await findTelegramChat(channel.config.token) } catch (error) {
+          return send(res, 400, { error: ['BAD_TOKEN', 'SEND_A_MESSAGE_FIRST'].includes(error.message) ? error.message : 'UNREACHABLE' })
+        }
+      }
+      let saved
+      try { saved = clerk.addChannel(channel) } catch (error) { return send(res, 400, { error: error.message }) }
+      broadcast({ type: 'clerk' })
+      return send(res, 200, { ok: true, channel: publicChannel(saved) })
+    }
+    case '/api/channels/delete': {
+      if (!clerk.channel(body.id)) return send(res, 404, { error: 'NO_CHANNEL' })
+      clerk.removeChannel(body.id)
+      broadcast({ type: 'clerk' })
+      return send(res, 200, { ok: true })
+    }
+    case '/api/channels/test': {
+      const channel = clerk.channel(body.id)
+      if (!channel) return send(res, 404, { error: 'NO_CHANNEL' })
+      return send(res, 200, await sendToChannel(channel, 'BobBot test message: this channel works.'))
+    }
     default:
       return send(res, 404, { error: 'NOT_FOUND' })
   }
@@ -592,9 +1011,9 @@ wss.on('connection', ws => {
     let m
     try { m = JSON.parse(raw) } catch { return }
     const act = (() => {
-      if (m.t === 'viewport') return browser.startCast(Number(m.w) || 390, Number(m.h) || 720)
+      if (m.t === 'viewport') return browser.startCast(Number(m.w) || 390, Number(m.h) || 720, { device: m.device, dpr: Number(m.dpr) || 1, lang: m.lang })
       if (m.t === 'pointer' && unit(m.x) && unit(m.y)) return browser.pointer(m.k, m.x, m.y)
-      if (m.t === 'wheel' && Number.isFinite(m.d)) return browser.wheel(m.d)
+      if (m.t === 'wheel' && Number.isFinite(m.d)) return browser.wheel(m.d, Number.isFinite(m.dx) ? m.dx : 0)
       if (m.t === 'text' && typeof m.v === 'string') return browser.insertText(m.v.slice(0, 4000))
       if (m.t === 'key') return browser.pressKey(m.k)
       if (m.t === 'nav' && typeof m.url === 'string') return browser.navigate(/^https?:/i.test(m.url) ? m.url : `https://${m.url}`)
@@ -621,10 +1040,17 @@ server.listen(PORT, HOST, () => {
   if (!hasPin()) console.log('No PIN set yet. Run: npm run set-pin -- 1234')
 })
 
+const tickTimer = setInterval(() => tick().catch(error => console.error('clerk tick failed:', error)), Number(process.env.BOBBOT_TICK_MS || 20000))
+setTimeout(() => tick().catch(error => console.error('clerk tick failed:', error)), 3000)
+
+// A stray error from the browser or a tool must not take the whole server down.
+process.on('unhandledRejection', error => console.error('unhandled rejection:', error?.message ?? error))
+
 let closing = false
 async function shutdown() {
   if (closing) return
   closing = true
+  clearInterval(tickTimer)
   agent.stop()
   await browser.close()
   process.exit(0)

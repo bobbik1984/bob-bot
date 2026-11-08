@@ -19,16 +19,18 @@ html, body { height:100%; margin:0; }
 body { background:var(--bg); color:var(--text); font:16px/1.55 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
 button, input, select { font:inherit; color:inherit; }
 button { cursor:pointer; border:0; background:none; padding:0; }
-button:focus-visible, input:focus-visible, select:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 svg { width:1.25em; height:1.25em; flex:none; }
 [hidden] { display:none !important; }
 
 .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:44px; padding:0 18px; border-radius:14px; background:var(--surface-2); font-weight:600; }
+.btn.small { min-height:36px; padding:0 14px; font-size:14px; border-radius:12px; }
 .btn.primary { background:var(--accent); color:var(--accent-text); }
 .btn.danger { background:var(--danger-soft); color:var(--danger); }
 .btn.block { width:100%; }
 .icon-btn { width:40px; height:40px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; color:var(--muted); }
 .icon-btn:active, .btn:active { transform:scale(.97); }
+.link { color:var(--accent-ink); font-weight:600; padding:6px 4px; }
 .field { width:100%; min-width:0; min-height:44px; padding:0 14px; border-radius:14px; border:1px solid var(--line); background:var(--surface); }
 
 /* the Bob orb: napping, thinking, speaking */
@@ -56,11 +58,11 @@ svg { width:1.25em; height:1.25em; flex:none; }
   .orb[data-state=think] .ring { opacity:.9; }
   .orb[data-state=speak] .wave { opacity:.4; transform:scale(1.35); }
   .typing i { animation:none !important; opacity:.7 !important; }
+  .orb-btn { transition:none !important; }
 }
 
 /* login */
 #login { height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:16px; }
-#login h1 { margin:6px 0 0; font-size:28px; letter-spacing:.2px; }
 #login .sub { margin:0; color:var(--muted); font-size:14px; }
 .dots { display:flex; gap:16px; margin-top:10px; }
 .dots i { width:14px; height:14px; border-radius:50%; border:2px solid var(--line); background:var(--surface); transition:background .12s, border-color .12s; }
@@ -71,23 +73,23 @@ svg { width:1.25em; height:1.25em; flex:none; }
 .pad button:active { background:var(--accent-soft); }
 .pad .ghost { background:transparent; box-shadow:none; border-color:transparent; font-size:15px; color:var(--muted); }
 
-/* app shell */
+/* app shell: one orb that is the hero on the front page and the menu button once a chat has started */
 #app { height:100%; height:100dvh; display:flex; flex-direction:column; max-width:720px; margin:0 auto; background:var(--bg); position:relative; overflow:hidden; }
-header { display:grid; grid-template-columns:48px 1fr 48px; align-items:center; padding:calc(8px + env(safe-area-inset-top)) 8px 8px; }
-header .title { display:flex; align-items:center; justify-content:center; gap:10px; min-width:0; }
-header .ttext { line-height:1.2; min-width:0; }
-header .ttext b { display:block; font-size:18px; }
-header .ttext small { display:block; font-size:12px; color:var(--muted); min-height:16px; }
+.orb-btn { position:absolute; z-index:2; padding:0; border-radius:50%; width:34px; height:34px; left:12px; top:calc(env(safe-area-inset-top) + 9px);
+  transition:left .6s cubic-bezier(.22,.8,.2,1), top .6s cubic-bezier(.22,.8,.2,1), width .6s cubic-bezier(.22,.8,.2,1), height .6s cubic-bezier(.22,.8,.2,1); }
+.orb-btn .orb { width:100%; height:100%; }
+#app.hero .orb-btn { width:132px; height:132px; left:calc(50% - 66px); top:calc(env(safe-area-inset-top) + 15vh); }
+header { display:grid; grid-template-columns:56px 1fr 56px; align-items:center; padding:calc(8px + env(safe-area-inset-top)) 8px 8px; min-height:56px; }
+header .title { text-align:center; font-size:16px; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 header .right { justify-self:end; }
 main { flex:1; min-height:0; position:relative; }
 .view { position:absolute; inset:0; overflow-y:auto; scrollbar-gutter:stable; padding:6px 14px 14px; }
 
 /* chat */
-#welcome { display:flex; flex-direction:column; align-items:center; gap:4px; padding:28px 0 8px; text-align:center; }
-#welcome b { font-size:20px; margin-top:14px; }
-#welcome span.s { color:var(--muted); font-size:14px; }
-.chips { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:14px; }
-.chip-btn { padding:9px 14px; border-radius:999px; background:var(--surface); border:1px solid var(--line); font-size:14px; box-shadow:var(--shadow); }
+#welcome { display:flex; flex-direction:column; align-items:center; gap:6px; padding:calc(15vh + 112px) 0 8px; text-align:center; }
+#welcome span.s { color:var(--muted); font-size:15px; }
+.chips { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:10px; }
+.chip-btn { padding:9px 14px; border-radius:999px; background:var(--surface); border:1px solid var(--line); font-size:14px; box-shadow:var(--shadow); text-align:left; }
 #feed { display:flex; flex-direction:column; gap:10px; }
 .bubble-row { display:flex; gap:8px; align-items:flex-end; }
 .bubble-row.user { justify-content:flex-end; }
@@ -107,6 +109,8 @@ main { flex:1; min-height:0; position:relative; }
 .notice.err { color:var(--danger); background:var(--danger-soft); border-radius:12px; padding:8px 12px; }
 .fileline { display:flex; align-items:center; gap:6px; margin-top:6px; font-size:13px; color:var(--muted); }
 .fileline svg { width:1em; height:1em; }
+#banner { display:flex; align-items:center; gap:8px; margin:0 12px 6px; padding:9px 14px; border-radius:14px; background:var(--warn-soft); color:var(--warn); font-size:14px; font-weight:600; text-align:left; }
+#banner svg { width:1.1em; height:1.1em; }
 
 /* cards */
 .card { background:var(--surface); border:1px solid var(--line); border-radius:20px; padding:14px; display:flex; flex-direction:column; gap:10px; box-shadow:var(--shadow); }
@@ -124,9 +128,51 @@ main { flex:1; min-height:0; position:relative; }
 .card .actions { display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:10px; }
 .card .done { display:flex; align-items:center; gap:6px; color:var(--ok); font-weight:600; font-size:14px; }
 .card .done.no { color:var(--muted); }
-#pendingEmpty { display:flex; flex-direction:column; align-items:center; gap:8px; padding:60px 20px; color:var(--muted); text-align:center; }
-#pendingEmpty svg { width:44px; height:44px; color:var(--ok); }
-#pendingList { display:flex; flex-direction:column; gap:12px; }
+
+/* cards Bob asks for: organized information */
+.card.info .what { font-size:17px; }
+.card.info .where { margin-top:0; font-size:13px; }
+.info-fields { display:grid; grid-template-columns:minmax(72px,auto) 1fr; gap:6px 14px; font-size:14px; }
+.info-fields .k { color:var(--muted); }
+.info-fields .v { font-weight:600; overflow-wrap:anywhere; }
+.info-items { margin:0; padding-left:20px; font-size:14px; display:flex; flex-direction:column; gap:4px; }
+.inbox-item .card { box-shadow:none; margin-top:6px; background:var(--surface-2); border-color:transparent; }
+
+/* clerk */
+.sect-head { display:flex; align-items:center; justify-content:space-between; margin:18px 2px 8px; }
+.sect-head h3 { margin:0; font-size:15px; }
+.sect-head .link { font-size:13px; }
+#jobList, #inboxList, #channelList { display:flex; flex-direction:column; gap:10px; }
+.job .what { font-size:16px; }
+.job .meta { font-size:13px; color:var(--muted); }
+.job .meta b { color:var(--text); font-weight:600; }
+.job .last { font-size:13px; color:var(--muted); display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.job .last.failed { color:var(--danger); }
+.job.paused { opacity:.7; }
+.chiplist { display:flex; flex-wrap:wrap; gap:6px; }
+.mini { font-size:12px; padding:2px 8px; border-radius:999px; background:var(--surface-2); color:var(--muted); }
+.mini.bad { background:var(--danger-soft); color:var(--danger); }
+.mini.good { background:var(--ok-soft); color:var(--ok); }
+.job .actions { display:flex; flex-wrap:wrap; gap:8px; }
+.inbox-item { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:12px 14px; text-align:left; display:flex; flex-direction:column; gap:4px; }
+.inbox-item.unread { border-color:var(--accent); }
+.inbox-item .top { display:flex; align-items:center; gap:8px; font-weight:600; }
+.inbox-item .top .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); }
+.inbox-item .top time { margin-left:auto; font-weight:400; font-size:12px; color:var(--muted); }
+.inbox-item .body { white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; }
+.inbox-item.open .body { display:block; }
+.channel { display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:10px 12px; }
+.channel .badge-t { width:36px; height:36px; border-radius:12px; background:var(--accent-soft); color:var(--accent-ink); display:inline-flex; align-items:center; justify-content:center; font-weight:700; flex:none; }
+.channel .info { flex:1; min-width:0; }
+.channel .info b { display:block; }
+.channel .info small { color:var(--muted); }
+.channel .res { display:block; font-size:12px; }
+.channel .res.bad { color:var(--danger); } .channel .res.good { color:var(--ok); }
+details.add { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:0 14px; margin-top:10px; }
+details.add summary { cursor:pointer; list-style:none; padding:12px 0; font-weight:600; color:var(--accent-ink); }
+details.add summary::-webkit-details-marker { display:none; }
+details.add .stack { padding-bottom:14px; }
+.empty-note { margin:4px 2px; }
 
 /* settings */
 .section { background:var(--surface); border:1px solid var(--line); border-radius:20px; padding:16px; margin-bottom:12px; display:flex; flex-direction:column; gap:10px; box-shadow:var(--shadow); }
@@ -145,7 +191,12 @@ select.field { appearance:none; background-image:linear-gradient(45deg,transpare
 .keystate { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:14px; background:var(--ok-soft); color:var(--ok); font-weight:600; font-size:14px; }
 .keystate.none { background:var(--warn-soft); color:var(--warn); }
 .keystate code { font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--text); font-weight:400; opacity:.8; }
-.keystate .link { margin-left:auto; color:var(--accent-ink); font-weight:600; padding:6px 4px; }
+.keystate .link { margin-left:auto; }
+.ext { display:flex; flex-direction:column; gap:8px; padding:10px 0; border-top:1px solid var(--line); }
+.ext:first-of-type { border-top:0; }
+.ext .head { display:flex; align-items:center; gap:8px; }
+.ext .head b { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.ext code { font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--muted); overflow-wrap:anywhere; }
 
 /* composer and tabs */
 #composer { display:flex; align-items:center; gap:4px; margin:4px 12px 8px; padding:5px 5px 5px 6px; background:var(--surface); border:1px solid var(--line); border-radius:28px; box-shadow:var(--shadow); }
@@ -174,7 +225,6 @@ nav button svg { width:24px; height:24px; }
 .dhead { display:flex; align-items:center; gap:10px; padding:0 12px 12px 18px; }
 .dhead b { font-size:18px; margin-right:auto; }
 #newChat { margin:0 14px 12px; }
-.dtitle { padding:4px 18px 6px; font-size:12px; font-weight:600; color:var(--muted); letter-spacing:.3px; }
 #convList { list-style:none; margin:0; padding:0; flex:1; overflow-y:auto; scrollbar-gutter:stable; }
 .conv { position:relative; overflow:hidden; height:62px; transition:height .18s, opacity .18s; }
 .conv.gone { height:0; opacity:0; }
@@ -184,7 +234,8 @@ nav button svg { width:24px; height:24px; }
 .conv-del { position:absolute; top:0; right:0; bottom:0; width:76px; background:var(--danger); color:#fff; display:flex; align-items:center; justify-content:center; }
 .conv-del svg { width:24px; height:24px; }
 .conv-del:focus-visible ~ .conv-main { transform:translateX(-76px); }
-.conv-main .ct { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+.conv-main .ct { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; display:flex; align-items:center; gap:6px; }
+.conv-main .ct svg { width:1em; height:1em; color:var(--muted); }
 .conv-main .cs { color:var(--muted); font-size:12px; }
 .conv.empty-row { height:auto; padding:18px; color:var(--muted); font-size:14px; }
 #convMsg { padding:6px 18px; min-height:20px; color:var(--danger); }
@@ -194,44 +245,70 @@ nav button svg { width:24px; height:24px; }
 #browser { position:fixed; inset:0; background:var(--bg); display:flex; flex-direction:column; z-index:5; }
 #browser .top { display:flex; gap:8px; align-items:center; padding:calc(8px + env(safe-area-inset-top)) 10px 8px; }
 #browser .top form { flex:1; display:flex; gap:8px; min-width:0; }
-#stage { flex:1; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; background:var(--stage); }
-#screen { touch-action:none; display:block; background:#fff; }
+#stage { flex:1; min-height:0; position:relative; overflow:hidden; background:var(--stage); }
+#screen { touch-action:none; display:block; background:#fff; position:absolute; left:0; top:0; transform-origin:0 0; outline:0; }
 #browser .tools { padding:8px 10px calc(8px + env(safe-area-inset-bottom)); display:flex; flex-direction:column; gap:8px; }
 #browser .tools .icon-btn { background:var(--surface); border:1px solid var(--line); border-radius:12px; width:44px; height:44px; color:var(--text); }
 #browser .tools .row.keys { justify-content:space-between; }
+@media (min-width: 900px) { #browser .tools { flex-direction:row; align-items:center; } #browser .tools .row:first-child { flex:1; } #browser .tools .row.keys { gap:8px; } #browser #handBack { width:auto; } }
 </style>
 </head>
 <body>
 <section id="login" hidden>
   <span class="orb big" data-orb data-state="nap"></span>
-  <h1>Bob</h1>
   <p class="sub" data-t="loginSub"></p>
   <div class="dots" id="dots"><i></i><i></i><i></i><i></i></div>
   <div id="loginMsg" role="status"></div>
   <div class="pad" id="pad"></div>
 </section>
 
-<section id="app" hidden>
+<section id="app" class="hero" hidden>
+  <button class="orb-btn" id="orbBtn" data-al="menu"><span class="orb" id="hOrb" data-orb data-state="nap"></span></button>
   <header>
-    <button class="icon-btn" id="menuBtn" data-al="menu" data-i="menu"></button>
-    <div class="title">
-      <span class="orb" id="hOrb" data-orb data-state="nap"></span>
-      <div class="ttext"><b id="title">Bob</b><small id="sub"></small></div>
-    </div>
+    <span></span>
+    <div class="title" id="title"></div>
     <button class="icon-btn right" id="openBrowser" data-al="browser" data-i="globe"></button>
   </header>
   <main>
     <div class="view" id="viewChat">
       <div id="welcome">
-        <span class="orb big" data-orb data-state="nap"></span>
-        <b>Bob</b><span class="s" data-t="welcomeSub"></span>
+        <span class="s" data-t="welcomeSub"></span>
         <div class="chips" id="chips"></div>
       </div>
       <div id="feed" aria-live="polite"></div>
     </div>
-    <div class="view" id="viewPending" hidden>
-      <div id="pendingList"></div>
-      <div id="pendingEmpty"><span data-i="check"></span><b data-t="pendingEmpty"></b><span class="hint" data-t="pendingHint"></span></div>
+    <div class="view" id="viewClerk" hidden>
+      <p class="hint" data-t="clerkIntro"></p>
+      <div class="chips" id="clerkChips"></div>
+
+      <div class="sect-head"><h3 data-t="jobsTitle"></h3></div>
+      <div id="jobList"></div>
+      <p class="hint empty-note" id="jobsEmpty" data-t="jobsEmpty"></p>
+
+      <div class="sect-head"><h3 data-t="inboxTitle"></h3><button class="link" id="markRead" data-t="markRead"></button></div>
+      <div id="inboxList"></div>
+      <p class="hint empty-note" id="inboxEmpty" data-t="inboxEmpty"></p>
+
+      <div class="sect-head"><h3 data-t="channelsTitle"></h3></div>
+      <p class="hint empty-note" data-t="channelsHint"></p>
+      <div id="channelList"></div>
+      <details class="add" id="addChannel">
+        <summary data-t="addChannel"></summary>
+        <div class="stack">
+          <select class="field" id="chType" data-al="chType"></select>
+          <p class="hint" id="chHelp"></p>
+          <input class="field" id="chName" autocomplete="off" data-ph="chName" data-al="chName">
+          <input class="field" id="chWebhook" inputmode="url" autocapitalize="off" autocomplete="off" data-ph="chWebhook" data-al="chWebhook">
+          <input class="field" id="chSecret" type="password" autocomplete="off" data-ph="chSecret" data-al="chSecret">
+          <input class="field" id="chToken" type="password" autocomplete="off" data-ph="chToken" data-al="chToken" hidden>
+          <input class="field" id="chChat" autocapitalize="off" autocomplete="off" data-ph="chChat" data-al="chChat" hidden>
+          <button class="btn primary block" id="saveChannel" data-t="save"></button>
+          <p class="hint" id="chMsg" role="status"></p>
+        </div>
+      </details>
+
+      <div class="sect-head"><h3 data-t="zoneTitle"></h3></div>
+      <div class="section"><div class="row"><input class="field" id="zone" autocapitalize="off" autocomplete="off" aria-label="Time zone"><button class="btn" id="saveZone" data-t="save"></button></div><p class="hint" id="zoneMsg" role="status"></p></div>
     </div>
     <div class="view" id="viewSettings" hidden>
       <div class="section">
@@ -257,6 +334,12 @@ nav button svg { width:24px; height:24px; }
         <p class="hint" data-t="capLabel"></p>
         <div class="row"><input class="field" id="cap" type="number" inputmode="decimal" min="0.01" step="0.5" aria-label="Monthly limit"><button class="btn" id="saveCap" data-t="save"></button></div>
       </div>
+      <div class="section">
+        <h3 data-t="extTitle"></h3>
+        <p class="hint" data-t="extHint"></p>
+        <div id="extList"></div>
+        <p class="hint" id="extEmpty" data-t="extEmpty"></p>
+      </div>
       <p class="hint" id="settingsMsg" role="status"></p>
       <div class="section">
         <h3 data-t="pinTitle"></h3>
@@ -265,6 +348,7 @@ nav button svg { width:24px; height:24px; }
       </div>
     </div>
   </main>
+  <button id="banner" hidden></button>
   <div id="attachRow" hidden></div>
   <form id="composer">
     <button type="button" class="attach" id="attachBtn" data-al="attach" data-i="clip"></button>
@@ -274,15 +358,14 @@ nav button svg { width:24px; height:24px; }
   <input type="file" id="filePick" multiple hidden accept=".txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.log,.xml,.html,.htm,.yaml,.yml,.ini,.sql,text/*">
   <nav>
     <button class="on" data-view="chat"><span data-i="chat"></span><span data-t="tabChat"></span></button>
-    <button data-view="pending"><span data-i="check"></span><span data-t="tabPending"></span><span class="badge" id="badge" hidden></span></button>
+    <button data-view="clerk"><span data-i="clock"></span><span data-t="tabClerk"></span><span class="badge" id="badge" hidden></span></button>
     <button data-view="settings"><span data-i="sliders"></span><span data-t="tabSettings"></span></button>
   </nav>
 
   <div id="scrim"></div>
   <aside id="drawer" aria-label="History">
-    <div class="dhead"><span class="orb" data-orb data-state="nap"></span><b>Bob</b><button class="icon-btn" id="closeDrawer" data-al="close" data-i="cross"></button></div>
+    <div class="dhead"><b data-t="history"></b><button class="icon-btn" id="closeDrawer" data-al="close" data-i="cross"></button></div>
     <button class="btn primary" id="newChat" data-i="plus" data-t="newChat"></button>
-    <div class="dtitle" data-t="history"></div>
     <ul id="convList"></ul>
     <p class="hint" id="convMsg" role="status"></p>
     <button id="drawerSpend"></button>
@@ -294,7 +377,7 @@ nav button svg { width:24px; height:24px; }
     <button class="icon-btn" id="closeBrowser" data-al="close" data-i="back"></button>
     <form id="navForm"><input class="field" id="url" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="https://" aria-label="URL"><button class="btn" data-t="go"></button></form>
   </div>
-  <div id="stage"><canvas id="screen"></canvas></div>
+  <div id="stage"><canvas id="screen" tabindex="0"></canvas></div>
   <div class="tools">
     <div class="row"><input class="field" id="fill" autocomplete="off" autocapitalize="off" data-ph="fillPh" aria-label="Text to fill"><button class="icon-btn" id="togglePw" data-al="toggle" data-i="eye"></button><button class="btn primary" id="fillBtn" data-t="fill"></button></div>
     <div class="row keys">
@@ -302,6 +385,8 @@ nav button svg { width:24px; height:24px; }
       <button class="icon-btn" id="scrollDown" data-al="down" data-i="down"></button>
       <button class="icon-btn" id="backBtn" data-al="backspace" data-i="backspace"></button>
       <button class="icon-btn" id="enterBtn" data-al="enter" data-i="enter"></button>
+      <button class="icon-btn" id="modeBtn" data-al="desktopSite" data-i="monitor" hidden></button>
+      <button class="icon-btn" id="fitBtn" data-al="fit" data-i="fit" hidden></button>
     </div>
     <button class="btn primary block" id="handBack" data-t="handBack" hidden></button>
   </div>
@@ -311,15 +396,66 @@ nav button svg { width:24px; height:24px; }
 const zh = navigator.language.startsWith('zh')
 const I18N = {
   loginSub:['输入 PIN 进入','Enter your PIN'], welcomeSub:['随时为你效劳','At your service'],
-  tabChat:['对话','Chat'], tabPending:['待确认','Pending'], tabSettings:['设置','Settings'],
-  pendingTitle:['待确认','Pending'], settingsTitle:['设置','Settings'],
+  tabChat:['对话','Chat'], tabClerk:['文员','Clerk'], tabSettings:['设置','Settings'],
+  clerkTitle:['文员','Clerk'], settingsTitle:['设置','Settings'],
   stateNap:['休息中','Napping'], stateThink:['思考中…','Thinking…'], stateSpeak:['回复中','Replying'],
-  menu:['历史对话','History'], history:['历史对话','HISTORY'], newChat:['新对话','New chat'], noChats:['还没有对话','No chats yet'],
+  menu:['历史对话','History'], history:['历史对话','History'], newChat:['新对话','New chat'], noChats:['还没有对话','No chats yet'],
   delChat:['删除对话','Delete chat'], cantDelete:['Bob 正在这个对话里工作，暂时不能删除','Bob is working in this chat, so it can\'t be deleted yet'],
   busyOther:['Bob 正在另一个对话里工作，请稍后再试','Bob is busy in another chat. Try again in a moment'], spendLabel:['本月花费','This month'],
+  needsYouIn:['Bob 在「{n}」里需要你','Bob needs you in "{n}"'],
   browser:['浏览器','Browser'], send:['发送','Send'], placeholder:['发送消息给 Bob…','Message Bob…'], close:['关闭','Close'],
   chip1:['总结一个网页','Summarize a page'], chip1q:['帮我打开并总结这个网页：','Open and summarize this page: '],
   chip2:['查最新资讯','Look up news'], chip2q:['帮我查一下今天的科技新闻要点','Find today\'s top tech news for me'],
+  chip3:['设一个提醒','Set a reminder'], chip3q:['今天下午 3 点提醒我给客户回电话','Remind me at 3pm today to call the client'],
+  // clerk
+  clerkIntro:['直接对 Bob 说就行，他会设好定时任务和提醒，并把结果发回应用，也可以发到飞书、企业微信等渠道。','Just tell Bob. He sets up scheduled tasks and reminders and sends the results to this app, and to Lark, WeCom and other channels if you add them.'],
+  ex1:['每天早上 8 点查上海天气，告诉我穿什么、要不要带伞','Every morning at 8, check the weather in Shanghai and tell me what to wear and whether to bring an umbrella'],
+  ex2:['今天下午 3 点提醒我给客户回电话','Remind me at 3pm today to call the client'],
+  ex3:['每周一早上 9 点提醒我写周报','Every Monday at 9am remind me to write the weekly report'],
+  jobsTitle:['定时任务与提醒','Scheduled tasks and reminders'], jobsEmpty:['还没有。对 Bob 说一句试试。','None yet. Try saying one to Bob.'],
+  inboxTitle:['收件箱','Inbox'], inboxEmpty:['提醒和任务结果会出现在这里。','Reminders and task results show up here.'], markRead:['全部已读','Mark all read'],
+  channelsTitle:['消息渠道','Channels'], channelsHint:['提醒和结果除了应用内，还可以发到这些渠道。密钥只保存在服务器上。','Reminders and results can also go to these channels. Secrets stay on the server.'],
+  addChannel:['添加渠道','Add a channel'], zoneTitle:['时区','Time zone'],
+  kindTask:['任务','Task'], kindReminder:['提醒','Reminder'], nextRun:['下次：{n}','Next: {n}'], paused:['已暂停','Paused'], neverRun:['还没运行过','Not run yet'],
+  runNow:['立即运行','Run now'], sendNow:['立即发送','Send now'], pause:['暂停','Pause'], resume:['恢复','Resume'], remove:['移除','Remove'], del:['删除','Del'],
+  openRun:['查看过程','See the run'], openClerk:['去文员查看','Open in Clerk'], running:['运行中…','Running…'], inboxTo:['发送到：','Sent to: '],
+  confirmDelete:['确定删除「{n}」？','Delete "{n}"?'], toApp:['应用内','This app'],
+  lastOk:['上次：','Last: '], lastFailed:['上次失败：','Last failed: '], lastMissed:['上次错过：','Last missed: '],
+  ch_lark:['飞书 / Lark 群机器人','Lark / Feishu group bot'], ch_wecom:['企业微信群机器人','WeCom group bot'], ch_telegram:['Telegram 机器人','Telegram bot'], ch_discord:['Discord Webhook','Discord webhook'],
+  help_lark:['群设置 → 机器人 → 添加自定义机器人，复制 Webhook 地址；如开启了签名校验，再填签名密钥。','In the group: Settings → Bots → Add custom bot. Copy its webhook; add the signing secret if you turned signing on.'],
+  help_wecom:['在群里添加群机器人，复制 Webhook 地址。个人微信没有官方机器人接口，暂不支持。','Add a group bot in the group and copy its webhook. Personal WeChat has no official bot API, so it is not supported.'],
+  help_telegram:['用 @BotFather 建一个机器人，先给它发一条消息，再粘贴令牌。中国大陆的服务器无法访问 Telegram。','Create a bot with @BotFather, send it a message, then paste its token. Servers in mainland China cannot reach Telegram.'],
+  help_discord:['频道设置 → 整合 → Webhook，复制地址。中国大陆的服务器无法访问 Discord。','Channel settings → Integrations → Webhooks, copy the URL. Servers in mainland China cannot reach Discord.'],
+  chName:['渠道名称（Bob 会用它来指定）','Channel name (Bob will use it)'], chWebhook:['Webhook 地址','Webhook URL'], chSecret:['签名密钥（可选）','Signing secret (optional)'],
+  chToken:['机器人令牌','Bot token'], chChat:['聊天 ID（可留空，自动查找）','Chat ID (optional, found automatically)'], chType:['渠道类型','Channel type'],
+  test:['发测试消息','Send a test'], testOk:['已发送','Sent'], testFail:['失败：{n}','Failed: {n}'], signed:['已签名','signed'],
+  err_BAD_WEBHOOK:['Webhook 地址不对','That webhook address is not valid for this service'], err_BAD_TOKEN:['令牌不对','That token is not valid'], err_BAD_NAME:['请填写名称（40 字以内）','Enter a name (up to 40 characters)'],
+  err_NAME_TAKEN:['已有同名渠道','A channel with that name exists'], err_BAD_CHAT_ID:['聊天 ID 格式不对','Invalid chat ID'], err_SEND_A_MESSAGE_FIRST:['请先给这个机器人发一条消息','Send the bot a message first'],
+  err_UNREACHABLE:['服务器连不上这个服务','This server cannot reach that service'], err_BAD_TIMEZONE:['时区名称无效，例如 Asia/Shanghai','Invalid time zone, for example Asia/Shanghai'],
+  err_BUSY:['Bob 正在忙，稍后再试','Bob is busy, try again in a moment'], err_RUNNING:['正在运行，暂时不能删除','It is running, so it cannot be deleted yet'],
+  // extensions
+  extTitle:['扩展','Extensions'], extHint:['对 Bob 说“帮我装某某工具”即可，他会先让你确认。工具服务器的密钥在这里填写，不要发在聊天里。','Tell Bob "install such-and-such tool" and he will ask you to confirm. Enter any secrets for a tool server here, never in chat.'],
+  extEmpty:['还没有安装扩展。','Nothing installed yet.'], mcpLabel:['工具服务器','Tool server'], skillLabel:['技能','Skill'],
+  secretSet:['已设置','set'], secretNeeded:['需要填写','needed'], secretPh:['{n} 的值','Value for {n}'], setSecret:['保存','Set'], secretSaved:['已保存，Bob 会重启后生效','Saved. Bob restarts to use it'],
+  // approvals
+  allow:['确认执行','Allow once'], reject:['拒绝','Reject'], approved:['已允许','Allowed'], rejected:['已拒绝','Rejected'], expired:['已过期','Expired'],
+  tagApprove:['待确认','Needs approval'], tagHelp:['待处理','Needs you'],
+  needsApproval:['Bob 想执行这个操作','Bob wants to do this'], needsYou:['Bob 需要你帮忙','Bob needs your help'],
+  actCommand:['在服务器上运行命令','Run a command on the server'], actRead:['读取文件','Read file'], actList:['查看文件夹','List folder'], actWrite:['写入文件','Write file'], inFolder:['运行位置：{n}','Runs in: {n}'],
+  actInstall:['安装软件包','Install packages'], actMcpAdd:['添加工具服务器','Add a tool server'], actMcpRemove:['移除工具服务器','Remove a tool server'], actSkillAdd:['添加技能','Add a skill'], actSkillRemove:['移除技能','Remove a skill'],
+  actTask:['添加定时任务','Add a scheduled task'], actReminder:['添加提醒','Add a reminder'], actClerkDelete:['删除','Delete'], actClerkPause:['暂停','Pause'], actClerkResume:['恢复','Resume'],
+  firstRun:['首次运行：{n}','First run: {n}'], sendTo:['发送到：{n}','Send to: {n}'],
+  openWindow:['打开浏览器窗口','Open browser window'], doneTakeover:['已交还给 Bob','Handed back to Bob'],
+  // steps
+  step_browser_navigate:['打开网页','Opening page'], step_browser_snapshot:['查看页面','Reading page'], step_browser_click:['点击','Clicking'],
+  step_browser_type:['输入文字','Typing'], step_browser_scroll:['滚动页面','Scrolling'], step_browser_request_human:['请你协助','Asking you for help'],
+  step_list_files:['查看文件夹','Listing files'], step_read_file:['读取文件','Reading a file'], step_write_file:['写入文件','Writing a file'], step_run_command:['运行命令','Running a command'],
+  step_web_fetch:['读取网页','Reading the web'], step_clerk_create:['设置提醒或任务','Scheduling'], step_clerk_list:['查看日程','Checking the schedule'], step_clerk_list_channels:['查看渠道','Checking channels'],
+  step_clerk_delete:['删除日程','Removing a schedule'], step_clerk_update:['修改日程','Changing a schedule'], step_install_package:['安装软件包','Installing packages'],
+  step_mcp_add:['添加工具服务器','Adding a tool server'], step_mcp_remove:['移除工具服务器','Removing a tool server'], step_skill_create:['编写技能','Writing a skill'], step_skill_install:['安装技能','Installing a skill'],
+  step_skill_remove:['移除技能','Removing a skill'], step_ext_list:['查看扩展','Checking extensions'], step_skill:['使用技能','Using a skill'],
+  stepsCount:['共 {n} 步','{n} steps'],
+  // model, budget, account
   modelTitle:['模型','Model'], modelLabel:['选择模型','Choose a model'], otherModel:['其他模型（自行填写）…','Other model (enter yourself)…'],
   keySaved:['密钥已保存','Key saved'], keyEnv:['由服务器环境提供','Set by the server'], replaceKey:['更换','Replace'], keyNone:['还没有密钥，请先填写','No key yet. Add one below'],
   customHint:['填写兼容 Anthropic Messages 协议的服务（实际请求地址为：接口地址 + /v1/messages）。这是实验功能，尚未验证。','An Anthropic Messages-compatible service (requests go to the endpoint + /v1/messages). Experimental and not verified.'],
@@ -328,20 +464,12 @@ const I18N = {
   capTitle:['本月花费','This month'], capLabel:['每月模型花费上限（美元）','Monthly model spending limit (USD)'],
   pinTitle:['账号','Account'], pinHint:['PIN 只能在服务器上修改：npm run set-pin -- 1234','The PIN can only be changed on the server: npm run set-pin -- 1234'],
   save:['保存','Save'], logout:['退出登录','Log out'], saved:['已保存','Saved'], noKey:['请先填入 API Key','Add an API key first'],
-  go:['前往','Go'], fill:['填入','Fill'], fillPh:['在此输入文字','Type text here'],
+  // browser window
+  go:['前往','Go'], fill:['填入','Fill'], fillPh:['在此输入文字（中文请在这里输入）','Type text here (use this box for Chinese)'],
   toggle:['显示或隐藏','Show or hide'], up:['向上滚动','Scroll up'], down:['向下滚动','Scroll down'], backspace:['退格','Backspace'], enter:['回车','Enter'],
+  desktopSite:['电脑版网页','Desktop site'], mobileSite:['手机版网页','Mobile site'], fit:['还原缩放','Reset zoom'],
   handBack:['我已处理好，交还给 Bob','Done, hand back to Bob'],
-  allow:['确认执行','Allow once'], reject:['拒绝','Reject'], approved:['已允许','Allowed'], rejected:['已拒绝','Rejected'], expired:['已过期','Expired'],
-  tagApprove:['待确认','Needs approval'], tagHelp:['待处理','Needs you'],
-  needsApproval:['Bob 想执行这个操作','Bob wants to do this'], needsYou:['Bob 需要你帮忙','Bob needs your help'],
-  actCommand:['在服务器上运行命令','Run a command on the server'], actRead:['读取文件','Read file'], actList:['查看文件夹','List folder'], actWrite:['写入文件','Write file'], inFolder:['运行位置：{n}','Runs in: {n}'],
-  openWindow:['打开浏览器窗口','Open browser window'], doneTakeover:['已交还给 Bob','Handed back to Bob'],
-  pendingEmpty:['没有待确认事项','Nothing pending'], pendingHint:['Bob 需要你时会出现在这里','Bob will show items here when it needs you'],
-  step_browser_navigate:['打开网页','Opening page'], step_browser_snapshot:['查看页面','Reading page'], step_browser_click:['点击','Clicking'],
-  step_browser_type:['输入文字','Typing'], step_browser_scroll:['滚动页面','Scrolling'], step_browser_request_human:['请你协助','Asking you for help'],
-  step_list_files:['查看文件夹','Listing files'], step_read_file:['读取文件','Reading a file'], step_write_file:['写入文件','Writing a file'], step_run_command:['运行命令','Running a command'],
-  stepsCount:['共 {n} 步','{n} steps'],
-  attach:['添加附件','Attach file'], remove:['移除','Remove'],
+  attach:['添加附件','Attach file'],
   fileUnsupported:['暂只支持文本类文件（txt、md、csv、json 等）：{n}','Text files only for now (txt, md, csv, json…): {n}'],
   fileBig:['文件太大（单个上限约 200KB）：{n}','File too large (about 200KB each): {n}'], fileBinary:['无法读取为文本：{n}','Cannot read as text: {n}'],
   filesMany:['最多添加 5 个文件','At most 5 files'], filesTotal:['附件总量过大（合计上限约 500KB）','Attachments are too large in total (about 500KB)'],
@@ -352,7 +480,7 @@ const I18N = {
   budgetNear:['本月花费已超过上限的 80%','You have used over 80% of this month\'s limit'], budgetExceeded:['已达到本月花费上限，Bob 已停止。可在设置中提高上限。','Monthly limit reached, so Bob has stopped. You can raise it in Settings.'],
   wrongPin:['PIN 错误，还可尝试 {n} 次','Wrong PIN, {n} tries left'], locked:['尝试次数过多，请 {n} 分钟后再试','Too many tries. Try again in {n} min'],
   noPin:['尚未设置 PIN，请在服务器运行 npm run set-pin -- 1234','No PIN yet. On the server run: npm run set-pin -- 1234'],
-  del:['删除','Del'], failed:['操作失败：','Failed: '],
+  failed:['操作失败：','Failed: '],
 }
 const t = (k, n) => (I18N[k]?.[zh ? 0 : 1] ?? k).replace('{n}', n)
 const $ = id => document.getElementById(id)
@@ -362,7 +490,7 @@ document.documentElement.lang = zh ? 'zh-CN' : 'en'
 const ICONS = {
   globe:'<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/>',
   send:'<path d="M12 19V5M5 12l7-7 7 7"/>', chat:'<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
-  check:'<path d="M22 11.1V12a10 10 0 1 1-5.9-9.1M22 4 12 14l-3-3"/>',
+  check:'<path d="M22 11.1V12a10 10 0 1 1-5.9-9.1M22 4 12 14l-3-3"/>', clock:'<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
   sliders:'<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
   back:'<path d="M15 18l-6-6 6-6"/>', up:'<path d="M12 19V5M5 12l7-7 7 7"/>', down:'<path d="M12 5v14M5 12l7 7 7-7"/>',
   enter:'<path d="M9 10l-5 5 5 5M20 4v7a4 4 0 0 1-4 4H4"/>',
@@ -371,11 +499,12 @@ const ICONS = {
   eyeoff:'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/><path d="M3 3l18 18"/>',
   shield:'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM12 8v4M12 16h.01"/>',
   hand:'<path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v7M10 10.5V6a2 2 0 0 0-4 0v8M18 8a2 2 0 0 1 4 0v6a8 8 0 0 1-8 8h-2c-2.5 0-4-1-5.4-2.4L3 15.6a2 2 0 0 1 3-2.6L8 15"/>',
-  terminal:'<path d="M4 17l6-6-6-6M12 19h8"/>',
+  terminal:'<path d="M4 17l6-6-6-6M12 19h8"/>', box:'<path d="M21 8 12 3 3 8v8l9 5 9-5zM3 8l9 5 9-5M12 13v8"/>',
   clip:'<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
   file:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6"/>',
-  menu:'<path d="M4 6h16M4 12h16M4 18h16"/>', plus:'<path d="M12 5v14M5 12h14"/>',
-  tick:'<path d="M20 6 9 17l-5-5"/>', cross:'<path d="M18 6 6 18M6 6l12 12"/>',
+  list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>', plus:'<path d="M12 5v14M5 12h14"/>', tick:'<path d="M20 6 9 17l-5-5"/>', cross:'<path d="M18 6 6 18M6 6l12 12"/>',
+  monitor:'<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>', phone:'<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/>',
+  fit:'<path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/>',
 }
 const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`
 const ORB = '<i class="core"></i><i class="ring"></i><i class="wave"></i><i class="wave w2"></i>'
@@ -390,6 +519,7 @@ const post = async (url, body) => {
   const res = await fetch(url, { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(body ?? {}) })
   return { status:res.status, data: await res.json().catch(() => ({})) }
 }
+const getJson = async url => { const res = await fetch(url); return res.ok ? res.json() : null }
 const errText = (data, status) => I18N['err_' + data.error] ? t('err_' + data.error) : t('failed') + (data.error ?? status)
 
 // ---- PIN ----
@@ -422,20 +552,28 @@ addEventListener('keydown', e => {
 })
 
 // ---- views ----
-const VIEWS = ['chat', 'pending', 'settings']
+const VIEWS = ['chat', 'clerk', 'settings']
+let currentView = 'chat'
 function show(view) {
+  currentView = view
   VIEWS.forEach(v => { $('view' + v[0].toUpperCase() + v.slice(1)).hidden = v !== view })
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.view === view))
   $('composer').hidden = view !== 'chat'
   if (view !== 'chat') $('attachRow').hidden = true
   else drawAttachments()
-  $('title').textContent = view === 'chat' ? 'Bob' : t(view === 'pending' ? 'pendingTitle' : 'settingsTitle')
-  $('hOrb').hidden = view !== 'chat'
-  $('sub').hidden = view !== 'chat'
   if (view === 'chat') atEnd()
-  if (view === 'settings') loadModelCard().catch(() => {})
+  if (view === 'clerk') loadClerk()
+  if (view === 'settings') { loadModelCard().catch(() => {}); loadExtensions() }
+  refreshOrb(); refreshBanner(); setHero()
 }
 document.querySelectorAll('nav button').forEach(b => { b.onclick = () => show(b.dataset.view) })
+
+// The orb is large in the middle of a new chat, and moves to the top left, small, once there is something to read.
+function setHero() {
+  const hero = currentView === 'chat' && feed.children.length <= 1
+  $('app').classList.toggle('hero', hero)
+  $('welcome').hidden = !hero
+}
 
 // ---- the orb: napping, thinking, speaking ----
 let runningCid = null, speakUntil = 0, speakTimer = null
@@ -443,7 +581,8 @@ function refreshOrb() {
   const mine = Boolean(runningCid) && runningCid === activeCid
   const state = Date.now() < speakUntil ? 'speak' : mine ? 'think' : 'nap'
   $('hOrb').dataset.state = state
-  $('sub').textContent = t(state === 'nap' ? 'stateNap' : state === 'think' ? 'stateThink' : 'stateSpeak')
+  const hero = $('app').classList.contains('hero')
+  $('title').textContent = currentView === 'chat' ? (hero ? '' : t(state === 'nap' ? 'stateNap' : state === 'think' ? 'stateThink' : 'stateSpeak')) : t(currentView === 'clerk' ? 'clerkTitle' : 'settingsTitle')
   typing.hidden = !mine
   if (mine) { feed.append(typing); atEnd() }
 }
@@ -466,7 +605,7 @@ const atEnd = () => { scroller.scrollTop = scroller.scrollHeight }
 let lastKind = null, stepsBox = null
 const cards = new Map(), open = new Map()
 let activeCid // undefined: not chosen yet. null: a new chat that has no messages yet.
-const updateWelcome = () => { $('welcome').hidden = feed.children.length > 1 }
+const updateWelcome = () => { setHero(); refreshOrb() }
 function add(node, kind) {
   feed.insertBefore(node, typing)
   lastKind = kind
@@ -476,7 +615,7 @@ function add(node, kind) {
 function clearFeed() {
   ;[...feed.children].forEach(c => { if (c !== typing) c.remove() })
   cards.clear(); lastKind = null; stepsBox = null
-  refreshPending(); updateWelcome()
+  updateWelcome()
 }
 function message(role, text, files = []) {
   const row = el('div', 'bubble-row' + (role === 'user' ? ' user' : ''))
@@ -492,11 +631,12 @@ function message(role, text, files = []) {
   row.append(bubble)
   add(row, role === 'user' ? 'user' : 'assistant')
 }
+const stepLabel = name => I18N['step_' + name] ? t('step_' + name) : name.replace(/^mcp__/, '').replace('__', ' › ')
 function step(name) {
-  const label = t('step_' + name)
+  const label = stepLabel(name)
   if (!stepsBox) {
     const box = el('details', 'steps')
-    const sum = el('summary'); sum.insertAdjacentHTML('afterbegin', icon(/_file|command/.test(name) ? 'terminal' : 'globe')); sum.append(el('span', 'now'))
+    const sum = el('summary'); sum.insertAdjacentHTML('afterbegin', icon(/_file|command|package|mcp_|skill/.test(name) ? 'terminal' : /clerk/.test(name) ? 'clock' : 'globe')); sum.append(el('span', 'now'))
     box.append(sum, el('ul'))
     box.count = 0
     add(box, 'steps'); stepsBox = box
@@ -509,20 +649,75 @@ function step(name) {
 }
 function notice(text, err) { add(el('div', 'notice' + (err ? ' err' : ''), text), 'notice') }
 
+// ---- schedules, in the user's language ----
+const DAYS = [['日','一','二','三','四','五','六'], ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']]
+function describeSchedule(s) {
+  if (zh) {
+    if (s.type === 'daily') return `每天 ${s.time}`
+    if (s.type === 'weekly') return `每周${s.days.map(d => DAYS[0][d]).join('、')} ${s.time}`
+    if (s.type === 'monthly') return `每月 ${s.day} 日 ${s.time}`
+    return `仅一次 ${s.at.replace('T', ' ')}`
+  }
+  if (s.type === 'daily') return `Every day at ${s.time}`
+  if (s.type === 'weekly') return `Every ${s.days.map(d => DAYS[1][d]).join(', ')} at ${s.time}`
+  if (s.type === 'monthly') return `Monthly on day ${s.day} at ${s.time}`
+  return `Once, ${s.at.replace('T', ' ')}`
+}
+const fmtWhen = (ms, tz) => new Intl.DateTimeFormat(zh ? 'zh-CN' : 'en-US', { timeZone: tz, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(ms)
+
+// ---- cards Bob shows: schedules and organized information ----
+function infoCard(card) {
+  const c = el('div', 'card info')
+  const top = el('div', 'card-top')
+  const ic = el('span', 'chipicon'); ic.innerHTML = icon('list')
+  top.append(ic)
+  if (card.tag) top.append(el('span', 'tag', card.tag))
+  c.append(top, el('div', 'what', card.title))
+  if (card.subtitle) c.append(el('div', 'lead', card.subtitle))
+  if (card.fields?.length) {
+    const grid = el('div', 'info-fields')
+    for (const f of card.fields) grid.append(el('span', 'k', f.label), el('span', 'v', f.value))
+    c.append(grid)
+  }
+  if (card.items?.length) {
+    const list = el('ul', 'info-items')
+    for (const item of card.items) list.append(el('li', '', item))
+    c.append(list)
+  }
+  if (card.note) c.append(el('div', 'where', card.note))
+  return c
+}
+
 // ---- cards ----
 const ACTIONS = { command:'actCommand', read:'actRead', list:'actList', write:'actWrite' }
-function buildCard(e, kind, pendingCopy = false) {
+function cardTitle(e) {
+  if (e.kind === 'command') return [t('actCommand'), t('inFolder', e.target)]
+  if (ACTIONS[e.kind]) return [`${t(ACTIONS[e.kind])}: ${e.target}`]
+  if (e.kind === 'install') return [`${t('actInstall')} (${e.manager})`, e.packages?.join(', ')]
+  if (e.kind === 'mcp') return [`${t(e.action === 'remove' ? 'actMcpRemove' : 'actMcpAdd')}: ${e.target}`]
+  if (e.kind === 'skill') return [`${t(e.action === 'remove' ? 'actSkillRemove' : 'actSkillAdd')}: ${e.target}`]
+  if (e.kind === 'clerk') {
+    const verb = e.action === 'create' ? t(e.jobKind === 'task' ? 'actTask' : 'actReminder') : t({ delete: 'actClerkDelete', pause: 'actClerkPause', resume: 'actClerkResume' }[e.action])
+    const lines = [`${verb}: ${e.target}`]
+    if (e.schedule) lines.push(`${describeSchedule(e.schedule)} · ${e.timezone ?? ''}`.trim())
+    if (e.firstRun) lines.push(t('firstRun', fmtWhen(e.firstRun, e.timezone)))
+    if (e.to) lines.push(t('sendTo', e.to.replace('in-app inbox', t('toApp'))))
+    return lines
+  }
+  return [e.summary]
+}
+function buildCard(e, kind) {
   const c = el('div', 'card ' + (kind === 'approval' ? 'ask' : 'help'))
   const top = el('div', 'card-top')
-  const ic = el('span', 'chipicon'); ic.innerHTML = icon(kind === 'takeover' ? 'hand' : e.kind === 'command' ? 'terminal' : 'shield')
+  const ic = el('span', 'chipicon'); ic.innerHTML = icon(kind === 'takeover' ? 'hand' : e.kind === 'command' ? 'terminal' : e.kind === 'clerk' ? 'clock' : /install|mcp|skill/.test(e.kind ?? '') ? 'box' : 'shield')
   top.append(ic, el('span', 'tag', t(kind === 'approval' ? 'tagApprove' : 'tagHelp')),
     el('span', 'time', new Date(e.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })))
   c.append(top, el('div', 'lead', t(kind === 'approval' ? 'needsApproval' : 'needsYou')))
   if (kind === 'takeover') c.append(el('div', 'what', e.reason))
-  else if (e.kind === 'command') c.append(el('div', 'what', t('actCommand')), el('div', 'where', t('inFolder', e.target)))
-  else if (ACTIONS[e.kind]) c.append(el('div', 'what', `${t(ACTIONS[e.kind])}: ${e.target}`))
-  else c.append(el('div', 'what', e.summary))
-  if (e.detail) c.append(el('pre', 'detail', e.detail))
+  else { const [first, ...rest] = cardTitle(e); c.append(el('div', 'what', first)); for (const line of rest) if (line) c.append(el('div', 'where', line)) }
+  // for a schedule the lines above already say when and where, so only the text itself is shown below
+  const detail = e.kind === 'clerk' && e.action === 'create' ? (e.detail ?? '').split('\n\n').slice(1).join('\n\n') : e.detail
+  if (detail) c.append(el('pre', 'detail', detail))
   if (e.screenshot) { const img = new Image(); img.alt = ''; img.src = 'data:image/jpeg;base64,' + e.screenshot; c.append(img) }
   const row = el('div', 'actions')
   if (kind === 'approval') {
@@ -539,7 +734,7 @@ function buildCard(e, kind, pendingCopy = false) {
   }
   c.append(row)
   const list = cards.get(e.id) ?? []
-  list.push({ c, row, pending: pendingCopy }); cards.set(e.id, list)
+  list.push({ c, row }); cards.set(e.id, list)
   return c
 }
 function closeCard(id, label, ok = true) {
@@ -551,16 +746,19 @@ function closeCard(id, label, ok = true) {
     row.append(el('span', '', label))
     c.querySelector('img')?.remove()
   }
-  refreshPending()
+  refreshBanner()
 }
-function refreshPending() {
-  const list = $('pendingList')
-  list.textContent = ''
-  for (const [id, entries] of cards) cards.set(id, entries.filter(x => !x.pending))
-  for (const [, item] of open) list.append(buildCard(item.e, item.kind, true))
-  $('pendingEmpty').hidden = open.size > 0
-  $('badge').hidden = open.size === 0
-  $('badge').textContent = open.size
+// Approvals wait in their own chat. When Bob needs you in a different chat from the one you are looking at, say so.
+function refreshBanner() {
+  const elsewhere = [...open.values()].find(x => x.e.cid && x.e.cid !== activeCid)
+  const b = $('banner')
+  b.hidden = !elsewhere || currentView === 'settings'
+  if (b.hidden) return
+  b.textContent = ''
+  b.insertAdjacentHTML('afterbegin', icon('hand'))
+  const name = convs.find(c => c.id === elsewhere.e.cid)?.title ?? ''
+  b.append(el('span', '', t('needsYouIn', name)))
+  b.onclick = () => selectConv(elsewhere.e.cid)
 }
 
 // ---- live events from the server ----
@@ -569,11 +767,11 @@ function track(e) { // approvals and takeovers belong to every conversation, bec
   if (e.type === 'approval' || e.type === 'takeover') {
     open.set(e.id, { e, kind: e.type })
     if (e.type === 'takeover') { activeTakeover = e.id; $('handBack').hidden = false }
-    refreshPending()
+    refreshBanner()
   } else if (e.type === 'approval_done' || e.type === 'takeover_done') {
     open.delete(e.id)
     if (e.type === 'takeover_done' && activeTakeover === e.id) { activeTakeover = null; $('handBack').hidden = true }
-    refreshPending()
+    refreshBanner()
   }
 }
 function render(e) {
@@ -581,6 +779,7 @@ function render(e) {
   else if (e.type === 'step') step(e.name)
   else if (e.type === 'error') notice(e.text, true)
   else if (e.type === 'notice') notice(t(e.code === 'BUDGET_NEAR' ? 'budgetNear' : 'budgetExceeded'), true)
+  else if (e.type === 'card') add(e.card.kind === 'job' ? jobCard(e.card.job, e.card.timezone, true) : infoCard(e.card), 'card')
   else if (e.type === 'approval' || e.type === 'takeover') {
     add(buildCard(e, e.type), 'card')
     if (!open.has(e.id)) closeCard(e.id, t('expired'), false) // an old request nobody can answer any more
@@ -611,11 +810,10 @@ let convs = []
 let convTimer
 const refreshConvs = () => { clearTimeout(convTimer); convTimer = setTimeout(loadConvs, 150) }
 async function loadConvs() {
-  const res = await fetch('/api/conversations')
-  if (!res.ok) return
-  const data = await res.json()
+  const data = await getJson('/api/conversations')
+  if (!data) return
   convs = data.items; runningCid = data.running
-  drawConvs(); refreshOrb()
+  drawConvs(); refreshOrb(); refreshBanner()
 }
 async function loadHistory(cid) {
   const res = await fetch('/api/conversations/' + encodeURIComponent(cid))
@@ -632,10 +830,11 @@ async function selectConv(cid) {
   activeCid = cid
   closeDrawer(); show('chat'); clearFeed(); drawConvs(); refreshOrb()
   if (!await loadHistory(cid) && activeCid === cid) { activeCid = null; drawConvs(); refreshOrb() }
+  refreshBanner()
 }
 function newChat() {
   activeCid = null
-  closeDrawer(); show('chat'); clearFeed(); drawConvs(); refreshOrb()
+  closeDrawer(); show('chat'); clearFeed(); drawConvs(); refreshOrb(); refreshBanner()
   $('text').focus()
 }
 function fmtTime(ts) {
@@ -657,8 +856,10 @@ function convRow(c) {
   const del = el('button', 'conv-del'); del.type = 'button'; del.innerHTML = icon('cross')
   del.setAttribute('aria-label', t('delChat')); del.title = t('delChat')
   const main = el('button', 'conv-main'); main.type = 'button'
-  main.append(el('span', 'ct', c.title || t('newChat')),
-    el('span', 'cs', fmtTime(c.updatedAt) + (c.id === runningCid ? ' · ' + t('stateThink') : '')))
+  const title = el('span', 'ct')
+  if (c.job) title.insertAdjacentHTML('afterbegin', icon('clock'))
+  title.append(el('span', '', c.title || t('newChat')))
+  main.append(title, el('span', 'cs', fmtTime(c.updatedAt) + (c.id === runningCid ? ' · ' + t('stateThink') : '')))
   del.onclick = () => deleteConv(c.id, li)
   swipe(li, main, () => selectConv(c.id))
   li.append(del, main)
@@ -720,7 +921,7 @@ function closeDrawer() {
   $('drawer').inert = true
 }
 $('drawer').inert = true
-$('menuBtn').onclick = openDrawer
+$('orbBtn').onclick = openDrawer
 $('closeDrawer').onclick = closeDrawer
 $('scrim').onclick = closeDrawer
 $('newChat').onclick = newChat
@@ -737,13 +938,15 @@ function connect() {
       for (const p of e.pending) open.set(p.id, { e: p, kind: p.type })
       activeTakeover = [...open.values()].find(x => x.kind === 'takeover')?.e.id ?? null
       $('handBack').hidden = !activeTakeover
-      showBudget(e.budget); runningCid = e.running
+      showBudget(e.budget); runningCid = e.running; setBadge(e.unread)
       await loadConvs()
       if (activeCid === undefined) { if (convs.length) await selectConv(convs[0].id); else newChat() }
       else if (activeCid) await loadHistory(activeCid) // catch up after a dropped connection
-      else refreshPending()
+      refreshBanner()
     }
     else if (e.type === 'conversations') refreshConvs()
+    else if (e.type === 'clerk') loadClerk()
+    else if (e.type === 'extensions') { if (currentView === 'settings') loadExtensions() }
     else if (e.type === 'budget') showBudget(e)
     else if (e.type === 'status') {
       if (e.status === 'running') runningCid = e.cid
@@ -755,11 +958,173 @@ function connect() {
   }
 }
 
-;[['chip1', 'chip1q'], ['chip2', 'chip2q']].forEach(([label, prompt]) => {
+function prefill(text) { show('chat'); $('text').value = text; $('text').focus() }
+;[['chip1', 'chip1q'], ['chip2', 'chip2q'], ['chip3', 'chip3q']].forEach(([label, prompt]) => {
   const b = el('button', 'chip-btn', t(label)); b.type = 'button'
-  b.onclick = () => { $('text').value = t(prompt); $('text').focus() }
+  b.onclick = () => prefill(t(prompt))
   $('chips').append(b)
 })
+;['ex1', 'ex2', 'ex3'].forEach(k => {
+  const b = el('button', 'chip-btn', t(k)); b.type = 'button'
+  b.onclick = () => prefill(t(k))
+  $('clerkChips').append(b)
+})
+
+// ---- the clerk: scheduled tasks, reminders, inbox and channels ----
+let clerkData = null
+function setBadge(n) { $('badge').hidden = !n; $('badge').textContent = n }
+async function loadClerk() {
+  const data = await getJson('/api/clerk')
+  if (!data) return
+  clerkData = data
+  setBadge(data.unread)
+  if (!data.timezoneChosen) post('/api/clerk/timezone', { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }) // the first visit sets it from this device
+  if (currentView === 'clerk') drawClerk()
+}
+function jobCard(job, tz = clerkData?.timezone, compact = false) {
+  const c = el('div', 'card job' + (job.enabled ? '' : ' paused'))
+  const top = el('div', 'card-top')
+  const ic = el('span', 'chipicon'); ic.innerHTML = icon(job.kind === 'task' ? 'clock' : 'check')
+  top.append(ic, el('span', 'tag', t(job.kind === 'task' ? 'kindTask' : 'kindReminder')))
+  if (job.running) top.append(el('span', 'mini good', t('running')))
+  c.append(top, el('div', 'what', job.title))
+  const meta = el('div', 'meta')
+  meta.append(el('b', '', describeSchedule(job.schedule)), document.createTextNode(' · '),
+    document.createTextNode(job.enabled && job.nextRun ? t('nextRun', fmtWhen(job.nextRun, tz)) : t('paused')))
+  c.append(meta)
+  const chips = el('div', 'chiplist')
+  chips.append(el('span', 'mini', t('toApp')))
+  for (const n of job.channels) chips.append(el('span', 'mini', n))
+  c.append(chips)
+  if (job.lastStatus) {
+    const prefix = t(job.lastStatus === 'ok' ? 'lastOk' : job.lastStatus === 'missed' ? 'lastMissed' : 'lastFailed')
+    c.append(el('div', 'last' + (job.lastStatus === 'ok' ? '' : ' failed'), `${prefix}${fmtWhen(job.lastRun, tz)} · ${job.lastResult ?? ''}`))
+  }
+  const actions = el('div', 'actions')
+  if (compact) { // inside the chat a job card only points to the Clerk tab, where it can be changed
+    const openTab = el('button', 'btn small', t('openClerk')); openTab.onclick = () => show('clerk')
+    actions.append(openTab); c.append(actions)
+    return c
+  }
+  const run = el('button', 'btn small', t(job.kind === 'task' ? 'runNow' : 'sendNow')); run.disabled = job.running
+  run.onclick = async () => { const r = await post('/api/clerk/job/run', { id: job.id }); if (r.status !== 200) { c.append(el('div', 'last failed', errText(r.data, r.status))) } }
+  const toggle = el('button', 'btn small', t(job.enabled ? 'pause' : 'resume'))
+  toggle.onclick = () => post('/api/clerk/job/toggle', { id: job.id, enabled: !job.enabled })
+  const del = el('button', 'btn small danger', t('remove'))
+  del.onclick = async () => { if (confirm(t('confirmDelete', job.title))) { const r = await post('/api/clerk/job/delete', { id: job.id }); if (r.status !== 200) c.append(el('div', 'last failed', errText(r.data, r.status))) } }
+  actions.append(run, toggle, del)
+  if (job.cid) { const see = el('button', 'btn small', t('openRun')); see.onclick = () => selectConv(job.cid); actions.append(see) }
+  c.append(actions)
+  return c
+}
+function inboxItem(n) {
+  const item = el('button', 'inbox-item' + (n.read ? '' : ' unread')); item.type = 'button'
+  const top = el('div', 'top')
+  if (!n.read) top.append(el('span', 'dot'))
+  top.append(el('span', '', n.title), el('time', '', fmtWhen(n.at, clerkData.timezone)))
+  item.append(top)
+  if (n.text) item.append(el('div', 'body', n.text))
+  for (const card of n.cards ?? []) item.append(infoCard(card))
+  const sent = el('div', 'chiplist')
+  for (const d of n.delivery ?? []) sent.append(el('span', 'mini ' + (d.ok ? 'good' : 'bad'), d.ok ? `${d.channel} ✓` : `${d.channel}: ${d.error ?? ''}`))
+  if (sent.children.length) item.append(sent)
+  item.onclick = () => item.classList.toggle('open')
+  return item
+}
+const CHANNEL_TYPES = ['lark', 'wecom', 'telegram', 'discord']
+function channelRow(ch) {
+  const row = el('div', 'channel')
+  row.append(el('span', 'badge-t', { lark: 'L', wecom: 'W', telegram: 'T', discord: 'D' }[ch.type]))
+  const info = el('div', 'info')
+  info.append(el('b', '', ch.name), el('small', '', `${t('ch_' + ch.type)} · ${ch.hint}${ch.signed ? ' · ' + t('signed') : ''}`))
+  const res = el('span', 'res'); info.append(res)
+  const test = el('button', 'btn small', t('test'))
+  test.onclick = async () => {
+    res.className = 'res'; res.textContent = '…'
+    const r = await post('/api/channels/test', { id: ch.id })
+    res.className = 'res ' + (r.data.ok ? 'good' : 'bad')
+    res.textContent = r.data.ok ? t('testOk') : t('testFail', r.data.error ?? r.status)
+  }
+  const del = el('button', 'icon-btn'); del.innerHTML = icon('cross'); del.title = t('remove'); del.setAttribute('aria-label', t('remove'))
+  del.onclick = () => { if (confirm(t('confirmDelete', ch.name))) post('/api/channels/delete', { id: ch.id }) }
+  row.append(info, test, del)
+  return row
+}
+function drawClerk() {
+  const d = clerkData
+  $('jobList').replaceChildren(...d.jobs.map(jobCard))
+  $('jobsEmpty').hidden = d.jobs.length > 0
+  $('inboxList').replaceChildren(...d.inbox.slice(0, 30).map(inboxItem))
+  $('inboxEmpty').hidden = d.inbox.length > 0
+  $('markRead').hidden = d.unread === 0
+  $('channelList').replaceChildren(...d.channels.map(channelRow))
+  if (document.activeElement !== $('zone')) $('zone').value = d.timezone
+}
+CHANNEL_TYPES.forEach(k => $('chType').append(new Option(t('ch_' + k), k)))
+function showChannelFields() {
+  const type = $('chType').value
+  $('chHelp').textContent = t('help_' + type)
+  $('chWebhook').hidden = type === 'telegram'
+  $('chSecret').hidden = type !== 'lark'
+  $('chToken').hidden = type !== 'telegram'
+  $('chChat').hidden = type !== 'telegram'
+}
+$('chType').onchange = showChannelFields
+showChannelFields()
+$('saveChannel').onclick = async () => {
+  $('chMsg').textContent = '…'
+  const type = $('chType').value
+  const body = { type, name: $('chName').value, webhook: $('chWebhook').value, secret: $('chSecret').value, token: $('chToken').value, chatId: $('chChat').value }
+  const { status, data } = await post('/api/channels', body)
+  $('chMsg').textContent = status === 200 ? t('saved') : errText(data, status)
+  if (status === 200) { ;['chName', 'chWebhook', 'chSecret', 'chToken', 'chChat'].forEach(id => { $(id).value = '' }); $('addChannel').open = false }
+}
+$('markRead').onclick = () => post('/api/clerk/inbox/read')
+$('saveZone').onclick = async () => {
+  const { status, data } = await post('/api/clerk/timezone', { timezone: $('zone').value.trim() })
+  $('zoneMsg').textContent = status === 200 ? t('saved') : errText(data, status)
+}
+
+// ---- extensions: tool servers and skills that Bob installed ----
+async function loadExtensions() {
+  const data = await getJson('/api/extensions')
+  if (!data) return
+  const list = $('extList')
+  list.replaceChildren()
+  for (const s of data.mcp) {
+    const box = el('div', 'ext')
+    const head = el('div', 'head'); head.append(el('span', 'mini', t('mcpLabel')), el('b', '', s.name))
+    const rm = el('button', 'btn small danger', t('remove'))
+    rm.onclick = async () => { if (confirm(t('confirmDelete', s.name))) await post('/api/extensions/mcp/delete', { name: s.name }) }
+    head.append(rm)
+    box.append(head, el('code', '', s.summary))
+    for (const secret of s.secrets) {
+      const row = el('div', 'row')
+      const input = el('input', 'field'); input.type = 'password'; input.autocomplete = 'off'; input.placeholder = t('secretPh', secret.name); input.setAttribute('aria-label', secret.name)
+      const status = el('span', 'mini ' + (secret.set ? 'good' : 'bad'), t(secret.set ? 'secretSet' : 'secretNeeded'))
+      const set = el('button', 'btn small', t('setSecret'))
+      set.onclick = async () => {
+        if (!input.value) return
+        const r = await post('/api/extensions/secret', { server: s.name, name: secret.name, value: input.value })
+        input.value = ''
+        $('settingsMsg').textContent = r.status === 200 ? t('secretSaved') : errText(r.data, r.status)
+      }
+      row.append(input, status, set)
+      box.append(row)
+    }
+    list.append(box)
+  }
+  for (const k of data.skills) {
+    const box = el('div', 'ext')
+    const head = el('div', 'head'); head.append(el('span', 'mini', t('skillLabel')), el('b', '', k.name))
+    const rm = el('button', 'btn small danger', t('remove'))
+    rm.onclick = async () => { if (confirm(t('confirmDelete', k.name))) await post('/api/extensions/skill/delete', { name: k.name }) }
+    head.append(rm)
+    box.append(head, el('code', '', k.description))
+    list.append(box)
+  }
+  $('extEmpty').hidden = data.mcp.length + data.skills.length > 0
+}
 
 // ---- attachments (text files) ----
 const MAX_FILES = 5, MAX_FILE_CHARS = 200000, MAX_TOTAL_CHARS = 500000
@@ -879,18 +1244,42 @@ $('saveCap').onclick = async () => {
 }
 $('logout').onclick = async () => { await post('/api/logout'); location.reload() }
 
-// ---- phone browser window ----
+// ---- the browser window: it takes the shape of the device that opens it ----
+// A phone gets a phone-sized page, a mobile site and touch. A PC gets a desktop page, a mouse and the keyboard.
+// "Desktop site" lays the page out wide for sites with no mobile version, and two fingers zoom and move it.
 const canvas = $('screen'), ctx = canvas.getContext('2d')
-let ws, moveQueued = null
+let ws, spec = null, desktopSite = false
+const zoom = { z: 1, x: 0, y: 0 }
+const isPhone = () => matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 700
 const sendWs = m => { if (ws?.readyState === 1) ws.send(JSON.stringify(m)) }
+function measure() {
+  const r = $('stage').getBoundingClientRect()
+  const w = Math.max(Math.floor(r.width), 200), h = Math.max(Math.floor(r.height), 200)
+  const phone = isPhone()
+  const lang = (navigator.languages?.length ? navigator.languages : [navigator.language]).slice(0, 4).map((l, i) => (i ? `${l};q=${(1 - i * 0.1).toFixed(1)}` : l)).join(',')
+  if (phone && desktopSite) return { device: 'desktop', w: 1280, h: Math.round(1280 * h / w), dpr: 2, lang, cw: w, ch: h }
+  return { device: phone ? 'phone' : 'desktop', w, h, dpr: Math.min(window.devicePixelRatio || 1, 2), lang, cw: w, ch: h }
+}
+function setZoom(z, x, y) {
+  const w = canvas.clientWidth, h = canvas.clientHeight
+  zoom.z = Math.min(Math.max(z, 1), 4)
+  zoom.x = Math.min(0, Math.max(x, w - w * zoom.z))
+  zoom.y = Math.min(0, Math.max(y, h - h * zoom.z))
+  canvas.style.transform = zoom.z === 1 ? '' : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`
+  $('fitBtn').hidden = zoom.z <= 1.01
+}
+function sendViewport() {
+  spec = measure()
+  canvas.style.width = spec.cw + 'px'; canvas.style.height = spec.ch + 'px'
+  setZoom(1, 0, 0)
+  sendWs({ t: 'viewport', device: spec.device, w: spec.w, h: spec.h, dpr: spec.dpr, lang: spec.lang })
+}
 function openBrowser() {
   $('browser').hidden = false
-  const area = $('stage').getBoundingClientRect()
-  const w = Math.floor(area.width), h = Math.floor(area.height)
-  canvas.style.width = w + 'px'; canvas.style.height = h + 'px'
+  $('modeBtn').hidden = !isPhone()
   ws = new WebSocket(location.origin.replace(/^http/, 'ws') + '/ws/browser')
   ws.binaryType = 'blob'
-  ws.onopen = () => sendWs({ t:'viewport', w, h })
+  ws.onopen = sendViewport
   ws.onmessage = async m => {
     if (typeof m.data === 'string') { const e = JSON.parse(m.data); if (e.error) notice(e.error, true); return }
     const bmp = await createImageBitmap(m.data)
@@ -898,7 +1287,9 @@ function openBrowser() {
     ctx.drawImage(bmp, 0, 0); bmp.close()
   }
 }
-function closeBrowser() { ws?.close(); ws = null; $('browser').hidden = true }
+function closeBrowser() { ws?.close(); ws = null; $('browser').hidden = true; setZoom(1, 0, 0) }
+let resizeTimer
+addEventListener('resize', () => { if (!$('browser').hidden) { clearTimeout(resizeTimer); resizeTimer = setTimeout(sendViewport, 300) } })
 $('openBrowser').onclick = openBrowser
 $('closeBrowser').onclick = closeBrowser
 $('handBack').onclick = async () => {
@@ -907,26 +1298,106 @@ $('handBack').onclick = async () => {
   await post('/api/takeover/done')
   if (id) { closeCard(id, t('doneTakeover')); activeTakeover = null; $('handBack').hidden = true }
 }
-const point = e => {
+$('modeBtn').onclick = () => {
+  desktopSite = !desktopSite
+  $('modeBtn').innerHTML = icon(desktopSite ? 'phone' : 'monitor')
+  const label = t(desktopSite ? 'mobileSite' : 'desktopSite')
+  $('modeBtn').title = label; $('modeBtn').setAttribute('aria-label', label)
+  sendViewport()
+}
+$('fitBtn').onclick = () => setZoom(1, 0, 0)
+
+// pointer input. The position is a fraction of the page picture, so zooming needs no special handling.
+const norm = e => {
   const r = canvas.getBoundingClientRect()
   return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) }
 }
-canvas.onpointerdown = e => { canvas.setPointerCapture(e.pointerId); sendWs({ t:'pointer', k:'down', ...point(e) }) }
-canvas.onpointermove = e => {
-  if (!e.buttons) return
+const sendPt = (k, e) => sendWs({ t: 'pointer', k, ...norm(e) })
+let moveQueued = null
+function queueMove(kind, e) {
   const first = moveQueued === null
-  moveQueued = point(e)
-  if (first) requestAnimationFrame(() => { sendWs({ t:'pointer', k:'move', ...moveQueued }); moveQueued = null })
+  moveQueued = { kind, p: norm(e) }
+  if (first) requestAnimationFrame(() => { const m = moveQueued; moveQueued = null; sendWs({ t: 'pointer', k: m.kind, ...m.p }) })
 }
-canvas.onpointerup = e => sendWs({ t:'pointer', k:'up', ...point(e) })
-canvas.onwheel = e => { e.preventDefault(); sendWs({ t:'wheel', d:e.deltaY }) }
-const scrollStep = () => Math.round($('stage').clientHeight * .7)
-$('scrollUp').onclick = () => sendWs({ t:'wheel', d:-scrollStep() })
-$('scrollDown').onclick = () => sendWs({ t:'wheel', d:scrollStep() })
-$('navForm').onsubmit = e => { e.preventDefault(); if ($('url').value.trim()) sendWs({ t:'nav', url:$('url').value.trim() }) }
-$('fillBtn').onclick = () => { if ($('fill').value) { sendWs({ t:'text', v:$('fill').value }); $('fill').value = '' } }
-$('enterBtn').onclick = () => sendWs({ t:'key', k:'Enter' })
-$('backBtn').onclick = () => sendWs({ t:'key', k:'Backspace' })
+const touches = new Map()
+let g = null, pinch = null, pinchLock = false
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y)
+const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
+function startPinch() {
+  if (g?.timer) clearTimeout(g.timer)
+  if (g?.down) sendPt('up', g.last) // the first finger had already touched the page: let go of it
+  g = null
+  const [a, b] = [...touches.values()]
+  const r = $('stage').getBoundingClientRect()
+  pinch = { d0: dist(a, b), z0: zoom.z, x0: zoom.x, y0: zoom.y, c0: { x: mid(a, b).x - r.left, y: mid(a, b).y - r.top } }
+}
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId)
+  canvas.focus({ preventScroll: true })
+  if (e.pointerType === 'mouse') { sendPt('down', e); return }
+  touches.set(e.pointerId, { x: e.clientX, y: e.clientY })
+  if (pinchLock) return
+  if (touches.size === 2) { startPinch(); return }
+  g = { id: e.pointerId, sx: e.clientX, sy: e.clientY, last: e, down: false, scrolling: false }
+  // On a phone, wait a moment before touching the page, in case this is the first finger of a pinch.
+  if (spec?.device === 'phone') g.timer = setTimeout(() => { if (g && !pinch) { g.down = true; sendPt('down', { clientX: g.sx, clientY: g.sy }) } }, 70)
+})
+canvas.addEventListener('pointermove', e => {
+  if (e.pointerType === 'mouse') { queueMove(e.buttons ? 'move' : 'hover', e); return }
+  if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY })
+  if (pinch && touches.size >= 2) {
+    const [a, b] = [...touches.values()]
+    const r = $('stage').getBoundingClientRect()
+    const c = { x: mid(a, b).x - r.left, y: mid(a, b).y - r.top }
+    const z = Math.min(Math.max(pinch.z0 * dist(a, b) / pinch.d0, 1), 4)
+    const px = (pinch.c0.x - pinch.x0) / pinch.z0, py = (pinch.c0.y - pinch.y0) / pinch.z0 // the page point that was under the fingers
+    setZoom(z, c.x - px * z, c.y - py * z)
+    return
+  }
+  if (!g || g.id !== e.pointerId || pinchLock) return
+  g.last = e
+  const moved = Math.hypot(e.clientX - g.sx, e.clientY - g.sy)
+  if (spec?.device === 'phone') {
+    if (!g.down && moved > 6) { clearTimeout(g.timer); g.down = true; sendPt('down', { clientX: g.sx, clientY: g.sy }) }
+    if (g.down) queueMove('move', e)
+  } else { // a desktop page on a phone: a drag scrolls it, a tap clicks
+    if (!g.scrolling && moved > 8) { g.scrolling = true; g.px = e.clientX; g.py = e.clientY }
+    if (g.scrolling) {
+      const toPage = (spec?.w ?? canvas.clientWidth) / canvas.getBoundingClientRect().width
+      sendWs({ t: 'wheel', d: -(e.clientY - g.py) * toPage, dx: -(e.clientX - g.px) * toPage })
+      g.px = e.clientX; g.py = e.clientY
+    }
+  }
+})
+function endTouch(e) {
+  if (e.pointerType === 'mouse') { sendPt('up', e); return }
+  touches.delete(e.pointerId)
+  if (pinch && touches.size < 2) { pinch = null; pinchLock = true }
+  if (touches.size === 0) pinchLock = false
+  if (!g || g.id !== e.pointerId) return
+  clearTimeout(g.timer)
+  if (spec?.device === 'phone') {
+    if (!g.down) sendPt('down', { clientX: g.sx, clientY: g.sy }) // a quick tap
+    sendPt('up', e)
+  } else if (!g.scrolling) { sendPt('down', { clientX: g.sx, clientY: g.sy }); sendPt('up', { clientX: g.sx, clientY: g.sy }) }
+  g = null
+}
+canvas.addEventListener('pointerup', endTouch)
+canvas.addEventListener('pointercancel', endTouch)
+canvas.addEventListener('wheel', e => { e.preventDefault(); sendWs({ t: 'wheel', d: e.deltaY, dx: e.deltaX }) }, { passive: false })
+const KEYS = ['Enter', 'Backspace', 'Tab', 'Escape', 'Delete', 'ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']
+canvas.addEventListener('keydown', e => { // a PC keyboard types straight into the page; Chinese goes through the box below
+  if (isPhone() || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return
+  if (KEYS.includes(e.key)) { e.preventDefault(); sendWs({ t: 'key', k: e.key }) }
+  else if (e.key.length === 1) { e.preventDefault(); sendWs({ t: 'text', v: e.key }) }
+})
+const scrollStep = () => Math.round((spec?.h ?? $('stage').clientHeight) * .7)
+$('scrollUp').onclick = () => sendWs({ t: 'wheel', d: -scrollStep() })
+$('scrollDown').onclick = () => sendWs({ t: 'wheel', d: scrollStep() })
+$('navForm').onsubmit = e => { e.preventDefault(); if ($('url').value.trim()) sendWs({ t: 'nav', url: $('url').value.trim() }) }
+$('fillBtn').onclick = () => { if ($('fill').value) { sendWs({ t: 'text', v: $('fill').value }); $('fill').value = '' } }
+$('enterBtn').onclick = () => sendWs({ t: 'key', k: 'Enter' })
+$('backBtn').onclick = () => sendWs({ t: 'key', k: 'Backspace' })
 $('togglePw').onclick = () => {
   const f = $('fill'), hide = f.type !== 'password'
   f.type = hide ? 'password' : 'text'
@@ -939,7 +1410,8 @@ async function boot() {
   $('app').hidden = !s.authed
   if (!s.authed) { if (!s.pinSet) $('loginMsg').textContent = t('noPin'); return }
   appState = s
-  show('chat'); refreshOrb()
+  setBadge(s.unread)
+  show('chat')
   if (!s.hasKey) { $('settingsMsg').textContent = t('noKey'); show('settings') }
   connect()
 }

@@ -32,13 +32,48 @@ A 4-digit PIN is weak on its own. Five wrong tries lock login for 15 minutes, an
 
 ## Chats and history
 
-The menu button at the top left opens the history panel: a list of chats, a "New chat" button, and swipe left on a chat to reveal the red cross that deletes it. Deleting also removes the model's saved copy of that chat.
+The front page is a single large orb. Once a chat has something in it, the orb moves to the top left and shrinks, and tapping it opens the history panel: a list of chats, a "New chat" button, and swipe left on a chat to reveal the red cross that deletes it. Deleting also removes the model's saved copy of that chat.
 
-Each chat is its own conversation with its own context. Bob works in one chat at a time, because every chat shares the same browser and server, so a message to another chat while Bob is busy is refused until it finishes. The pending approvals and browser requests of every chat appear together in the Pending tab.
+Each chat is its own conversation with its own context. Bob works in one chat at a time, because every chat shares the same browser and server, so a message to another chat while Bob is busy is refused until it finishes. Approval cards stay in the chat they belong to, and a banner above the message box tells you when Bob needs you in a different chat.
 
 After the server or agent restarts, the first message in an old chat gets the earlier text of that chat as context. Earlier tool results and attached file contents are not replayed.
 
-The page is light-only for now, and the orb in the header shows what Bob is doing: napping, thinking or replying.
+The page is light-only for now, and the orb shows what Bob is doing: napping, thinking or replying.
+
+## The clerk: scheduled tasks and reminders
+
+Tell Bob in chat, for example "every morning at 8, check the weather in Shanghai and tell me what to wear and whether to bring an umbrella", or "remind me at 3pm to call the client". Bob shows a card with the schedule he understood, and nothing is scheduled until you confirm it. The Clerk tab lists your jobs (run now, pause, delete, see the run), an inbox of reminders and results with an unread badge, your channels, and your time zone.
+
+- **Reminders** deliver the exact text at the time. **Tasks** wake Bob at the time to do the work, and the result goes to the inbox and your channels. Each task has its own conversation, so you can see what it did.
+- **Schedules** are daily, weekly (chosen days), monthly or once, in your time zone, including daylight saving changes. A run more than two hours late (for example because the server was off) is skipped and reported as missed. A task waits while Bob is busy with something else.
+- **Unattended rules:** a scheduled task can read web pages with `web_fetch` and browse read-only, but it cannot ask for approval, run commands, install anything or change the schedule. If it hits a login or anything that needs approval, it skips that and says so.
+- **Time:** every message to Bob starts with the current time and your time zone, so "tomorrow at 3" means what you mean.
+- **Cost:** a task is a normal model run and counts toward the monthly spending limit. If the limit is reached, tasks report that they could not run.
+
+**Channels** are where results go besides the inbox. Add them in the Clerk tab, never in chat, so webhooks and tokens never reach the model. They are checked against the real service address, kept only on the server, and shown as `••••` plus the last characters.
+
+| Channel | You provide | Works from a server in mainland China |
+| --- | --- | --- |
+| Lark / Feishu group bot | Webhook, and the signing secret if you turned signing on | Yes |
+| WeCom (企业微信) group bot | Webhook | Yes |
+| Telegram bot | Bot token (chat id is found automatically after you message the bot) | No |
+| Discord webhook | Webhook | No |
+
+Personal WeChat has no official bot interface, so it is not supported. Use a WeCom group bot instead. "Send a test" tells you whether the service accepted the message and why not if it did not.
+
+## Installing tools by chat
+
+Ask Bob for what you need, for example "install the GitHub tool" or "teach yourself my weekly report format". Every install shows a card with exactly what will happen, and nothing happens until you confirm.
+
+| Ask for | What Bob does | Takes effect |
+| --- | --- | --- |
+| A package | `install_package` with npm (global), pip (in BobBot's own virtualenv) or apt (needs sudo). Package names only, so no URLs, flags or shell syntax. The card shows the exact command. | At once |
+| A tool server (MCP) | `mcp_add` with a local command or a remote https address. Secrets such as `GITHUB_TOKEN` are named in the card, and you enter their values in Settings, never in chat. | On your next message, after Bob restarts |
+| A skill | `skill_create` (Bob writes it and you read it first) or `skill_install` from the address of a `SKILL.md`. Skills are loaded live. | At once |
+
+Settings > Extensions lists what is installed, takes the secrets, and removes things. An MCP server's tools run without asking each time once it is installed, so add only servers you trust, and a scheduled task can use them too. DSH's own in-process plugins are not offered: they run inside Bob's process with the API key and could bypass every approval. An MCP server runs as a separate process and covers the same ground.
+
+On a fresh Ubuntu server, installing Python packages needs `python3-venv` first, which Bob can install with apt after you confirm.
 
 ## Server tools and approvals
 
@@ -54,6 +89,12 @@ Besides the browser, Bob can work on the machine it runs on: `list_files`, `read
 Commands run as the user who started BobBot, with API keys and tokens removed from their environment, and stop after 60 seconds unless Bob asks for longer (up to 300). BobBot's own data (keys, PIN, browser profile) and `~/.ssh`, `~/.gnupg` and the sudoers files cannot be read or written through the file tools at all.
 
 Read each command before you allow it. A command can do anything its user can do, and the file block does not apply to commands. If that user has passwordless `sudo`, an approved command can act as root, and text from a web page or a file could try to talk Bob into asking for something harmful.
+
+## The browser window
+
+The cloud browser takes the shape of the device that opens it. On a phone it is a phone: a phone-sized page, a mobile user agent and touch, so sites such as ctrip.com serve their mobile version, readable at your screen's scale. On a PC it is a PC: a desktop page as wide as the window, a mouse that can hover, the wheel, and your keyboard typing straight into the page (use the box below the page for Chinese). Rotating the phone or resizing the window fits the page again.
+
+For a site that has no mobile version, the "desktop site" button on a phone lays the page out wide, and pinching with two fingers zooms and moves it. When nobody has the window open, Bob browses the way you last did.
 
 ## Models and keys
 
@@ -86,7 +127,9 @@ PDF, Word, Excel and images are not supported yet. For a spreadsheet, export it 
 - `agent.mjs` runs `dsh --profile sdk-minimal` over stdio, so DSH opens no port. It also tracks spending.
 - `dsh.patch.yml` removes DSH's own shell and file tools, so the agent can act only through BobBot's tools.
 - `host-tools.mjs` does the file and command work and refuses the protected folders.
-- `browser.mjs` drives Chromium and streams it to the phone.
+- `browser.mjs` drives Chromium, matches it to the owner's device, and streams it to the page.
+- `clerk.mjs`, `channels.mjs` and `web-fetch.mjs` are the schedules and inbox, the message senders, and read-only web access.
+- `extensions.mjs` validates and builds package installs, MCP server config and skills. `net-guard.mjs` keeps addresses public.
 - `prices.json` holds DeepSeek prices copied from model-registry, in CNY per 1M tokens.
 
 ## Known limits
@@ -98,14 +141,18 @@ PDF, Word, Excel and images are not supported yet. For a spreadsheet, export it 
 - Approval uses button-text rules, so an unusually labelled button can get through.
 - QR login needs a second device, and passkeys do not work remotely.
 - Only the top-level page is numbered for the agent, so content inside iframes and shadow DOM is invisible to it.
-- Pages without a mobile viewport tag appear zoomed out on the phone, and there is no pinch zoom or sideways scroll yet.
+- Scheduled tasks and reminders run only while the server is up. A run that was due while it was off is reported as missed, not made up.
+- Telegram and Discord cannot be reached from servers in mainland China.
+- Installing a package or tool server can run arbitrary code from that package. The card shows what, but not whether the package is safe.
+- Phones in "desktop site" mode scroll by dragging and click by tapping, so a slider captcha needs the normal mobile mode.
 - Attachments are text files only, and the "Other model" option is untested.
 
 ## Test
 
 ```sh
-npm test        # server, agent loop, approvals, phone window, models, attachments, spending limit
-npm run test:ui # drives the real page in a phone-sized Chrome and clicks the cloud browser
+npm run test:unit # schedules and daylight saving, clerk store, channel messages, web_fetch (no network needed)
+npm test          # server, agent loop, approvals, clerk, extensions, models, attachments, spending limit
+npm run test:ui   # drives the real page as a phone and as a PC, and clicks, hovers and types into the cloud browser
 ```
 
-`npm test` runs real DSH and real Chromium against a scripted fake model, so it needs no API key. It checks the custom-model address against real DNS, so it needs internet access. `npm run test:ui` needs Chrome, Edge or Chromium (set `CHROME_PATH` if it is not found).
+`npm test` runs real DSH and real Chromium against a scripted fake model, so it needs no API key. It needs internet access (real DNS, `example.com`, and one call to the Lark service with a fake token to check that failures are recorded), and it takes a few minutes because it waits for a reminder to fire at its minute. `npm run test:ui` needs Chrome, Edge or Chromium (set `CHROME_PATH` if it is not found).
