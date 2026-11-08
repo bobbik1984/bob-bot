@@ -30,6 +30,18 @@ Do not expose plain HTTP to the internet, because the PIN and session cookie wou
 
 A 4-digit PIN is weak on its own. Five wrong tries lock login for 15 minutes, and the lock doubles each time up to 24 hours. Anyone who repeatedly enters wrong PINs can also lock you out, and `set-pin` clears that.
 
+## Models and keys
+
+Settings shows whether a key is saved (as `sk-••••1234`, never the full key) and lets you replace it. The model dropdown lists the DeepSeek models your key can use.
+
+**Other model (experimental):** choose "Other model" to enter your own endpoint, model name, key and prices. DeepSeek Harness speaks the Anthropic Messages protocol, so the service must support it, and requests go to `<endpoint>/v1/messages`. The endpoint must be https and public, and the prices (USD per 1M tokens) are what the monthly limit counts. This path is not verified against any real service yet, so treat it as a trial. Changing the model starts a fresh conversation.
+
+## Attachments
+
+The paperclip next to the message box attaches up to 5 text files (txt, md, csv, tsv, json, log, xml, html, yaml, sql), up to about 200KB each and 500KB in total. Chinese Excel CSV files saved as GBK are read correctly. The file text is sent to the model labelled as data, not instructions, and the chat history keeps only the file names.
+
+PDF, Word, Excel and images are not supported yet. For a spreadsheet, export it as CSV first.
+
 ## Settings
 
 | Variable | Default | Meaning |
@@ -59,11 +71,14 @@ A 4-digit PIN is weak on its own. Five wrong tries lock login for 15 minutes, an
 - Approval uses button-text rules, so an unusually labelled button can get through.
 - QR login needs a second device, and passkeys do not work remotely.
 - Only the top-level page is numbered for the agent, so content inside iframes and shadow DOM is invisible to it.
+- Pages without a mobile viewport tag appear zoomed out on the phone, and there is no pinch zoom or sideways scroll yet.
+- Attachments are text files only, and the "Other model" option is untested.
 
 ## Test
 
 ```sh
-npm test
+npm test        # server, agent loop, approvals, phone window, models, attachments, spending limit
+npm run test:ui # drives the real page in a phone-sized Chrome and clicks the cloud browser
 ```
 
-This runs real DSH and real Chromium against a scripted fake model, so it needs no API key. It does open `example.com`.
+`npm test` runs real DSH and real Chromium against a scripted fake model, so it needs no API key. It checks the custom-model address against real DNS, so it needs internet access. `npm run test:ui` needs Chrome, Edge or Chromium (set `CHROME_PATH` if it is not found).

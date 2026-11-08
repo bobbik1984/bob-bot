@@ -121,7 +121,7 @@ main { flex:1; min-height:0; position:relative; }
 #settingsMsg { min-height:20px; }
 
 /* composer and tabs */
-#composer { display:flex; align-items:center; gap:6px; margin:4px 12px 8px; padding:5px 5px 5px 16px; background:var(--surface); border:1px solid var(--line); border-radius:28px; box-shadow:var(--shadow); }
+#composer { display:flex; align-items:center; gap:4px; margin:4px 12px 8px; padding:5px 5px 5px 6px; background:var(--surface); border:1px solid var(--line); border-radius:28px; box-shadow:var(--shadow); }
 #composer input { flex:1; min-width:0; border:0; background:none; min-height:40px; }
 #composer input:focus-visible { outline:0; }
 #composer:focus-within { border-color:var(--accent); }
@@ -131,6 +131,23 @@ nav button { flex:1; display:flex; flex-direction:column; align-items:center; ga
 nav button.on { color:var(--accent); font-weight:600; }
 nav button svg { width:24px; height:24px; }
 .badge { position:absolute; top:3px; left:calc(50% + 6px); min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:var(--danger); color:#fff; font-size:11px; line-height:18px; text-align:center; }
+
+/* model settings and attachments */
+select.field { appearance:none; background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%); background-position:calc(100% - 20px) 50%, calc(100% - 14px) 50%; background-size:6px 6px; background-repeat:no-repeat; padding-right:36px; }
+.stack { display:flex; flex-direction:column; gap:10px; }
+.keystate { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:14px; background:var(--ok-soft); color:var(--ok); font-weight:600; font-size:14px; }
+.keystate.none { background:var(--warn-soft); color:var(--warn); }
+.keystate code { font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--text); font-weight:400; opacity:.8; }
+.keystate .link { margin-left:auto; color:var(--accent-ink); font-weight:600; padding:6px 4px; }
+#composer .attach { width:40px; height:40px; border-radius:50%; color:var(--muted); display:inline-flex; align-items:center; justify-content:center; flex:none; }
+#attachRow { display:flex; flex-wrap:wrap; gap:6px; margin:6px 12px 0; }
+.file-chip { display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:5px 6px 5px 10px; border-radius:999px; background:var(--accent-soft); color:var(--accent-ink); font-size:13px; }
+.file-chip span.n { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px; }
+.file-chip small { opacity:.7; }
+.file-chip button { width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; color:inherit; }
+.file-chip svg { width:1em; height:1em; }
+.fileline { display:flex; align-items:center; gap:6px; margin-top:6px; font-size:13px; color:var(--muted); }
+.fileline svg { width:1em; height:1em; }
 
 /* browser window */
 #browser { position:fixed; inset:0; background:var(--bg); display:flex; flex-direction:column; z-index:5; }
@@ -174,9 +191,20 @@ nav button svg { width:24px; height:24px; }
     </div>
     <div class="view" id="viewSettings" hidden>
       <div class="section">
-        <h3 data-t="keyTitle"></h3>
-        <p class="hint" data-t="keyLabel"></p>
-        <div class="row"><input class="field" id="key" type="password" autocomplete="off" placeholder="sk-..." aria-label="API key"><button class="btn primary" id="saveKey" data-t="save"></button></div>
+        <h3 data-t="modelTitle"></h3>
+        <label class="hint" for="modelSel" data-t="modelLabel"></label>
+        <select class="field" id="modelSel"></select>
+        <div class="keystate" id="keyState"></div>
+        <input class="field" id="key" type="password" autocomplete="off" placeholder="sk-..." aria-label="API key" hidden>
+        <div class="stack" id="customBox" hidden>
+          <p class="hint" data-t="customHint"></p>
+          <input class="field" id="cEndpoint" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="https://api.example.com/anthropic" data-al="cEndpoint">
+          <input class="field" id="cModel" autocapitalize="off" autocomplete="off" data-ph="cModel" data-al="cModel">
+          <input class="field" id="cKey" type="password" autocomplete="off" data-ph="cKey" data-al="cKey">
+          <p class="hint" data-t="priceWhy"></p>
+          <div class="row"><input class="field" id="cIn" type="number" inputmode="decimal" min="0" step="any" data-ph="cIn" data-al="cIn"><input class="field" id="cOut" type="number" inputmode="decimal" min="0" step="any" data-ph="cOut" data-al="cOut"></div>
+        </div>
+        <button class="btn primary block" id="saveModel" data-t="save"></button>
       </div>
       <div class="section">
         <h3 data-t="capTitle"></h3>
@@ -193,7 +221,13 @@ nav button svg { width:24px; height:24px; }
       </div>
     </div>
   </main>
-  <form id="composer"><input id="text" autocomplete="off" data-ph="placeholder" aria-label="Message"><button class="send" data-al="send" data-i="send"></button></form>
+  <div id="attachRow" hidden></div>
+  <form id="composer">
+    <button type="button" class="attach" id="attachBtn" data-al="attach" data-i="clip"></button>
+    <input id="text" autocomplete="off" data-ph="placeholder" aria-label="Message">
+    <button class="send" data-al="send" data-i="send"></button>
+  </form>
+  <input type="file" id="filePick" multiple hidden accept=".txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.log,.xml,.html,.htm,.yaml,.yml,.ini,.sql,text/*">
   <nav>
     <button class="on" data-view="chat"><span data-i="chat"></span><span data-t="tabChat"></span></button>
     <button data-view="pending"><span data-i="check"></span><span data-t="tabPending"></span><span class="badge" id="badge" hidden></span></button>
@@ -246,6 +280,19 @@ const I18N = {
   budgetNear:['本月花费已超过上限的 80%','You have used over 80% of this month\'s limit'], budgetExceeded:['已达到本月花费上限，Bob 已停止。可在设置中提高上限。','Monthly limit reached, so Bob has stopped. You can raise it in Settings.'],
   wrongPin:['PIN 错误，还可尝试 {n} 次','Wrong PIN, {n} tries left'], locked:['尝试次数过多，请 {n} 分钟后再试','Too many tries. Try again in {n} min'],
   noPin:['尚未设置 PIN，请在服务器运行 npm run set-pin -- 1234','No PIN yet. On the server run: npm run set-pin -- 1234'],
+  modelTitle:['模型','Model'], modelLabel:['选择模型','Choose a model'], otherModel:['其他模型（自行填写）…','Other model (enter yourself)…'],
+  keySaved:['密钥已保存','Key saved'], keyEnv:['由服务器环境提供','Set by the server'], replaceKey:['更换','Replace'], keyNone:['还没有密钥，请先填写','No key yet. Add one below'],
+  customHint:['填写兼容 Anthropic Messages 协议的服务（实际请求地址为：接口地址 + /v1/messages）。这是实验功能，尚未验证。','An Anthropic Messages-compatible service (requests go to the endpoint + /v1/messages). Experimental and not verified.'],
+  cEndpoint:['接口地址（https）','Endpoint (https)'], cModel:['模型名称','Model name'], cKey:['API Key（留空沿用已保存）','API key (blank keeps saved)'],
+  priceWhy:['价格用于统计月度花费上限','Prices are used for the monthly spending limit'], cIn:['输入价格（美元/百万 tokens）','Input price (USD per 1M tokens)'], cOut:['输出价格（美元/百万 tokens）','Output price (USD per 1M tokens)'],
+  attach:['添加附件','Attach file'], remove:['移除','Remove'],
+  fileUnsupported:['暂只支持文本类文件（txt、md、csv、json 等）：{n}','Text files only for now (txt, md, csv, json…): {n}'],
+  fileBig:['文件太大（单个上限约 200KB）：{n}','File too large (about 200KB each): {n}'], fileBinary:['无法读取为文本：{n}','Cannot read as text: {n}'],
+  filesMany:['最多添加 5 个文件','At most 5 files'], filesTotal:['附件总量过大（合计上限约 500KB）','Attachments are too large in total (about 500KB)'],
+  err_UNKNOWN_MODEL:['不支持这个模型','Unknown model'], err_BAD_MODEL:['模型名称无效','Invalid model name'], err_BAD_PRICE:['价格无效','Invalid price'],
+  err_HTTPS_REQUIRED:['接口地址必须以 https:// 开头','The endpoint must start with https://'], err_BAD_ENDPOINT:['接口地址无法使用（不能是本机或内网地址）','Endpoint not allowed (no local or private addresses)'],
+  err_NO_KEY:['请填写 API Key','Enter an API key'], err_INVALID_KEY:['API Key 无效','Invalid API key'], err_NO_PRICE:['这个模型没有价格，无法统计花费','No price for this model, so spending cannot be counted'],
+  err_TOO_MANY_FILES:['最多添加 5 个文件','At most 5 files'], err_FILE_TOO_LARGE:['有文件太大','A file is too large'], err_FILES_TOO_LARGE:['附件总量过大','Attachments are too large in total'], err_NOT_TEXT:['有文件不是文本','A file is not text'],
   del:['删除','Del'], invalidKey:['API Key 无效','Invalid API key'], failed:['操作失败：','Failed: '],
 }
 const t = (k, n) => (I18N[k]?.[zh ? 0 : 1] ?? k).replace('{n}', n)
@@ -265,6 +312,8 @@ const ICONS = {
   eyeoff:'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/><path d="M3 3l18 18"/>',
   shield:'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM12 8v4M12 16h.01"/>',
   hand:'<path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v7M10 10.5V6a2 2 0 0 0-4 0v8M18 8a2 2 0 0 1 4 0v6a8 8 0 0 1-8 8h-2c-2.5 0-4-1-5.4-2.4L3 15.6a2 2 0 0 1 3-2.6L8 15"/>',
+  clip:'<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+  file:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6"/>',
   tick:'<path d="M20 6 9 17l-5-5"/>', cross:'<path d="M18 6 6 18M6 6l12 12"/>',
 }
 const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`
@@ -316,6 +365,7 @@ function show(view) {
   $('title').textContent = view === 'chat' ? 'Bob' : t(view === 'pending' ? 'pendingTitle' : 'settingsTitle')
   $('sub').hidden = view !== 'chat'
   if (view === 'chat') atEnd()
+  if (view === 'settings') loadModelCard().catch(() => {})
 }
 document.querySelectorAll('nav button').forEach(b => { b.onclick = () => show(b.dataset.view) })
 
@@ -336,13 +386,18 @@ function add(node, kind) {
   if (kind !== 'steps') stepsBox = null
   updateWelcome(); atEnd()
 }
-function message(role, text) {
+function message(role, text, files = []) {
   const row = el('div', 'bubble-row' + (role === 'user' ? ' user' : ''))
   if (role !== 'user') {
     if (lastKind === 'assistant') row.append(el('div', 'spacer'))
     else { const a = el('div', 'avatar'); a.innerHTML = AVATAR; row.append(a) }
   }
-  row.append(el('div', 'msg', text))
+  const bubble = el('div', 'msg', text)
+  for (const f of files) {
+    const line = el('div', 'fileline'); line.insertAdjacentHTML('afterbegin', icon('file')); line.append(el('span', '', f.name))
+    bubble.append(line)
+  }
+  row.append(bubble)
   add(row, role === 'user' ? 'user' : 'assistant')
 }
 function step(name) {
@@ -424,7 +479,7 @@ function openItem(e, kind) {
 
 let activeTakeover = null
 function render(e) {
-  if (e.type === 'message') message(e.role, e.text)
+  if (e.type === 'message') message(e.role, e.text, e.files ?? [])
   else if (e.type === 'step') step(e.name)
   else if (e.type === 'error') notice(e.text, true)
   else if (e.type === 'notice') notice(t(e.code === 'BUDGET_NEAR' ? 'budgetNear' : 'budgetExceeded'), true)
@@ -470,23 +525,112 @@ function connect() {
   b.onclick = () => { $('text').value = t(prompt); $('text').focus() }
   $('chips').append(b)
 })
+// ---- attachments (text files) ----
+const MAX_FILES = 5, MAX_FILE_CHARS = 200000, MAX_TOTAL_CHARS = 500000
+const TEXT_NAME = /\.(txt|md|markdown|csv|tsv|json|jsonl|log|xml|html?|ya?ml|ini|sql)$/i
+let attachments = []
+const kb = n => (n < 1024 ? n + ' B' : Math.round(n / 1024) + ' KB')
+function drawAttachments() {
+  const row = $('attachRow')
+  row.textContent = ''
+  row.hidden = attachments.length === 0
+  attachments.forEach((f, i) => {
+    const chip = el('span', 'file-chip')
+    chip.insertAdjacentHTML('afterbegin', icon('file'))
+    const x = el('button'); x.type = 'button'; x.title = t('remove'); x.setAttribute('aria-label', t('remove')); x.innerHTML = icon('cross')
+    x.onclick = () => { attachments.splice(i, 1); drawAttachments() }
+    chip.append(el('span', 'n', f.name), el('small', '', kb(f.text.length)), x)
+    row.append(chip)
+  })
+}
+async function readText(file) {
+  const buf = await file.arrayBuffer()
+  let text
+  try { text = new TextDecoder('utf-8', { fatal: true }).decode(buf) }
+  catch { try { text = new TextDecoder('gbk').decode(buf) } catch { return null } } // Excel in China often saves CSV as GBK
+  return /\u0000/.test(text) ? null : text.replace(/^\uFEFF/, '')
+}
+$('attachBtn').onclick = () => $('filePick').click()
+$('filePick').onchange = async () => {
+  const picked = [...$('filePick').files]
+  $('filePick').value = ''
+  for (const file of picked) {
+    if (attachments.length >= MAX_FILES) { notice(t('filesMany'), true); break }
+    if (!TEXT_NAME.test(file.name) && !file.type.startsWith('text/')) { notice(t('fileUnsupported', file.name), true); continue }
+    if (file.size > MAX_FILE_CHARS * 4) { notice(t('fileBig', file.name), true); continue }
+    const text = await readText(file)
+    if (text === null) { notice(t('fileBinary', file.name), true); continue }
+    if (text.length > MAX_FILE_CHARS) { notice(t('fileBig', file.name), true); continue }
+    if (attachments.reduce((n, f) => n + f.text.length, 0) + text.length > MAX_TOTAL_CHARS) { notice(t('filesTotal'), true); continue }
+    attachments.push({ name: file.name, text })
+  }
+  drawAttachments()
+}
 $('composer').onsubmit = async e => {
   e.preventDefault()
   const text = $('text').value.trim()
-  if (!text) return
+  if (!text && !attachments.length) return
+  const files = attachments
   $('text').value = ''
-  const { status, data } = await post('/api/chat', { text })
+  attachments = []; drawAttachments()
+  const { status, data } = await post('/api/chat', { text, files })
   if (status === 200) return
-  if (data.error === 'NO_KEY') { $('text').value = text; $('settingsMsg').textContent = t('noKey'); show('settings') }
+  $('text').value = text; attachments = files; drawAttachments() // keep the draft so nothing is lost
+  if (data.error === 'NO_KEY') { $('settingsMsg').textContent = t('noKey'); show('settings') }
   else if (data.error === 'BUDGET_EXCEEDED') notice(t('budgetExceeded'), true)
-  else notice(t('failed') + (data.error ?? status), true)
+  else notice(I18N['err_' + data.error] ? t('err_' + data.error) : t('failed') + (data.error ?? status), true)
 }
 
 // ---- settings ----
-$('saveKey').onclick = async () => {
-  const { status, data } = await post('/api/key', { key: $('key').value })
-  $('settingsMsg').textContent = status === 200 ? t('saved') : data.error === 'INVALID_KEY' ? t('invalidKey') : t('failed') + (data.error ?? status)
-  if (status === 200) $('key').value = ''
+let appState = {}, deepseekModels = []
+const CUSTOM = '__custom'
+function renderModelCard() {
+  const sel = $('modelSel'), custom = sel.value === CUSTOM
+  $('customBox').hidden = !custom
+  const saved = appState.model ?? {}
+  const sameKind = (saved.kind === 'custom') === custom
+  const has = sameKind && appState.hasKey
+  const ks = $('keyState')
+  ks.className = 'keystate' + (has ? '' : ' none')
+  ks.textContent = ''
+  ks.insertAdjacentHTML('afterbegin', icon(has ? 'tick' : 'shield'))
+  ks.append(el('span', '', t(has ? 'keySaved' : 'keyNone')))
+  if (has && appState.keyHint) ks.append(el('code', '', appState.keyHint === 'env' ? t('keyEnv') : appState.keyHint))
+  if (has && !custom && appState.keyHint !== 'env') {
+    const b = el('button', 'link', t('replaceKey')); b.type = 'button'
+    b.onclick = () => { $('key').hidden = false; $('key').focus(); b.remove() }
+    ks.append(b)
+  }
+  $('key').hidden = custom || has
+  $('key').placeholder = 'sk-...'
+}
+async function loadModelCard() {
+  appState = await (await fetch('/api/state')).json()
+  try { deepseekModels = (await (await fetch('/api/models', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json()).deepseek ?? [] } catch { deepseekModels = [] }
+  const sel = $('modelSel'), saved = appState.model ?? {}
+  sel.textContent = ''
+  const ids = saved.kind === 'deepseek' && !deepseekModels.includes(saved.model) ? [saved.model, ...deepseekModels] : deepseekModels
+  for (const id of ids) sel.append(new Option('DeepSeek · ' + id, id))
+  sel.append(new Option(t('otherModel'), CUSTOM))
+  sel.value = saved.kind === 'custom' ? CUSTOM : saved.model
+  if (saved.kind === 'custom') {
+    $('cEndpoint').value = saved.baseUrl ?? ''; $('cModel').value = saved.model ?? ''
+    $('cIn').value = saved.inputUsd ?? ''; $('cOut').value = saved.outputUsd ?? ''
+  }
+  renderModelCard()
+}
+$('modelSel').onchange = renderModelCard
+$('saveModel').onclick = async () => {
+  const custom = $('modelSel').value === CUSTOM
+  const body = custom
+    ? { kind: 'custom', baseUrl: $('cEndpoint').value, model: $('cModel').value, key: $('cKey').value, inputUsd: $('cIn').value, outputUsd: $('cOut').value }
+    : { kind: 'deepseek', model: $('modelSel').value, key: $('key').value }
+  const { status, data } = await post('/api/model', body)
+  if (status === 200) {
+    $('key').value = ''; $('cKey').value = ''
+    await loadModelCard()
+    $('settingsMsg').textContent = t('saved')
+  } else $('settingsMsg').textContent = I18N['err_' + data.error] ? t('err_' + data.error) : t('failed') + (data.error ?? status)
 }
 $('saveCap').onclick = async () => {
   const { status, data } = await post('/api/budget', { capUsd: Number($('cap').value) })
@@ -554,6 +698,7 @@ async function boot() {
   $('app').hidden = !s.authed
   if (!s.authed) { if (!s.pinSet) $('loginMsg').textContent = t('noPin'); return }
   show('chat'); setBusy(false)
+  appState = s
   if (!s.hasKey) { $('settingsMsg').textContent = t('noKey'); show('settings') }
   connect()
 }

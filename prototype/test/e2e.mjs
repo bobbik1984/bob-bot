@@ -8,6 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import WebSocket from 'ws'
+import { Budget } from '../agent.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'bobbot-e2e-'))
@@ -230,6 +231,70 @@ try {
     await injectPage('<h1>changed after close</h1>')
     await sleep(800)
     assert.equal(frames.length, before, 'frames kept arriving after close')
+  })
+
+  console.log('Model settings')
+  const getState = async () => (await fetch(`${base}/api/state`, { headers: { cookie } })).json()
+  await check('a saved key is reported without exposing it', async () => {
+    const st = await getState()
+    assert.equal(st.hasKey, true); assert.equal(st.keyHint, 'env'); assert.equal(st.model.kind, 'deepseek')
+    assert.ok(!JSON.stringify(st).includes('test-key'))
+  })
+  await check('model list includes the default model', async () => {
+    assert.ok((await post('/api/models', {})).data.deepseek.includes('deepseek-flash'))
+  })
+  const customModel = { kind: 'custom', baseUrl: 'https://example.com/anthropic', model: 'my-model', key: 'k-custom-1234567890', inputUsd: 1, outputUsd: 2 }
+  await check('custom model rejects http, private addresses, bad prices and bad names', async () => {
+    assert.equal((await post('/api/model', { ...customModel, baseUrl: 'http://example.com/a' })).data.error, 'HTTPS_REQUIRED')
+    assert.equal((await post('/api/model', { ...customModel, baseUrl: 'https://127.0.0.1/a' })).data.error, 'BAD_ENDPOINT')
+    assert.equal((await post('/api/model', { ...customModel, inputUsd: -1 })).data.error, 'BAD_PRICE')
+    assert.equal((await post('/api/model', { ...customModel, model: 'has space' })).data.error, 'BAD_MODEL')
+    assert.equal((await post('/api/model', { ...customModel, key: '' })).data.error, 'NO_KEY')
+    assert.equal((await post('/api/model', { kind: 'deepseek', model: 'not-a-model' })).data.error, 'UNKNOWN_MODEL')
+  })
+  await check('custom model saves with a masked key, and DeepSeek can be restored', async () => {
+    const ok = await post('/api/model', customModel)
+    assert.equal(ok.status, 200); assert.equal(ok.data.keyHint, 'k-c••••7890')
+    let st = await getState()
+    assert.equal(st.model.kind, 'custom'); assert.equal(st.model.model, 'my-model'); assert.equal(st.keyHint, 'k-c••••7890')
+    assert.ok(!JSON.stringify(st).includes('1234567890'))
+    assert.equal((await post('/api/model', { kind: 'deepseek', model: 'deepseek-flash' })).status, 200)
+    st = await getState()
+    assert.equal(st.model.kind, 'deepseek'); assert.equal(st.keyHint, 'env')
+  })
+  await check('spending uses the right currency for each kind of price', () => {
+    const b = new Budget(fs.mkdtempSync(path.join(os.tmpdir(), 'budget-')))
+    const million = { inputTokens: 1e6, outputTokens: 1e6 }
+    assert.ok(Math.abs(b.record('deepseek-flash', million).spentUsd - 3 / 7.2) < 1e-9)
+    const before = b.status().spentUsd
+    assert.ok(Math.abs(b.record('x', million, { input: 3, output: 15, currency: 'USD' }).spentUsd - before - 18) < 1e-9)
+    assert.throws(() => b.record('no-such-model', million), /No price/)
+  })
+
+  console.log('Attachments')
+  await check('attached text reaches the model as data, and the history keeps only names', async () => {
+    const before = requests.length
+    const res = await post('/api/chat', { text: 'summarise this', files: [{ name: 'sales.csv', text: 'col1,col2\n1,2\n' }] })
+    assert.equal(res.status, 200)
+    for (let i = 0; i < 600 && requests.length === before; i++) await sleep(100)
+    assert.ok(requests.length > before, 'model was not called')
+    const sent = JSON.stringify(requests.at(-1).messages)
+    assert.ok(sent.includes('col1,col2'), 'file content missing')
+    assert.ok(sent.includes('not instructions to you'), 'data label missing')
+    const shown = events.findLast(e => e.type === 'message' && e.role === 'user' && e.files?.length)
+    assert.equal(shown.files[0].name, 'sales.csv')
+    assert.ok(!JSON.stringify(shown).includes('col1,col2'), 'file body leaked into the history')
+  })
+  await check('too many, binary, oversized and nameless files are refused without a model call', async () => {
+    const count = requests.length
+    const one = n => ({ name: `f${n}.txt`, text: 'x' })
+    assert.equal((await post('/api/chat', { text: 'a', files: [1, 2, 3, 4, 5, 6].map(one) })).data.error, 'TOO_MANY_FILES')
+    assert.equal((await post('/api/chat', { text: 'a', files: [{ name: 'a.bin', text: 'ab\u0000cd' }] })).data.error, 'NOT_TEXT')
+    assert.equal((await post('/api/chat', { text: 'a', files: [{ name: 'big.txt', text: 'x'.repeat(200001) }] })).status, 413)
+    assert.equal((await post('/api/chat', { text: 'a', files: [1, 2, 3].map(n => ({ name: `p${n}.txt`, text: 'y'.repeat(190000) })) })).status, 413)
+    assert.equal((await post('/api/chat', { text: 'a', files: [{ name: '', text: 'x' }] })).data.error, 'BAD_FILE')
+    await sleep(500)
+    assert.equal(requests.length, count)
   })
 
   console.log('Spending limit')

@@ -112,8 +112,11 @@ export class CloudBrowser {
       return
     }
     if (msg.method === 'Page.screencastFrame' && msg.sessionId === this.session) {
-      this.#send('Page.screencastFrameAck', { sessionId: msg.params.sessionId }, msg.sessionId).catch(() => {})
-      this.onFrame?.(Buffer.from(msg.params.data, 'base64'))
+      // Chrome sends the next frame only after this ack, so acking once the viewer has taken the frame
+      // makes a slow connection coalesce frames instead of dropping the last one.
+      this.frameMeta = msg.params.metadata
+      const ack = () => this.#send('Page.screencastFrameAck', { sessionId: msg.params.sessionId }, msg.sessionId).catch(() => {})
+      Promise.resolve(this.onFrame?.(Buffer.from(msg.params.data, 'base64'))).then(ack, ack)
     } else if (msg.method === 'Target.targetCreated' && msg.params.targetInfo.type === 'page' && msg.params.targetInfo.openerId) {
       // Popups such as OAuth windows become the active page.
       this.#adopt(msg.params.targetInfo.targetId).catch(() => {})
@@ -166,9 +169,19 @@ export class CloudBrowser {
     await this.page('Page.stopScreencast').catch(() => {})
   }
 
+  /**
+   * Pages without a mobile viewport tag are laid out wider than the phone (often 980px) and shown scaled down.
+   * Input events use layout pixels, so screen positions must be divided by the page scale Chrome reports per frame.
+   */
+  #pageScale() {
+    const scale = this.frameMeta?.pageScaleFactor
+    return scale > 0 ? scale : 1
+  }
+
   async pointer(kind, nx, ny) {
-    const x = nx * this.viewport.width
-    const y = ny * this.viewport.height
+    const scale = this.#pageScale()
+    const x = (nx * this.viewport.width) / scale
+    const y = (ny * this.viewport.height) / scale
     const type = { down: 'mousePressed', move: 'mouseMoved', up: 'mouseReleased' }[kind]
     if (!type) return
     await this.page('Input.dispatchMouseEvent', {
@@ -177,8 +190,9 @@ export class CloudBrowser {
   }
 
   async wheel(deltaY) {
+    const scale = this.#pageScale()
     await this.page('Input.dispatchMouseEvent', {
-      type: 'mouseWheel', x: this.viewport.width / 2, y: this.viewport.height / 2, deltaX: 0, deltaY,
+      type: 'mouseWheel', x: this.viewport.width / 2 / scale, y: this.viewport.height / 2 / scale, deltaX: 0, deltaY,
     })
   }
 

@@ -9,7 +9,8 @@ import { fileURLToPath } from 'node:url'
 const here = path.dirname(fileURLToPath(import.meta.url))
 const prices = JSON.parse(fs.readFileSync(path.join(here, 'prices.json'), 'utf8')).models
 
-export const MODEL = process.env.BOBBOT_MODEL || 'deepseek-flash'
+export const DEFAULT_MODEL = process.env.BOBBOT_MODEL || 'deepseek-flash'
+export const registryPrices = prices
 const CNY_PER_USD = Number(process.env.BOBBOT_CNY_PER_USD || 7.2)
 
 const SYSTEM_PROMPT = `You are Bob, a light personal assistant for an office worker. Reply in the user's language and keep replies short and practical.
@@ -30,13 +31,16 @@ export class Budget {
   #roll() { if (this.state.month !== month()) Object.assign(this.state, { month: month(), spentUsd: 0, warned: false }) }
   #save() { fs.writeFileSync(this.file, JSON.stringify(this.state)) }
 
-  /** Prices cached tokens at the full input rate because the registry has no cache price, so this errs high. */
-  record(model, usage) {
+  /**
+   * Prices cached tokens at the full input rate because the registry has no cache price, so this errs high.
+   * `price` is per 1M tokens in its own currency (registry prices are CNY, custom models are entered in USD).
+   */
+  record(model, usage, price = prices[model]) {
     this.#roll()
-    const price = prices[model]
     if (!price) throw new Error(`No price for model ${model}`)
     const input = usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0)
-    this.state.spentUsd += (input * price.input + usage.outputTokens * price.output) / 1e6 / CNY_PER_USD
+    const perUsd = price.currency === 'USD' ? 1 : CNY_PER_USD
+    this.state.spentUsd += (input * price.input + usage.outputTokens * price.output) / 1e6 / perUsd
     this.#save()
     return this.status()
   }
@@ -73,12 +77,13 @@ export class Agent extends EventEmitter {
   get running() { return Boolean(this.proc) }
 
   /** Starts DSH on first use; the SDK channel is stdio, so no DSH port or token is exposed. */
-  ensure({ apiKey, mcpUrl, mcpToken }) {
-    this.ready ??= this.#launch({ apiKey, mcpUrl, mcpToken }).catch(error => { this.stop(); throw error })
+  ensure(options) {
+    this.ready ??= this.#launch(options).catch(error => { this.stop(); throw error })
     return this.ready
   }
 
-  async #launch({ apiKey, mcpUrl, mcpToken }) {
+  async #launch({ apiKey, mcpUrl, mcpToken, model = DEFAULT_MODEL, baseUrl }) {
+    this.model = model
     const cwd = path.join(this.dataDir, 'workspace')
     const home = path.join(this.dataDir, 'dsh-home')
     fs.mkdirSync(cwd, { recursive: true })
@@ -89,6 +94,7 @@ export class Agent extends EventEmitter {
       env: {
         ...process.env, DEEPSEEK_API_KEY: apiKey, DSH_HOME: home, DSH_SYSTEM_PROMPT: SYSTEM_PROMPT,
         BOBBOT_MCP_URL: mcpUrl, BOBBOT_MCP_TOKEN: mcpToken,
+        ...baseUrl ? { DEEPSEEK_BASE_URL: baseUrl } : {},
       },
     })
     this.proc = proc
@@ -110,7 +116,7 @@ export class Agent extends EventEmitter {
       this.#reset(new Error(`DSH exited (${code})`))
       this.emit('exit', code)
     })
-    await this.#request('initialize', { cwd, provider: 'deepseek-official', model: MODEL }, 180000)
+    await this.#request('initialize', { cwd, provider: 'deepseek-official', model }, 180000)
     this.sessionId = `main-${Date.now()}`
   }
 
@@ -163,7 +169,7 @@ export class Agent extends EventEmitter {
     if (process.env.BOBBOT_DEBUG) console.error('[event]', JSON.stringify(event).slice(0, 600))
     if (event.type === 'assistant/message' || event.type === 'assistant/attempt') {
       const usage = event.data.usage ?? findUsage(event.data.stream)
-      if (usage) this.emit('usage', MODEL, usage)
+      if (usage) this.emit('usage', this.model, usage)
     }
     if (event.type === 'assistant/message') {
       const text = event.data.message.content.filter(b => b.type === 'text').map(b => b.text).join('')
