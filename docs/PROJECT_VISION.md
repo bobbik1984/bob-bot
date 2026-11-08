@@ -64,7 +64,7 @@
 ## 6. 明确不做（Non-Goals）
 
 - **不做多机集群调度器**：`bob-bot` 只管好它所在的这一台 VPS，不管理用户的家庭局域网电脑或外部 SSH 节点。
-- **不做云端 IDE 或代码编辑器**：不暴露终端（Terminal）、Git 分支树或代码 Diff 视图。
+- **不做云端 IDE 或代码编辑器**：不暴露终端（Terminal）、Git 分支树或代码 Diff 视图。测试原型例外：所有者可以让 Bob 在自己的服务器上读写文件、运行命令，每次都需要审批卡确认（见 `prototype/README.md`）；这只用于自用测试，开放给他人前必须重新评估。
 - **不绑定黑盒高价模型**：坚持 BYOK（自带 Key），让用户享受 DeepSeek / Gemini Flash 极致的性价比，同时允许为关键任务切换顶级模型。
 - **不跑重型完整 Linux GUI 桌面**：不在 VPS 里跑消耗数 GB 内存的 GNOME/KDE + WebRTC 视频编码流，坚持使用超轻量 Headless Chromium + CDP 按需画布推流。目标规格为 2C/4G，2C/2G 须经 BB4 实测后才能承诺。
 

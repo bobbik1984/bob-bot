@@ -150,10 +150,13 @@ try {
     assert.equal((await post('/api/chat', { text: 'run the test' })).status, 200)
     await waitEvent(e => e.type === 'step' && e.name === 'browser_navigate')
   })
-  await check('shell is removed; only BobBot browser tools are offered', () => {
+  await check('only BobBot tools are offered, and DSH keeps no shell or file tools of its own', () => {
     const names = requests[0].tools.map(t => t.name)
-    assert.ok(names.includes('mcp__bobbot__browser_click'), names.join())
-    assert.ok(!names.some(n => /bash|pwsh|shell|read_image|working_directory|read_file|write|edit/i.test(n)), names.join())
+    for (const tool of ['browser_click', 'list_files', 'read_file', 'write_file', 'run_command']) {
+      assert.ok(names.includes(`mcp__bobbot__${tool}`), `missing ${tool}: ${names.join()}`)
+    }
+    const native = names.filter(n => !n.startsWith('mcp__bobbot__'))
+    assert.ok(!native.some(n => /bash|pwsh|shell|read_image|working_directory|^read$|^write$|^edit$/i.test(n)), native.join())
   })
   await check('agent cannot open local addresses', async () => {
     for (let i = 0; i < 200 && requests.length < 2; i++) await sleep(100)
@@ -231,6 +234,130 @@ try {
     await injectPage('<h1>changed after close</h1>')
     await sleep(800)
     assert.equal(frames.length, before, 'frames kept arriving after close')
+  })
+
+  console.log('Conversations')
+  const getJson = async url => { const r = await fetch(`${base}${url}`, { headers: { cookie } }); return { status: r.status, body: await r.json() } }
+  const waitAfter = (t0, match) => waitEvent(e => e.at >= t0 && match(e))
+  const firstCid = events.find(e => e.type === 'message' && e.role === 'user' && e.text === 'run the test').cid
+  await check('the first chat is listed, titled by its first message', async () => {
+    const { body } = await getJson('/api/conversations')
+    assert.equal(body.items.find(c => c.id === firstCid)?.title, 'run the test')
+  })
+  await check('saved history drops approval screenshots but keeps the conversation', async () => {
+    const { body } = await getJson(`/api/conversations/${firstCid}`)
+    const ask = body.events.find(e => e.type === 'approval')
+    assert.ok(ask && !('screenshot' in ask), 'screenshot was saved')
+    assert.ok(body.events.some(e => e.type === 'message' && e.text === 'All finished.'))
+  })
+  await check('an unknown conversation is refused', async () => {
+    assert.equal((await post('/api/chat', { cid: 'nope', text: 'hi' })).status, 404)
+    assert.equal((await getJson('/api/conversations/nope')).status, 404)
+  })
+  let secondCid
+  await check('a second chat has its own history', async () => {
+    const t0 = Date.now()
+    const res = await post('/api/chat', { text: 'second chat' })
+    assert.equal(res.status, 200); secondCid = res.data.cid
+    assert.notEqual(secondCid, firstCid)
+    await waitAfter(t0, e => e.type === 'message' && e.role === 'assistant' && e.cid === secondCid)
+    const second = await getJson(`/api/conversations/${secondCid}`)
+    assert.deepEqual(second.body.events.filter(e => e.type === 'message').map(e => e.role), ['user', 'assistant'])
+    assert.ok(!(await getJson(`/api/conversations/${firstCid}`)).body.events.some(e => e.text === 'second chat'))
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle' && e.cid === secondCid)
+  })
+  await check('while Bob works in one chat, another chat is refused and the busy one cannot be deleted', async () => {
+    const t0 = Date.now()
+    script.push(use('browser_request_human', { reason: 'busy test' }), say('busy test finished'))
+    const busy = await post('/api/chat', { text: 'busy chat' })
+    assert.equal(busy.status, 200)
+    await waitAfter(t0, e => e.type === 'takeover' && e.cid === busy.data.cid)
+    assert.equal((await post('/api/chat', { cid: secondCid, text: 'interrupt' })).data.error, 'BUSY_OTHER')
+    assert.equal((await post('/api/conversations/delete', { id: busy.data.cid })).status, 409)
+    assert.equal((await post('/api/takeover/done')).status, 200)
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'busy test finished' && e.cid === busy.data.cid)
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle' && e.cid === busy.data.cid)
+  })
+  await check('an idle chat can be deleted, along with the saved model session', async () => {
+    assert.equal((await post('/api/conversations/delete', { id: secondCid })).status, 200)
+    assert.equal((await getJson(`/api/conversations/${secondCid}`)).status, 404)
+    assert.ok(!(await getJson('/api/conversations')).body.items.some(c => c.id === secondCid))
+    const sessions = path.join(data, 'dsh-home', 'sessions')
+    const left = fs.readdirSync(sessions).flatMap(group => fs.readdirSync(path.join(sessions, group))).filter(name => name === secondCid || name.startsWith(`${secondCid}-g`))
+    assert.deepEqual(left, [])
+  })
+
+  console.log('Server tools')
+  const answered = new Set(events.filter(e => e.type === 'approval').map(e => e.id)) // earlier approvals are already settled
+  const decide = async (allow, match = () => true) => {
+    const ask = await waitEvent(e => e.type === 'approval' && !answered.has(e.id) && match(e))
+    answered.add(ask.id)
+    assert.equal((await post('/api/approve', { id: ask.id, allow })).status, 200)
+    return ask
+  }
+  const outside = path.join(os.tmpdir(), `bobbot-outside-${Date.now()}.txt`)
+  fs.writeFileSync(outside, 'outside-content')
+  let toolCid
+  await check('files and commands work, and every risky step asks first', async () => {
+    const t0 = Date.now()
+    const approvalsBefore = events.filter(e => e.type === 'approval').length
+    script.push(
+      use('write_file', { path: 'note.txt', content: 'hello-bobbot' }),
+      use('read_file', { path: 'note.txt' }),
+      use('list_files', {}),
+      use('run_command', { command: 'echo rejected-run' }),
+      use('run_command', { command: 'echo cmd-ok' }),
+      use('read_file', { path: path.join(data, 'pin.json') }),
+      use('read_file', { path: outside }),
+      use('run_command', { command: 'sleep 5', timeout_seconds: 1 }),
+      say('tools done'),
+    )
+    const res = await post('/api/chat', { text: 'use the tools' })
+    assert.equal(res.status, 200); toolCid = res.data.cid
+    const write = await decide(true)
+    assert.equal(write.kind, 'write'); assert.ok(write.target.endsWith('note.txt')); assert.match(write.detail, /hello-bobbot/)
+    const rejected = await decide(false)
+    assert.equal(rejected.kind, 'command'); assert.equal(rejected.detail, 'echo rejected-run'); assert.ok(!rejected.screenshot)
+    const ran = await decide(true)
+    assert.equal(ran.detail, 'echo cmd-ok')
+    const read = await decide(true)
+    assert.equal(read.kind, 'read'); assert.equal(read.target, fs.realpathSync(outside))
+    await decide(true, e => e.kind === 'command')
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'tools done')
+    const asked = events.filter(e => e.type === 'approval').length - approvalsBefore
+    assert.equal(asked, 5, 'reading and listing the workspace, and the blocked read, must not ask')
+    assert.equal(fs.readFileSync(path.join(data, 'workspace', 'note.txt'), 'utf8'), 'hello-bobbot')
+    const seen = JSON.stringify(requests.at(-1).messages)
+    for (const expected of ['hello-bobbot', 'note.txt', 'did not approve', 'cmd-ok', 'holds BobBot or system credentials', 'outside-content', 'timed out after 1s']) {
+      assert.ok(seen.includes(expected), `the model never saw "${expected}"`)
+    }
+    assert.ok(!seen.includes('rejected-run\\n'), 'the rejected command ran anyway')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle' && e.cid === toolCid)
+  })
+  await check('commands run without the server keys in their environment', async () => {
+    const t0 = Date.now()
+    script.push(use('run_command', { command: 'env' }), say('env done'))
+    assert.equal((await post('/api/chat', { cid: toolCid, text: 'show env' })).status, 200)
+    await decide(true, e => e.kind === 'command' && e.detail === 'env')
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'env done')
+    const seen = JSON.stringify(requests.at(-1).messages)
+    assert.ok(!seen.includes('test-key') && !seen.includes('DEEPSEEK_API_KEY'), 'a key leaked into the command environment')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle' && e.cid === toolCid)
+  })
+  await check('a chat keeps its memory after the agent restarts', async () => {
+    const first = Date.now()
+    const res = await post('/api/chat', { text: 'remember-marker-42' })
+    const cid = res.data.cid
+    await waitAfter(first, e => e.type === 'message' && e.role === 'assistant' && e.cid === cid)
+    await waitAfter(first, e => e.type === 'status' && e.status === 'idle' && e.cid === cid)
+    assert.equal((await post('/api/model', { kind: 'deepseek', model: 'deepseek-flash' })).status, 200) // restarts the agent
+    const before = requests.length
+    const second = Date.now()
+    assert.equal((await post('/api/chat', { cid, text: 'what did I say?' })).status, 200)
+    for (let i = 0; i < 600 && requests.length === before; i++) await sleep(100)
+    assert.ok(requests.length > before, 'model was not called')
+    assert.ok(JSON.stringify(requests.at(-1).messages).includes('remember-marker-42'), 'the earlier message was forgotten')
+    await waitAfter(second, e => e.type === 'status' && e.status === 'idle' && e.cid === cid)
   })
 
   console.log('Model settings')

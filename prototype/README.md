@@ -30,6 +30,31 @@ Do not expose plain HTTP to the internet, because the PIN and session cookie wou
 
 A 4-digit PIN is weak on its own. Five wrong tries lock login for 15 minutes, and the lock doubles each time up to 24 hours. Anyone who repeatedly enters wrong PINs can also lock you out, and `set-pin` clears that.
 
+## Chats and history
+
+The menu button at the top left opens the history panel: a list of chats, a "New chat" button, and swipe left on a chat to reveal the red cross that deletes it. Deleting also removes the model's saved copy of that chat.
+
+Each chat is its own conversation with its own context. Bob works in one chat at a time, because every chat shares the same browser and server, so a message to another chat while Bob is busy is refused until it finishes. The pending approvals and browser requests of every chat appear together in the Pending tab.
+
+After the server or agent restarts, the first message in an old chat gets the earlier text of that chat as context. Earlier tool results and attached file contents are not replayed.
+
+The page is light-only for now, and the orb in the header shows what Bob is doing: napping, thinking or replying.
+
+## Server tools and approvals
+
+Besides the browser, Bob can work on the machine it runs on: `list_files`, `read_file`, `write_file` and `run_command`. DSH's own shell and file tools stay switched off, so everything goes through BobBot's approval rules:
+
+| Action | Approval |
+| --- | --- |
+| Read or list files inside Bob's workspace folder (`data/workspace`) | No |
+| Read or list anywhere else | Yes, with the path shown |
+| Write a file | Always, with a preview |
+| Run a command | Always, with the exact command and the folder it runs in |
+
+Commands run as the user who started BobBot, with API keys and tokens removed from their environment, and stop after 60 seconds unless Bob asks for longer (up to 300). BobBot's own data (keys, PIN, browser profile) and `~/.ssh`, `~/.gnupg` and the sudoers files cannot be read or written through the file tools at all.
+
+Read each command before you allow it. A command can do anything its user can do, and the file block does not apply to commands. If that user has passwordless `sudo`, an approved command can act as root, and text from a web page or a file could try to talk Bob into asking for something harmful.
+
 ## Models and keys
 
 Settings shows whether a key is saved (as `sk-••••1234`, never the full key) and lets you replace it. The model dropdown lists the DeepSeek models your key can use.
@@ -59,14 +84,16 @@ PDF, Word, Excel and images are not supported yet. For a spreadsheet, export it 
 
 - `server.mjs` serves the web app and the browser tools, and enforces the approvals.
 - `agent.mjs` runs `dsh --profile sdk-minimal` over stdio, so DSH opens no port. It also tracks spending.
-- `dsh.patch.yml` removes DSH's shell, so the agent can act only through the browser tools.
+- `dsh.patch.yml` removes DSH's own shell and file tools, so the agent can act only through BobBot's tools.
+- `host-tools.mjs` does the file and command work and refuses the protected folders.
 - `browser.mjs` drives Chromium and streams it to the phone.
 - `prices.json` holds DeepSeek prices copied from model-registry, in CNY per 1M tokens.
 
 ## Known limits
 
 - Replies appear one step at a time, not word by word.
-- The agent's memory of the conversation resets when the server restarts. The visible chat history stays.
+- Only one chat can be worked on at a time.
+- A chat's saved history keeps the last 400 events, and approval screenshots are not saved.
 - The API key is saved as a private plain-text file in `data/`, and anyone with server access can read it and the browser profile.
 - Approval uses button-text rules, so an unusually labelled button can get through.
 - QR login needs a second device, and passkeys do not work remotely.

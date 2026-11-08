@@ -1,4 +1,4 @@
-// BobBot test prototype: PIN login, chat over DSH, and a shared cloud browser with phone takeover.
+// BobBot test prototype: PIN login, chats over DSH, a shared cloud browser with phone takeover, and gated server tools.
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
@@ -8,16 +8,20 @@ import { WebSocketServer } from 'ws'
 import { Agent, Budget, DEFAULT_MODEL, registryPrices } from './agent.mjs'
 import { DATA_DIR, hasPin, issueSession, login, validSession } from './auth.mjs'
 import { assertPublicUrl, CloudBrowser } from './browser.mjs'
+import { createHostTools, MAX_COMMAND_SECONDS } from './host-tools.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const HOST = process.env.HOST || '127.0.0.1'
 const PORT = Number(process.env.PORT || 8787)
 const KEY_FILE = path.join(DATA_DIR, 'secrets.json')
-const HISTORY_FILE = path.join(DATA_DIR, 'history.json')
+const OLD_HISTORY_FILE = path.join(DATA_DIR, 'history.json')
+const CONV_INDEX = path.join(DATA_DIR, 'conversations.json')
+const CONV_DIR = path.join(DATA_DIR, 'conversations')
 const MODEL_FILE = path.join(DATA_DIR, 'model.json')
 const MAX_FILES = 5
 const MAX_FILE_CHARS = 200_000
 const MAX_TOTAL_CHARS = 500_000
+const MAX_EVENTS_PER_CHAT = 400
 const HUMAN_TIMEOUT_MS = 15 * 60 * 1000
 const APPROVAL_TIMEOUT_MS = 10 * 60 * 1000
 const RISKY = /支付|付款|购买|下单|结算|删除|发送|发布|提交|转账|\b(pay|buy|purchase|checkout|order|delete|remove|send|post|publish|submit|transfer|tweet)\b/i
@@ -25,26 +29,85 @@ const RISKY = /支付|付款|购买|下单|结算|删除|发送|发布|提交|�
 const browser = new CloudBrowser(DATA_DIR)
 const agent = new Agent(DATA_DIR)
 const budget = new Budget(DATA_DIR)
+const host = createHostTools(DATA_DIR)
 const mcpToken = crypto.randomBytes(32).toString('hex')
 let mcpUrl = ''
 
+const readJson = (file, fallback) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return fallback } }
+
+// ---- conversations ----
+// Each conversation is one DSH session, so it keeps its own context. Only one conversation works at a time
+// because they all share one browser and one machine.
+fs.mkdirSync(CONV_DIR, { recursive: true })
+const newId = () => `c${crypto.randomBytes(6).toString('hex')}`
+const histories = new Map()
+const histFile = id => path.join(CONV_DIR, `${id}.json`)
+const stripShot = ({ screenshot, ...rest }) => rest // approval screenshots are large and only matter while pending
+
+let convs = readJson(CONV_INDEX, null)
+if (convs === null) {
+  convs = []
+  const old = readJson(OLD_HISTORY_FILE, []) // one-time import of the first prototype's single chat
+  if (old.length) {
+    const id = newId()
+    const first = old.find(e => e.type === 'message' && e.role === 'user')
+    convs.push({ id, title: (first?.text ?? 'Earlier chat').split('\n')[0].slice(0, 40), createdAt: old[0].at, updatedAt: old.at(-1).at })
+    histories.set(id, old.map(e => stripShot({ ...e, cid: id })).slice(-MAX_EVENTS_PER_CHAT))
+    fs.writeFileSync(histFile(id), JSON.stringify(histories.get(id)))
+  }
+  fs.writeFileSync(CONV_INDEX, JSON.stringify(convs))
+}
+const saveConvs = () => fs.writeFile(CONV_INDEX, JSON.stringify(convs), () => {})
+const convOf = id => convs.find(c => c.id === id)
+function historyOf(id) {
+  if (!histories.has(id)) histories.set(id, readJson(histFile(id), []))
+  return histories.get(id)
+}
+function createConversation(title = '') {
+  const now = Date.now()
+  const conv = { id: newId(), title, createdAt: now, updatedAt: now }
+  convs.push(conv)
+  historyOf(conv.id)
+  saveConvs()
+  return conv
+}
+function deleteConversation(id) {
+  convs = convs.filter(c => c.id !== id)
+  histories.delete(id)
+  fs.rmSync(histFile(id), { force: true })
+  agent.forget(id)
+  saveConvs()
+}
+const listConversations = () => [...convs].sort((a, b) => b.updatedAt - a.updatedAt).map(({ id, title, updatedAt }) => ({ id, title, updatedAt }))
+
+let runningCid = null // the conversation Bob is working in right now
+let lastPromptCid = null
+
 // ---- event feed ----
 const clients = new Set()
-let history = []
-try { history = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8')) } catch { /* first run */ }
+const pending = new Map() // approvals and takeovers waiting for the owner, in every conversation
 
-function push(event, keep = true) {
-  const payload = { ...event, at: Date.now() }
-  if (keep) {
-    history.push(payload)
-    history = history.slice(-400)
-    fs.writeFile(HISTORY_FILE, JSON.stringify(history), () => {})
-  }
+function broadcast(payload) {
   const line = `data: ${JSON.stringify(payload)}\n\n`
   for (const res of clients) res.write(line)
 }
 
-const publishBudget = () => push({ type: 'budget', ...budget.status() }, false)
+function push(event, keep = true, cid = runningCid ?? lastPromptCid) {
+  const payload = { ...event, cid, at: Date.now() }
+  if (keep && cid && convOf(cid)) {
+    const list = historyOf(cid)
+    list.push(stripShot(payload))
+    if (list.length > MAX_EVENTS_PER_CHAT) list.splice(0, list.length - MAX_EVENTS_PER_CHAT)
+    fs.writeFile(histFile(cid), JSON.stringify(list), () => {})
+    convOf(cid).updatedAt = payload.at
+    saveConvs()
+    if (event.type === 'message') broadcast({ type: 'conversations' })
+  }
+  broadcast(payload)
+  return payload
+}
+
+const publishBudget = () => push({ type: 'budget', ...budget.status() }, false, null)
 
 // ---- shared-control gates ----
 const approvals = new Map()
@@ -62,14 +125,17 @@ function waitForHuman() {
   })
 }
 
-async function requireApproval(summary) {
+/** Shows the owner an approval card and waits. `kind` is click, type, command, read, list or write. */
+async function requireApproval({ kind, summary, target = '', detail = '', screenshot = false }) {
   const id = crypto.randomUUID()
-  const screenshot = await browser.screenshot().catch(() => null)
-  push({ type: 'approval', id, summary, screenshot })
+  const shot = screenshot ? await browser.screenshot().catch(() => null) : null
+  const payload = push({ type: 'approval', id, kind, summary, target, detail: detail.slice(0, 2000), screenshot: shot })
+  pending.set(id, payload)
   const allowed = await new Promise(resolve => {
     const timer = setTimeout(() => { approvals.delete(id); resolve(false) }, APPROVAL_TIMEOUT_MS)
     approvals.set(id, value => { clearTimeout(timer); approvals.delete(id); resolve(value) })
   })
+  pending.delete(id)
   push({ type: 'approval_done', id, allowed })
   if (!allowed) throw new Error(`The user did not approve this action: ${summary}`)
 }
@@ -83,6 +149,10 @@ const TOOLS = [
   ['browser_type', 'Replace the text in a numbered field.', { ...idSchema, text: { type: 'string' }, press_enter: { type: 'boolean' } }, ['element_id', 'text']],
   ['browser_scroll', 'Scroll one screen and return a new snapshot.', { direction: { type: 'string', enum: ['up', 'down'] } }, ['direction']],
   ['browser_request_human', 'Pause and ask the user to complete a login, captcha, QR code or 2FA in the browser window.', { reason: { type: 'string' }, action_type: { type: 'string', enum: ['login', 'captcha', 'qr', 'confirm'] } }, ['reason']],
+  ['list_files', 'List a folder on the server. Relative paths start in your workspace folder, which needs no approval; other folders ask the user first.', { path: { type: 'string' } }, []],
+  ['read_file', 'Read a text file on the server. Relative paths start in your workspace folder, which needs no approval; other files ask the user first.', { path: { type: 'string' }, max_chars: { type: 'integer' } }, ['path']],
+  ['write_file', 'Write a text file on the server. Always asks the user first.', { path: { type: 'string' }, content: { type: 'string' }, append: { type: 'boolean' } }, ['path', 'content']],
+  ['run_command', 'Run a shell command on the server and return its output. Always asks the user first. Runs in your workspace folder unless cwd is given.', { command: { type: 'string' }, cwd: { type: 'string' }, timeout_seconds: { type: 'integer', description: `Up to ${MAX_COMMAND_SECONDS}` } }, ['command']],
 ].map(([name, description, properties, required]) => ({ name, description, inputSchema: { type: 'object', properties, required } }))
 
 async function element(id) {
@@ -91,8 +161,39 @@ async function element(id) {
   return info
 }
 
+const BLOCKED = 'That location holds BobBot or system credentials, so it is blocked.'
+
+/** File and command tools. Returns the text for the model. */
+async function hostTool(name, args) {
+  if (name === 'run_command') {
+    const command = String(args.command ?? '')
+    if (!command.trim()) throw new Error('No command given.')
+    let cwd = host.workspace
+    if (args.cwd !== undefined) {
+      const where = host.classify(args.cwd)
+      if (where.blocked) throw new Error(BLOCKED)
+      cwd = where.path
+    }
+    await requireApproval({ kind: 'command', summary: 'Run a command', target: cwd, detail: command })
+    return host.runCommand(command, { cwd, timeoutSeconds: args.timeout_seconds })
+  }
+  const where = host.classify(args.path ?? '.')
+  if (where.blocked) throw new Error(BLOCKED)
+  if (name === 'write_file') {
+    const content = String(args.content ?? '')
+    await requireApproval({ kind: 'write', summary: `Write file ${where.path}`, target: where.path, detail: `${args.append ? 'Append' : 'Overwrite'}, ${content.length} characters:\n${content.slice(0, 1500)}` })
+    return host.writeFile(where.path, content, Boolean(args.append))
+  }
+  const kind = name === 'read_file' ? 'read' : 'list'
+  if (!where.inWorkspace) await requireApproval({ kind, summary: `${kind === 'read' ? 'Read file' : 'List folder'} ${where.path}`, target: where.path })
+  try { return kind === 'read' ? host.readFile(where.path, args.max_chars) : host.listFiles(where.path) } catch (error) {
+    throw new Error(error.code === 'ENOENT' ? `Not found: ${where.path}` : error.message)
+  }
+}
+
 async function callTool(name, args) {
   if (budget.status().exceeded) throw new Error('The monthly spending limit has been reached. Stop and tell the user.')
+  if (['list_files', 'read_file', 'write_file', 'run_command'].includes(name)) return hostTool(name, args)
   await waitForHuman()
   switch (name) {
     case 'browser_navigate':
@@ -102,14 +203,18 @@ async function callTool(name, args) {
       break
     case 'browser_click': {
       const info = await element(args.element_id)
-      if (RISKY.test(info.text) || (info.type === 'submit' && !info.search)) await requireApproval(`Click "${info.text || info.tag}"`)
+      if (RISKY.test(info.text) || (info.type === 'submit' && !info.search)) {
+        await requireApproval({ kind: 'click', summary: `Click "${info.text || info.tag}"`, screenshot: true })
+      }
       await waitForHuman()
       await browser.click(args.element_id)
       break
     }
     case 'browser_type': {
       const info = await element(args.element_id)
-      if (args.press_enter && !info.search) await requireApproval(`Enter "${String(args.text).slice(0, 80)}" and press Enter`)
+      if (args.press_enter && !info.search) {
+        await requireApproval({ kind: 'type', summary: `Enter "${String(args.text).slice(0, 80)}" and press Enter`, screenshot: true })
+      }
       await waitForHuman()
       await browser.type(args.element_id, String(args.text), Boolean(args.press_enter))
       break
@@ -119,11 +224,11 @@ async function callTool(name, args) {
       break
     case 'browser_request_human': {
       const id = crypto.randomUUID()
-      push({ type: 'takeover', id, reason: String(args.reason) })
+      pending.set(id, push({ type: 'takeover', id, reason: String(args.reason) }))
       await new Promise((resolve, reject) => {
         const timer = setTimeout(() => { takeover = null; reject(new Error('The user did not respond in time.')) }, HUMAN_TIMEOUT_MS)
         takeover = { id, finish: () => { clearTimeout(timer); takeover = null; resolve() } }
-      })
+      }).finally(() => pending.delete(id))
       push({ type: 'takeover_done', id })
       await waitForHuman()
       break
@@ -141,7 +246,7 @@ async function handleMcp(req, res) {
   if (msg.id === undefined) { res.writeHead(202).end(); return }
   const reply = result => send(res, 200, { jsonrpc: '2.0', id: msg.id, result })
   if (msg.method === 'initialize') {
-    return reply({ protocolVersion: msg.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: 'bobbot-browser', version: '0.0.1' } })
+    return reply({ protocolVersion: msg.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: 'bobbot-tools', version: '0.0.1' } })
   }
   if (msg.method === 'ping') return reply({})
   if (msg.method === 'tools/list') return reply({ tools: TOOLS })
@@ -158,37 +263,46 @@ async function handleMcp(req, res) {
 }
 
 // ---- agent wiring ----
-agent.on('text', text => push({ type: 'message', role: 'assistant', text }))
-agent.on('status', status => push({ type: 'status', status }, false))
-agent.on('exit', code => push({ type: 'error', text: `Agent stopped unexpectedly (${code}). Send a message to restart it.` }))
-agent.on('usage', (model, usage) => {
+agent.on('text', (cid, text) => { if (convOf(cid)) push({ type: 'message', role: 'assistant', text }, true, cid) })
+agent.on('status', (cid, status) => {
+  if (!convOf(cid)) return // sub-sessions and deleted chats
+  if (status === 'running') runningCid = cid
+  else if (runningCid === cid) runningCid = null
+  push({ type: 'status', status }, false, cid)
+})
+agent.on('exit', code => {
+  const cid = runningCid ?? lastPromptCid
+  runningCid = null
+  if (cid && convOf(cid)) push({ type: 'error', text: `Agent stopped unexpectedly (${code}). Send a message to restart it.` }, true, cid)
+  if (cid) push({ type: 'status', status: 'idle' }, false, cid)
+})
+agent.on('usage', (cid, model, usage) => {
   const status = budget.record(model, usage, priceOf(modelConfig()))
   publishBudget()
   if (status.near && !status.warned) {
     budget.markWarned()
-    push({ type: 'notice', code: 'BUDGET_NEAR' })
+    push({ type: 'notice', code: 'BUDGET_NEAR' }, true, cid)
   }
   if (status.exceeded) {
     agent.stop()
-    push({ type: 'notice', code: 'BUDGET_EXCEEDED' })
-    push({ type: 'status', status: 'idle' }, false)
+    runningCid = null
+    push({ type: 'notice', code: 'BUDGET_EXCEEDED' }, true, cid)
+    push({ type: 'status', status: 'idle' }, false, cid)
   }
 })
 
 // ---- model settings ----
 // 'deepseek' uses DeepSeek's own endpoint. 'custom' is any Anthropic Messages-compatible endpoint the owner enters.
 function modelConfig() {
-  try {
-    const saved = JSON.parse(fs.readFileSync(MODEL_FILE, 'utf8'))
-    if (saved.kind === 'custom' || saved.kind === 'deepseek') return saved
-  } catch { /* none saved yet */ }
+  const saved = readJson(MODEL_FILE, null)
+  if (saved?.kind === 'custom' || saved?.kind === 'deepseek') return saved
   return { kind: 'deepseek', model: DEFAULT_MODEL }
 }
 const priceOf = cfg => cfg.kind === 'custom'
   ? { input: cfg.inputUsd, output: cfg.outputUsd, currency: 'USD' }
   : registryPrices[cfg.model]
 
-function readKeys() { try { return JSON.parse(fs.readFileSync(KEY_FILE, 'utf8')) } catch { return {} } }
+const readKeys = () => readJson(KEY_FILE, {})
 function writeKey(kind, key) {
   fs.writeFileSync(KEY_FILE, JSON.stringify({ ...readKeys(), [kind]: key }), { mode: 0o600 })
 }
@@ -282,6 +396,24 @@ function sessionCookie(req, value, maxAge) {
   return `bb_session=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure}`
 }
 
+/** The chat's earlier text, for the first prompt of a new DSH run (see Agent.isFresh). */
+function priorContext(cid) {
+  const kept = []
+  let total = 0
+  for (const m of historyOf(cid).filter(e => e.type === 'message').reverse()) {
+    const attached = m.files?.length ? ` [attached: ${m.files.map(f => f.name).join(', ')}]` : ''
+    const line = `${m.role === 'user' ? 'User' : 'Bob'}: ${String(m.text ?? '').slice(0, 2000)}${attached}`
+    total += line.length
+    if (total > 12000) break
+    kept.unshift(line)
+  }
+  if (!kept.length) return ''
+  const header = '[Earlier messages in this chat, shown for context only. Tool results and attached file contents are not included.]'
+  return [header, ...kept, '[End of earlier messages.]', '', ''].join('\n')
+}
+
+const titleFrom = (text, files) => (text || files[0]?.name || '').split('\n')[0].trim().slice(0, 40)
+
 async function route(req, res) {
   const { pathname } = new URL(req.url, 'http://local')
   if (req.method === 'GET' && pathname === '/') {
@@ -309,28 +441,63 @@ async function route(req, res) {
   }
   if (req.method === 'GET' && pathname === '/api/events') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no' })
-    res.write(`data: ${JSON.stringify({ type: 'hello', history, budget: budget.status(), busy: agent.running && busyNow })}\n\n`)
+    res.write(`data: ${JSON.stringify({ type: 'hello', budget: budget.status(), running: runningCid, pending: [...pending.values()] })}\n\n`)
     clients.add(res)
     req.on('close', () => clients.delete(res))
     return undefined
   }
+  if (req.method === 'GET' && pathname === '/api/conversations') {
+    return send(res, 200, { items: listConversations(), running: runningCid })
+  }
+  if (req.method === 'GET' && pathname.startsWith('/api/conversations/')) {
+    const id = decodeURIComponent(pathname.slice('/api/conversations/'.length))
+    if (!convOf(id)) return send(res, 404, { error: 'NO_CONVERSATION' })
+    return send(res, 200, { id, events: historyOf(id) })
+  }
   if (req.method !== 'POST') return send(res, 404, { error: 'NOT_FOUND' })
   const body = JSON.parse(await readBody(req, pathname === '/api/chat' ? 2 * 1024 * 1024 : undefined) || '{}')
   switch (pathname) {
+    case '/api/conversations': {
+      const conv = createConversation()
+      broadcast({ type: 'conversations' })
+      return send(res, 200, { id: conv.id })
+    }
+    case '/api/conversations/delete': {
+      const id = String(body.id ?? '')
+      if (!convOf(id)) return send(res, 404, { error: 'NO_CONVERSATION' })
+      if (id === runningCid) return send(res, 409, { error: 'RUNNING' })
+      deleteConversation(id)
+      broadcast({ type: 'conversations' })
+      return send(res, 200, { ok: true })
+    }
     case '/api/chat': {
       const text = String(body.text ?? '').trim()
       let files
       try { files = checkFiles(body.files) } catch (error) { return send(res, error.status ?? 400, { error: error.message }) }
       if (!text && !files.length) return send(res, 400, { error: 'EMPTY' })
+      if (body.cid !== undefined && body.cid !== null && !convOf(body.cid)) return send(res, 404, { error: 'NO_CONVERSATION' })
       const cfg = modelConfig()
       const apiKey = loadKey(cfg.kind)
       if (!apiKey) return send(res, 400, { error: 'NO_KEY' })
       if (!priceOf(cfg)) return send(res, 400, { error: 'NO_PRICE' })
       if (budget.status().exceeded) return send(res, 402, { error: 'BUDGET_EXCEEDED' })
-      push({ type: 'message', role: 'user', text, files: files.map(f => ({ name: f.name, chars: f.text.length })) })
-      await agent.ensure({ apiKey, mcpUrl, mcpToken, model: cfg.model, baseUrl: cfg.kind === 'custom' ? cfg.baseUrl : undefined })
-      await agent.prompt(promptWithFiles(text || '(see the attached files)', files))
-      return send(res, 200, { ok: true })
+      const cid = body.cid ?? createConversation().id
+      if (runningCid && runningCid !== cid) return send(res, 409, { error: 'BUSY_OTHER' })
+      const conv = convOf(cid)
+      if (!conv.title) conv.title = titleFrom(text, files)
+      lastPromptCid = cid
+      runningCid = cid
+      const prior = priorContext(cid)
+      push({ type: 'message', role: 'user', text, files: files.map(f => ({ name: f.name, chars: f.text.length })) }, true, cid)
+      try {
+        await agent.ensure({ apiKey, mcpUrl, mcpToken, model: cfg.model, baseUrl: cfg.kind === 'custom' ? cfg.baseUrl : undefined })
+        const context = agent.isFresh(cid) ? prior : ''
+        await agent.prompt(cid, context + promptWithFiles(text || '(see the attached files)', files))
+      } catch (error) {
+        if (runningCid === cid) runningCid = null
+        throw error
+      }
+      return send(res, 200, { ok: true, cid })
     }
     case '/api/key': {
       const key = String(body.key ?? '').trim()
@@ -339,6 +506,7 @@ async function route(req, res) {
       writeKey('deepseek', key)
       modelListCache = { at: 0, ids: null }
       agent.stop()
+      runningCid = null
       return send(res, 200, { ok: true })
     }
     case '/api/models':
@@ -367,6 +535,7 @@ async function route(req, res) {
       fs.writeFileSync(MODEL_FILE, JSON.stringify(cfg))
       modelListCache = { at: 0, ids: null }
       agent.stop()
+      runningCid = null
       return send(res, 200, { ok: true, model: publicModel(cfg), hasKey: Boolean(loadKey(kind)), keyHint: keyHint(kind) })
     }
     case '/api/budget': {
@@ -389,9 +558,6 @@ async function route(req, res) {
       return send(res, 404, { error: 'NOT_FOUND' })
   }
 }
-
-let busyNow = false
-agent.on('status', status => { busyNow = status === 'running' })
 
 const server = http.createServer((req, res) => {
   route(req, res).catch(error => {

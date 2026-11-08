@@ -3,44 +3,64 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
 <meta name="theme-color" content="#f4f6fb">
 <title>Bob</title>
 <style>
 :root {
+  color-scheme: light;
   --bg:#f4f6fb; --surface:#ffffff; --surface-2:#eef1f7; --text:#1b2230; --muted:#6c778a; --line:#e3e8f1;
   --accent:#2f6bff; --accent-text:#ffffff; --accent-soft:#e4edff; --accent-ink:#2457d6; --bubble-user:#dbe8ff;
   --danger:#d64545; --danger-soft:#fdeceb; --ok:#1f9d6b; --ok-soft:#e3f6ee; --warn:#b7791f; --warn-soft:#fff3dc;
   --shadow:0 6px 24px rgba(30,50,110,.08); --shade:rgba(15,23,42,.45); --stage:#0b0f1a;
 }
-@media (prefers-color-scheme: dark) { :root {
-  --bg:#0f131c; --surface:#181d29; --surface-2:#212836; --text:#e8ecf4; --muted:#98a3b8; --line:#2a3243;
-  --accent:#5b8cff; --accent-text:#0b1020; --accent-soft:#1d2a4a; --accent-ink:#9db9ff; --bubble-user:#23365e;
-  --danger:#ff7b7b; --danger-soft:#3a2226; --ok:#4cc38f; --ok-soft:#173326; --warn:#e3b455; --warn-soft:#3a2f1a;
-  --shadow:0 6px 24px rgba(0,0,0,.35); --shade:rgba(0,0,0,.6); --stage:#000;
-} }
 * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 html, body { height:100%; margin:0; }
 body { background:var(--bg); color:var(--text); font:16px/1.55 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
-button, input { font:inherit; color:inherit; }
+button, input, select { font:inherit; color:inherit; }
 button { cursor:pointer; border:0; background:none; padding:0; }
-button:focus-visible, input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 svg { width:1.25em; height:1.25em; flex:none; }
 [hidden] { display:none !important; }
 
-.btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:44px; padding:0 18px; border-radius:14px; background:var(--surface-2); font-weight:600; }
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:44px; padding:0 18px; border-radius:14px; background:var(--surface-2); font-weight:600; }
 .btn.primary { background:var(--accent); color:var(--accent-text); }
 .btn.danger { background:var(--danger-soft); color:var(--danger); }
 .btn.block { width:100%; }
 .icon-btn { width:40px; height:40px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; color:var(--muted); }
 .icon-btn:active, .btn:active { transform:scale(.97); }
 .field { width:100%; min-width:0; min-height:44px; padding:0 14px; border-radius:14px; border:1px solid var(--line); background:var(--surface); }
-.avatar { width:30px; height:30px; flex:none; color:var(--accent); }
-.avatar svg { width:100%; height:100%; }
-.avatar.big { width:84px; height:84px; }
+
+/* the Bob orb: napping, thinking, speaking */
+.orb { --s:28px; position:relative; width:var(--s); height:var(--s); flex:none; display:inline-block; }
+.orb.big { --s:84px; }
+.orb i { position:absolute; inset:0; border-radius:50%; pointer-events:none; }
+.orb .core { background:radial-gradient(circle at 34% 28%, #a9c1ff, var(--accent) 60%, #2349b8); box-shadow:0 2px 10px rgba(47,107,255,.35); }
+.orb .ring { inset:-4px; opacity:0; background:conic-gradient(from 0deg, transparent 0 50%, var(--accent) 100%);
+  -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px)); mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px)); }
+.orb .wave { border:2px solid var(--accent); opacity:0; }
+.orb[data-state=nap] .core { animation:nap 5s ease-in-out infinite; filter:saturate(.5) brightness(1.1); }
+.orb[data-state=think] .core { animation:think 1.4s ease-in-out infinite; }
+.orb[data-state=think] .ring { opacity:1; animation:spin 1.1s linear infinite; }
+.orb[data-state=speak] .core { animation:talk .9s ease-in-out infinite; }
+.orb[data-state=speak] .wave { animation:ripple 1.5s ease-out infinite; }
+.orb[data-state=speak] .wave.w2 { animation-delay:.55s; }
+.orb.static .core { animation:none !important; filter:none; box-shadow:none; }
+@keyframes nap { 0%,100% { transform:scale(.88); opacity:.75; } 50% { transform:scale(1); opacity:1; } }
+@keyframes think { 0%,100% { transform:scale(.92); } 50% { transform:scale(1.04); } }
+@keyframes talk { 0%,100% { transform:scale(1); } 25% { transform:scale(1.08); } 50% { transform:scale(.95); } 75% { transform:scale(1.05); } }
+@keyframes ripple { 0% { transform:scale(1); opacity:.55; } 100% { transform:scale(1.9); opacity:0; } }
+@keyframes spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .orb i { animation:none !important; }
+  .orb[data-state=think] .ring { opacity:.9; }
+  .orb[data-state=speak] .wave { opacity:.4; transform:scale(1.35); }
+  .typing i { animation:none !important; opacity:.7 !important; }
+}
 
 /* login */
 #login { height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:16px; }
-#login h1 { margin:0; font-size:28px; letter-spacing:.2px; }
+#login h1 { margin:6px 0 0; font-size:28px; letter-spacing:.2px; }
 #login .sub { margin:0; color:var(--muted); font-size:14px; }
 .dots { display:flex; gap:16px; margin-top:10px; }
 .dots i { width:14px; height:14px; border-radius:50%; border:2px solid var(--line); background:var(--surface); transition:background .12s, border-color .12s; }
@@ -52,42 +72,41 @@ svg { width:1.25em; height:1.25em; flex:none; }
 .pad .ghost { background:transparent; box-shadow:none; border-color:transparent; font-size:15px; color:var(--muted); }
 
 /* app shell */
-#app { height:100%; height:100dvh; display:flex; flex-direction:column; max-width:720px; margin:0 auto; background:var(--bg); }
-header { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:8px; padding:calc(8px + env(safe-area-inset-top)) 14px 8px; }
-header .title { text-align:center; line-height:1.2; }
-header .title b { display:block; font-size:18px; }
-header .title small { display:block; font-size:12px; color:var(--muted); min-height:16px; }
+#app { height:100%; height:100dvh; display:flex; flex-direction:column; max-width:720px; margin:0 auto; background:var(--bg); position:relative; overflow:hidden; }
+header { display:grid; grid-template-columns:48px 1fr 48px; align-items:center; padding:calc(8px + env(safe-area-inset-top)) 8px 8px; }
+header .title { display:flex; align-items:center; justify-content:center; gap:10px; min-width:0; }
+header .ttext { line-height:1.2; min-width:0; }
+header .ttext b { display:block; font-size:18px; }
+header .ttext small { display:block; font-size:12px; color:var(--muted); min-height:16px; }
 header .right { justify-self:end; }
-.pill { justify-self:start; font-size:12px; color:var(--accent-ink); background:var(--accent-soft); border-radius:999px; padding:4px 10px; white-space:nowrap; }
-.pill.warn { color:var(--warn); background:var(--warn-soft); }
-.pill.over { color:var(--danger); background:var(--danger-soft); }
 main { flex:1; min-height:0; position:relative; }
 .view { position:absolute; inset:0; overflow-y:auto; scrollbar-gutter:stable; padding:6px 14px 14px; }
 
 /* chat */
 #welcome { display:flex; flex-direction:column; align-items:center; gap:4px; padding:28px 0 8px; text-align:center; }
-#welcome b { font-size:20px; margin-top:6px; }
-#welcome span { color:var(--muted); font-size:14px; }
+#welcome b { font-size:20px; margin-top:14px; }
+#welcome span.s { color:var(--muted); font-size:14px; }
 .chips { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:14px; }
 .chip-btn { padding:9px 14px; border-radius:999px; background:var(--surface); border:1px solid var(--line); font-size:14px; box-shadow:var(--shadow); }
 #feed { display:flex; flex-direction:column; gap:10px; }
 .bubble-row { display:flex; gap:8px; align-items:flex-end; }
 .bubble-row.user { justify-content:flex-end; }
-.bubble-row .spacer { width:30px; flex:none; }
+.bubble-row .spacer { width:28px; flex:none; }
 .msg { max-width:84%; padding:10px 14px; border-radius:20px; white-space:pre-wrap; overflow-wrap:anywhere; background:var(--surface); border:1px solid var(--line); border-bottom-left-radius:6px; }
 .bubble-row.user .msg { background:var(--bubble-user); border-color:transparent; border-bottom-left-radius:20px; border-bottom-right-radius:6px; }
 .typing { display:flex; gap:5px; padding:14px 16px; }
 .typing i { width:7px; height:7px; border-radius:50%; background:var(--muted); opacity:.45; animation:blink 1.2s infinite; }
 .typing i:nth-child(2) { animation-delay:.2s; } .typing i:nth-child(3) { animation-delay:.4s; }
 @keyframes blink { 40% { opacity:1; transform:translateY(-2px); } }
-@media (prefers-reduced-motion: reduce) { .typing i { animation:none; opacity:.7; } }
-.steps { margin-left:38px; font-size:13px; color:var(--muted); background:var(--surface-2); border-radius:14px; padding:2px 12px; max-width:84%; }
+.steps { margin-left:36px; font-size:13px; color:var(--muted); background:var(--surface-2); border-radius:14px; padding:2px 12px; max-width:84%; }
 .steps summary { cursor:pointer; padding:8px 0; list-style:none; display:flex; align-items:center; gap:8px; }
 .steps summary::-webkit-details-marker { display:none; }
 .steps summary svg { width:1em; height:1em; }
 .steps ul { margin:0 0 8px; padding:0 0 0 22px; }
 .notice { font-size:13px; color:var(--muted); text-align:center; padding:2px 8px; }
 .notice.err { color:var(--danger); background:var(--danger-soft); border-radius:12px; padding:8px 12px; }
+.fileline { display:flex; align-items:center; gap:6px; margin-top:6px; font-size:13px; color:var(--muted); }
+.fileline svg { width:1em; height:1em; }
 
 /* cards */
 .card { background:var(--surface); border:1px solid var(--line); border-radius:20px; padding:14px; display:flex; flex-direction:column; gap:10px; box-shadow:var(--shadow); }
@@ -99,6 +118,8 @@ main { flex:1; min-height:0; position:relative; }
 .card .time { margin-left:auto; font-size:12px; color:var(--muted); }
 .card .lead { color:var(--muted); font-size:13px; }
 .card .what { font-weight:700; overflow-wrap:anywhere; }
+.card .where { font-size:12px; color:var(--muted); overflow-wrap:anywhere; margin-top:-6px; }
+.card pre.detail { margin:0; padding:10px 12px; border-radius:12px; background:var(--surface-2); font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; max-height:180px; overflow:auto; }
 .card img { width:100%; max-height:240px; object-fit:contain; border-radius:12px; background:var(--stage); }
 .card .actions { display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:10px; }
 .card .done { display:flex; align-items:center; gap:6px; color:var(--ok); font-weight:600; font-size:14px; }
@@ -116,9 +137,15 @@ main { flex:1; min-height:0; position:relative; }
 .bar { height:8px; border-radius:99px; background:var(--surface-2); overflow:hidden; }
 .bar i { display:block; height:100%; width:0; background:var(--accent); border-radius:99px; transition:width .3s; }
 .bar.warn i { background:var(--warn); } .bar.over i { background:var(--danger); }
-.big { font-size:26px; font-weight:700; }
-.big small { font-size:14px; font-weight:400; color:var(--muted); }
+.big-n { font-size:26px; font-weight:700; }
+.big-n small { font-size:14px; font-weight:400; color:var(--muted); }
 #settingsMsg { min-height:20px; }
+select.field { appearance:none; background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%); background-position:calc(100% - 20px) 50%, calc(100% - 14px) 50%; background-size:6px 6px; background-repeat:no-repeat; padding-right:36px; }
+.stack { display:flex; flex-direction:column; gap:10px; }
+.keystate { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:14px; background:var(--ok-soft); color:var(--ok); font-weight:600; font-size:14px; }
+.keystate.none { background:var(--warn-soft); color:var(--warn); }
+.keystate code { font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--text); font-weight:400; opacity:.8; }
+.keystate .link { margin-left:auto; color:var(--accent-ink); font-weight:600; padding:6px 4px; }
 
 /* composer and tabs */
 #composer { display:flex; align-items:center; gap:4px; margin:4px 12px 8px; padding:5px 5px 5px 6px; background:var(--surface); border:1px solid var(--line); border-radius:28px; box-shadow:var(--shadow); }
@@ -126,19 +153,6 @@ main { flex:1; min-height:0; position:relative; }
 #composer input:focus-visible { outline:0; }
 #composer:focus-within { border-color:var(--accent); }
 #composer .send { width:42px; height:42px; border-radius:50%; background:var(--accent); color:var(--accent-text); display:inline-flex; align-items:center; justify-content:center; }
-nav { display:flex; border-top:1px solid var(--line); background:var(--surface); padding-bottom:env(safe-area-inset-bottom); }
-nav button { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 0 7px; font-size:12px; color:var(--muted); position:relative; }
-nav button.on { color:var(--accent); font-weight:600; }
-nav button svg { width:24px; height:24px; }
-.badge { position:absolute; top:3px; left:calc(50% + 6px); min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:var(--danger); color:#fff; font-size:11px; line-height:18px; text-align:center; }
-
-/* model settings and attachments */
-select.field { appearance:none; background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%); background-position:calc(100% - 20px) 50%, calc(100% - 14px) 50%; background-size:6px 6px; background-repeat:no-repeat; padding-right:36px; }
-.stack { display:flex; flex-direction:column; gap:10px; }
-.keystate { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:14px; background:var(--ok-soft); color:var(--ok); font-weight:600; font-size:14px; }
-.keystate.none { background:var(--warn-soft); color:var(--warn); }
-.keystate code { font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--text); font-weight:400; opacity:.8; }
-.keystate .link { margin-left:auto; color:var(--accent-ink); font-weight:600; padding:6px 4px; }
 #composer .attach { width:40px; height:40px; border-radius:50%; color:var(--muted); display:inline-flex; align-items:center; justify-content:center; flex:none; }
 #attachRow { display:flex; flex-wrap:wrap; gap:6px; margin:6px 12px 0; }
 .file-chip { display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:5px 6px 5px 10px; border-radius:999px; background:var(--accent-soft); color:var(--accent-ink); font-size:13px; }
@@ -146,8 +160,35 @@ select.field { appearance:none; background-image:linear-gradient(45deg,transpare
 .file-chip small { opacity:.7; }
 .file-chip button { width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; color:inherit; }
 .file-chip svg { width:1em; height:1em; }
-.fileline { display:flex; align-items:center; gap:6px; margin-top:6px; font-size:13px; color:var(--muted); }
-.fileline svg { width:1em; height:1em; }
+nav { display:flex; border-top:1px solid var(--line); background:var(--surface); padding-bottom:env(safe-area-inset-bottom); }
+nav button { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 0 7px; font-size:12px; color:var(--muted); position:relative; }
+nav button.on { color:var(--accent); font-weight:600; }
+nav button svg { width:24px; height:24px; }
+.badge { position:absolute; top:3px; left:calc(50% + 6px); min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:var(--danger); color:#fff; font-size:11px; line-height:18px; text-align:center; }
+
+/* history drawer */
+#scrim { position:absolute; inset:0; background:var(--shade); opacity:0; pointer-events:none; transition:opacity .2s; z-index:3; }
+#scrim.on { opacity:1; pointer-events:auto; }
+#drawer { position:absolute; top:0; bottom:0; left:0; width:min(86%, 330px); background:var(--surface); z-index:4; transform:translateX(-102%); transition:transform .22s ease; display:flex; flex-direction:column; padding:calc(12px + env(safe-area-inset-top)) 0 calc(8px + env(safe-area-inset-bottom)); box-shadow:var(--shadow); }
+#drawer.open { transform:none; }
+.dhead { display:flex; align-items:center; gap:10px; padding:0 12px 12px 18px; }
+.dhead b { font-size:18px; margin-right:auto; }
+#newChat { margin:0 14px 12px; }
+.dtitle { padding:4px 18px 6px; font-size:12px; font-weight:600; color:var(--muted); letter-spacing:.3px; }
+#convList { list-style:none; margin:0; padding:0; flex:1; overflow-y:auto; scrollbar-gutter:stable; }
+.conv { position:relative; overflow:hidden; height:62px; transition:height .18s, opacity .18s; }
+.conv.gone { height:0; opacity:0; }
+.conv-main { position:relative; z-index:1; width:100%; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:flex-start; gap:2px; padding:0 18px; background:var(--surface); text-align:left; touch-action:pan-y; user-select:none; transition:transform .2s ease; }
+.conv.active .conv-main { background:var(--accent-soft); }
+.conv.open .conv-main { transform:translateX(-76px); }
+.conv-del { position:absolute; top:0; right:0; bottom:0; width:76px; background:var(--danger); color:#fff; display:flex; align-items:center; justify-content:center; }
+.conv-del svg { width:24px; height:24px; }
+.conv-del:focus-visible ~ .conv-main { transform:translateX(-76px); }
+.conv-main .ct { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+.conv-main .cs { color:var(--muted); font-size:12px; }
+.conv.empty-row { height:auto; padding:18px; color:var(--muted); font-size:14px; }
+#convMsg { padding:6px 18px; min-height:20px; color:var(--danger); }
+#drawerSpend { margin:4px 14px 0; padding:10px 12px; border-radius:14px; background:var(--surface-2); color:var(--muted); font-size:13px; text-align:left; }
 
 /* browser window */
 #browser { position:fixed; inset:0; background:var(--bg); display:flex; flex-direction:column; z-index:5; }
@@ -162,7 +203,7 @@ select.field { appearance:none; background-image:linear-gradient(45deg,transpare
 </head>
 <body>
 <section id="login" hidden>
-  <div class="avatar big" data-avatar></div>
+  <span class="orb big" data-orb data-state="nap"></span>
   <h1>Bob</h1>
   <p class="sub" data-t="loginSub"></p>
   <div class="dots" id="dots"><i></i><i></i><i></i><i></i></div>
@@ -172,15 +213,18 @@ select.field { appearance:none; background-image:linear-gradient(45deg,transpare
 
 <section id="app" hidden>
   <header>
-    <span class="pill" id="spend"></span>
-    <div class="title"><b id="title">Bob</b><small id="sub"></small></div>
+    <button class="icon-btn" id="menuBtn" data-al="menu" data-i="menu"></button>
+    <div class="title">
+      <span class="orb" id="hOrb" data-orb data-state="nap"></span>
+      <div class="ttext"><b id="title">Bob</b><small id="sub"></small></div>
+    </div>
     <button class="icon-btn right" id="openBrowser" data-al="browser" data-i="globe"></button>
   </header>
   <main>
     <div class="view" id="viewChat">
       <div id="welcome">
-        <div class="avatar big" data-avatar></div>
-        <b>Bob</b><span data-t="welcomeSub"></span>
+        <span class="orb big" data-orb data-state="nap"></span>
+        <b>Bob</b><span class="s" data-t="welcomeSub"></span>
         <div class="chips" id="chips"></div>
       </div>
       <div id="feed" aria-live="polite"></div>
@@ -208,7 +252,7 @@ select.field { appearance:none; background-image:linear-gradient(45deg,transpare
       </div>
       <div class="section">
         <h3 data-t="capTitle"></h3>
-        <div class="big" id="spentBig"></div>
+        <div class="big-n" id="spentBig"></div>
         <div class="bar" id="capBar"><i></i></div>
         <p class="hint" data-t="capLabel"></p>
         <div class="row"><input class="field" id="cap" type="number" inputmode="decimal" min="0.01" step="0.5" aria-label="Monthly limit"><button class="btn" id="saveCap" data-t="save"></button></div>
@@ -233,6 +277,16 @@ select.field { appearance:none; background-image:linear-gradient(45deg,transpare
     <button data-view="pending"><span data-i="check"></span><span data-t="tabPending"></span><span class="badge" id="badge" hidden></span></button>
     <button data-view="settings"><span data-i="sliders"></span><span data-t="tabSettings"></span></button>
   </nav>
+
+  <div id="scrim"></div>
+  <aside id="drawer" aria-label="History">
+    <div class="dhead"><span class="orb" data-orb data-state="nap"></span><b>Bob</b><button class="icon-btn" id="closeDrawer" data-al="close" data-i="cross"></button></div>
+    <button class="btn primary" id="newChat" data-i="plus" data-t="newChat"></button>
+    <div class="dtitle" data-t="history"></div>
+    <ul id="convList"></ul>
+    <p class="hint" id="convMsg" role="status"></p>
+    <button id="drawerSpend"></button>
+  </aside>
 </section>
 
 <section id="browser" hidden>
@@ -258,11 +312,19 @@ const zh = navigator.language.startsWith('zh')
 const I18N = {
   loginSub:['输入 PIN 进入','Enter your PIN'], welcomeSub:['随时为你效劳','At your service'],
   tabChat:['对话','Chat'], tabPending:['待确认','Pending'], tabSettings:['设置','Settings'],
-  pendingTitle:['待确认','Pending'], settingsTitle:['设置','Settings'], ready:['随时为你效劳','Ready'], working:['正在处理…','Working…'],
+  pendingTitle:['待确认','Pending'], settingsTitle:['设置','Settings'],
+  stateNap:['休息中','Napping'], stateThink:['思考中…','Thinking…'], stateSpeak:['回复中','Replying'],
+  menu:['历史对话','History'], history:['历史对话','HISTORY'], newChat:['新对话','New chat'], noChats:['还没有对话','No chats yet'],
+  delChat:['删除对话','Delete chat'], cantDelete:['Bob 正在这个对话里工作，暂时不能删除','Bob is working in this chat, so it can\'t be deleted yet'],
+  busyOther:['Bob 正在另一个对话里工作，请稍后再试','Bob is busy in another chat. Try again in a moment'], spendLabel:['本月花费','This month'],
   browser:['浏览器','Browser'], send:['发送','Send'], placeholder:['发送消息给 Bob…','Message Bob…'], close:['关闭','Close'],
   chip1:['总结一个网页','Summarize a page'], chip1q:['帮我打开并总结这个网页：','Open and summarize this page: '],
   chip2:['查最新资讯','Look up news'], chip2q:['帮我查一下今天的科技新闻要点','Find today\'s top tech news for me'],
-  keyTitle:['模型','Model'], keyLabel:['DeepSeek API Key（保存后不再显示）','DeepSeek API key (hidden after saving)'],
+  modelTitle:['模型','Model'], modelLabel:['选择模型','Choose a model'], otherModel:['其他模型（自行填写）…','Other model (enter yourself)…'],
+  keySaved:['密钥已保存','Key saved'], keyEnv:['由服务器环境提供','Set by the server'], replaceKey:['更换','Replace'], keyNone:['还没有密钥，请先填写','No key yet. Add one below'],
+  customHint:['填写兼容 Anthropic Messages 协议的服务（实际请求地址为：接口地址 + /v1/messages）。这是实验功能，尚未验证。','An Anthropic Messages-compatible service (requests go to the endpoint + /v1/messages). Experimental and not verified.'],
+  cEndpoint:['接口地址（https）','Endpoint (https)'], cModel:['模型名称','Model name'], cKey:['API Key（留空沿用已保存）','API key (blank keeps saved)'],
+  priceWhy:['价格用于统计月度花费上限','Prices are used for the monthly spending limit'], cIn:['输入价格（美元/百万 tokens）','Input price (USD per 1M tokens)'], cOut:['输出价格（美元/百万 tokens）','Output price (USD per 1M tokens)'],
   capTitle:['本月花费','This month'], capLabel:['每月模型花费上限（美元）','Monthly model spending limit (USD)'],
   pinTitle:['账号','Account'], pinHint:['PIN 只能在服务器上修改：npm run set-pin -- 1234','The PIN can only be changed on the server: npm run set-pin -- 1234'],
   save:['保存','Save'], logout:['退出登录','Log out'], saved:['已保存','Saved'], noKey:['请先填入 API Key','Add an API key first'],
@@ -272,19 +334,13 @@ const I18N = {
   allow:['确认执行','Allow once'], reject:['拒绝','Reject'], approved:['已允许','Allowed'], rejected:['已拒绝','Rejected'], expired:['已过期','Expired'],
   tagApprove:['待确认','Needs approval'], tagHelp:['待处理','Needs you'],
   needsApproval:['Bob 想执行这个操作','Bob wants to do this'], needsYou:['Bob 需要你帮忙','Bob needs your help'],
+  actCommand:['在服务器上运行命令','Run a command on the server'], actRead:['读取文件','Read file'], actList:['查看文件夹','List folder'], actWrite:['写入文件','Write file'], inFolder:['运行位置：{n}','Runs in: {n}'],
   openWindow:['打开浏览器窗口','Open browser window'], doneTakeover:['已交还给 Bob','Handed back to Bob'],
   pendingEmpty:['没有待确认事项','Nothing pending'], pendingHint:['Bob 需要你时会出现在这里','Bob will show items here when it needs you'],
   step_browser_navigate:['打开网页','Opening page'], step_browser_snapshot:['查看页面','Reading page'], step_browser_click:['点击','Clicking'],
   step_browser_type:['输入文字','Typing'], step_browser_scroll:['滚动页面','Scrolling'], step_browser_request_human:['请你协助','Asking you for help'],
+  step_list_files:['查看文件夹','Listing files'], step_read_file:['读取文件','Reading a file'], step_write_file:['写入文件','Writing a file'], step_run_command:['运行命令','Running a command'],
   stepsCount:['共 {n} 步','{n} steps'],
-  budgetNear:['本月花费已超过上限的 80%','You have used over 80% of this month\'s limit'], budgetExceeded:['已达到本月花费上限，Bob 已停止。可在设置中提高上限。','Monthly limit reached, so Bob has stopped. You can raise it in Settings.'],
-  wrongPin:['PIN 错误，还可尝试 {n} 次','Wrong PIN, {n} tries left'], locked:['尝试次数过多，请 {n} 分钟后再试','Too many tries. Try again in {n} min'],
-  noPin:['尚未设置 PIN，请在服务器运行 npm run set-pin -- 1234','No PIN yet. On the server run: npm run set-pin -- 1234'],
-  modelTitle:['模型','Model'], modelLabel:['选择模型','Choose a model'], otherModel:['其他模型（自行填写）…','Other model (enter yourself)…'],
-  keySaved:['密钥已保存','Key saved'], keyEnv:['由服务器环境提供','Set by the server'], replaceKey:['更换','Replace'], keyNone:['还没有密钥，请先填写','No key yet. Add one below'],
-  customHint:['填写兼容 Anthropic Messages 协议的服务（实际请求地址为：接口地址 + /v1/messages）。这是实验功能，尚未验证。','An Anthropic Messages-compatible service (requests go to the endpoint + /v1/messages). Experimental and not verified.'],
-  cEndpoint:['接口地址（https）','Endpoint (https)'], cModel:['模型名称','Model name'], cKey:['API Key（留空沿用已保存）','API key (blank keeps saved)'],
-  priceWhy:['价格用于统计月度花费上限','Prices are used for the monthly spending limit'], cIn:['输入价格（美元/百万 tokens）','Input price (USD per 1M tokens)'], cOut:['输出价格（美元/百万 tokens）','Output price (USD per 1M tokens)'],
   attach:['添加附件','Attach file'], remove:['移除','Remove'],
   fileUnsupported:['暂只支持文本类文件（txt、md、csv、json 等）：{n}','Text files only for now (txt, md, csv, json…): {n}'],
   fileBig:['文件太大（单个上限约 200KB）：{n}','File too large (about 200KB each): {n}'], fileBinary:['无法读取为文本：{n}','Cannot read as text: {n}'],
@@ -293,7 +349,10 @@ const I18N = {
   err_HTTPS_REQUIRED:['接口地址必须以 https:// 开头','The endpoint must start with https://'], err_BAD_ENDPOINT:['接口地址无法使用（不能是本机或内网地址）','Endpoint not allowed (no local or private addresses)'],
   err_NO_KEY:['请填写 API Key','Enter an API key'], err_INVALID_KEY:['API Key 无效','Invalid API key'], err_NO_PRICE:['这个模型没有价格，无法统计花费','No price for this model, so spending cannot be counted'],
   err_TOO_MANY_FILES:['最多添加 5 个文件','At most 5 files'], err_FILE_TOO_LARGE:['有文件太大','A file is too large'], err_FILES_TOO_LARGE:['附件总量过大','Attachments are too large in total'], err_NOT_TEXT:['有文件不是文本','A file is not text'],
-  del:['删除','Del'], invalidKey:['API Key 无效','Invalid API key'], failed:['操作失败：','Failed: '],
+  budgetNear:['本月花费已超过上限的 80%','You have used over 80% of this month\'s limit'], budgetExceeded:['已达到本月花费上限，Bob 已停止。可在设置中提高上限。','Monthly limit reached, so Bob has stopped. You can raise it in Settings.'],
+  wrongPin:['PIN 错误，还可尝试 {n} 次','Wrong PIN, {n} tries left'], locked:['尝试次数过多，请 {n} 分钟后再试','Too many tries. Try again in {n} min'],
+  noPin:['尚未设置 PIN，请在服务器运行 npm run set-pin -- 1234','No PIN yet. On the server run: npm run set-pin -- 1234'],
+  del:['删除','Del'], failed:['操作失败：','Failed: '],
 }
 const t = (k, n) => (I18N[k]?.[zh ? 0 : 1] ?? k).replace('{n}', n)
 const $ = id => document.getElementById(id)
@@ -312,23 +371,26 @@ const ICONS = {
   eyeoff:'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/><path d="M3 3l18 18"/>',
   shield:'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM12 8v4M12 16h.01"/>',
   hand:'<path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v7M10 10.5V6a2 2 0 0 0-4 0v8M18 8a2 2 0 0 1 4 0v6a8 8 0 0 1-8 8h-2c-2.5 0-4-1-5.4-2.4L3 15.6a2 2 0 0 1 3-2.6L8 15"/>',
+  terminal:'<path d="M4 17l6-6-6-6M12 19h8"/>',
   clip:'<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
   file:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6"/>',
+  menu:'<path d="M4 6h16M4 12h16M4 18h16"/>', plus:'<path d="M12 5v14M5 12h14"/>',
   tick:'<path d="M20 6 9 17l-5-5"/>', cross:'<path d="M18 6 6 18M6 6l12 12"/>',
 }
 const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`
-const AVATAR = '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="24" fill="currentColor"/><rect x="10" y="14" width="28" height="21" rx="10.5" fill="#fff"/><circle cx="19" cy="25" r="2.6" fill="currentColor"/><circle cx="29" cy="25" r="2.6" fill="currentColor"/><path d="M24 14V9" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><circle cx="24" cy="8" r="2.2" fill="#fff"/></svg>'
+const ORB = '<i class="core"></i><i class="ring"></i><i class="wave"></i><i class="wave w2"></i>'
 
 document.querySelectorAll('[data-t]').forEach(e => { e.textContent = t(e.dataset.t) })
 document.querySelectorAll('[data-ph]').forEach(e => { e.placeholder = t(e.dataset.ph) })
 document.querySelectorAll('[data-al]').forEach(e => { e.setAttribute('aria-label', t(e.dataset.al)); e.title = t(e.dataset.al) })
 document.querySelectorAll('[data-i]').forEach(e => e.insertAdjacentHTML('afterbegin', icon(e.dataset.i)))
-document.querySelectorAll('[data-avatar]').forEach(e => { e.innerHTML = AVATAR })
+document.querySelectorAll('[data-orb]').forEach(e => { e.innerHTML = ORB })
 
 const post = async (url, body) => {
   const res = await fetch(url, { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(body ?? {}) })
   return { status:res.status, data: await res.json().catch(() => ({})) }
 }
+const errText = (data, status) => I18N['err_' + data.error] ? t('err_' + data.error) : t('failed') + (data.error ?? status)
 
 // ---- PIN ----
 let entered = ''
@@ -354,7 +416,10 @@ const press = d => {
   else { b.textContent = k; b.onclick = () => press(k) }
   $('pad').append(b)
 })
-addEventListener('keydown', e => { if (!$('login').hidden && /^\d$/.test(e.key)) press(e.key) })
+addEventListener('keydown', e => {
+  if (!$('login').hidden && /^\d$/.test(e.key)) press(e.key)
+  if (e.key === 'Escape') closeDrawer()
+})
 
 // ---- views ----
 const VIEWS = ['chat', 'pending', 'settings']
@@ -362,12 +427,33 @@ function show(view) {
   VIEWS.forEach(v => { $('view' + v[0].toUpperCase() + v.slice(1)).hidden = v !== view })
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.view === view))
   $('composer').hidden = view !== 'chat'
+  if (view !== 'chat') $('attachRow').hidden = true
+  else drawAttachments()
   $('title').textContent = view === 'chat' ? 'Bob' : t(view === 'pending' ? 'pendingTitle' : 'settingsTitle')
+  $('hOrb').hidden = view !== 'chat'
   $('sub').hidden = view !== 'chat'
   if (view === 'chat') atEnd()
   if (view === 'settings') loadModelCard().catch(() => {})
 }
 document.querySelectorAll('nav button').forEach(b => { b.onclick = () => show(b.dataset.view) })
+
+// ---- the orb: napping, thinking, speaking ----
+let runningCid = null, speakUntil = 0, speakTimer = null
+function refreshOrb() {
+  const mine = Boolean(runningCid) && runningCid === activeCid
+  const state = Date.now() < speakUntil ? 'speak' : mine ? 'think' : 'nap'
+  $('hOrb').dataset.state = state
+  $('sub').textContent = t(state === 'nap' ? 'stateNap' : state === 'think' ? 'stateThink' : 'stateSpeak')
+  typing.hidden = !mine
+  if (mine) { feed.append(typing); atEnd() }
+}
+function speak(text) {
+  const ms = Math.min(5000, 1200 + text.length * 25)
+  speakUntil = Date.now() + ms
+  refreshOrb()
+  clearTimeout(speakTimer)
+  speakTimer = setTimeout(refreshOrb, ms + 50)
+}
 
 // ---- feed ----
 const feed = $('feed'), scroller = $('viewChat')
@@ -377,8 +463,9 @@ const typingBubble = el('div', 'msg typing'); typingBubble.append(el('i'), el('i
 typing.hidden = true
 feed.append(typing)
 const atEnd = () => { scroller.scrollTop = scroller.scrollHeight }
-let lastKind = null, stepsBox = null, busy = false
+let lastKind = null, stepsBox = null
 const cards = new Map(), open = new Map()
+let activeCid // undefined: not chosen yet. null: a new chat that has no messages yet.
 const updateWelcome = () => { $('welcome').hidden = feed.children.length > 1 }
 function add(node, kind) {
   feed.insertBefore(node, typing)
@@ -386,11 +473,16 @@ function add(node, kind) {
   if (kind !== 'steps') stepsBox = null
   updateWelcome(); atEnd()
 }
+function clearFeed() {
+  ;[...feed.children].forEach(c => { if (c !== typing) c.remove() })
+  cards.clear(); lastKind = null; stepsBox = null
+  refreshPending(); updateWelcome()
+}
 function message(role, text, files = []) {
   const row = el('div', 'bubble-row' + (role === 'user' ? ' user' : ''))
   if (role !== 'user') {
     if (lastKind === 'assistant') row.append(el('div', 'spacer'))
-    else { const a = el('div', 'avatar'); a.innerHTML = AVATAR; row.append(a) }
+    else { const a = el('span', 'orb static'); a.innerHTML = ORB; row.append(a) }
   }
   const bubble = el('div', 'msg', text)
   for (const f of files) {
@@ -404,7 +496,7 @@ function step(name) {
   const label = t('step_' + name)
   if (!stepsBox) {
     const box = el('details', 'steps')
-    const sum = el('summary'); sum.insertAdjacentHTML('afterbegin', icon('globe')); sum.append(el('span', 'now'))
+    const sum = el('summary'); sum.insertAdjacentHTML('afterbegin', icon(/_file|command/.test(name) ? 'terminal' : 'globe')); sum.append(el('span', 'now'))
     box.append(sum, el('ul'))
     box.count = 0
     add(box, 'steps'); stepsBox = box
@@ -417,21 +509,20 @@ function step(name) {
 }
 function notice(text, err) { add(el('div', 'notice' + (err ? ' err' : ''), text), 'notice') }
 
-function setBusy(on) {
-  busy = on
-  typing.hidden = !on
-  $('sub').textContent = t(on ? 'working' : 'ready')
-  if (on) { feed.append(typing); atEnd() }
-}
-
 // ---- cards ----
-function buildCard(e, kind, pending = false) {
+const ACTIONS = { command:'actCommand', read:'actRead', list:'actList', write:'actWrite' }
+function buildCard(e, kind, pendingCopy = false) {
   const c = el('div', 'card ' + (kind === 'approval' ? 'ask' : 'help'))
   const top = el('div', 'card-top')
-  const ic = el('span', 'chipicon'); ic.innerHTML = icon(kind === 'approval' ? 'shield' : 'hand')
+  const ic = el('span', 'chipicon'); ic.innerHTML = icon(kind === 'takeover' ? 'hand' : e.kind === 'command' ? 'terminal' : 'shield')
   top.append(ic, el('span', 'tag', t(kind === 'approval' ? 'tagApprove' : 'tagHelp')),
     el('span', 'time', new Date(e.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })))
-  c.append(top, el('div', 'lead', t(kind === 'approval' ? 'needsApproval' : 'needsYou')), el('div', 'what', kind === 'approval' ? e.summary : e.reason))
+  c.append(top, el('div', 'lead', t(kind === 'approval' ? 'needsApproval' : 'needsYou')))
+  if (kind === 'takeover') c.append(el('div', 'what', e.reason))
+  else if (e.kind === 'command') c.append(el('div', 'what', t('actCommand')), el('div', 'where', t('inFolder', e.target)))
+  else if (ACTIONS[e.kind]) c.append(el('div', 'what', `${t(ACTIONS[e.kind])}: ${e.target}`))
+  else c.append(el('div', 'what', e.summary))
+  if (e.detail) c.append(el('pre', 'detail', e.detail))
   if (e.screenshot) { const img = new Image(); img.alt = ''; img.src = 'data:image/jpeg;base64,' + e.screenshot; c.append(img) }
   const row = el('div', 'actions')
   if (kind === 'approval') {
@@ -448,7 +539,7 @@ function buildCard(e, kind, pending = false) {
   }
   c.append(row)
   const list = cards.get(e.id) ?? []
-  list.push({ c, row, pending }); cards.set(e.id, list)
+  list.push({ c, row, pending: pendingCopy }); cards.set(e.id, list)
   return c
 }
 function closeCard(id, label, ok = true) {
@@ -466,34 +557,48 @@ function refreshPending() {
   const list = $('pendingList')
   list.textContent = ''
   for (const [id, entries] of cards) cards.set(id, entries.filter(x => !x.pending))
-  for (const [id, item] of open) list.append(buildCard(item.e, item.kind, true))
+  for (const [, item] of open) list.append(buildCard(item.e, item.kind, true))
   $('pendingEmpty').hidden = open.size > 0
   $('badge').hidden = open.size === 0
   $('badge').textContent = open.size
 }
-function openItem(e, kind) {
-  open.set(e.id, { e, kind })
-  add(buildCard(e, kind), 'card')
-  refreshPending()
-}
 
+// ---- live events from the server ----
 let activeTakeover = null
+function track(e) { // approvals and takeovers belong to every conversation, because the browser and server are shared
+  if (e.type === 'approval' || e.type === 'takeover') {
+    open.set(e.id, { e, kind: e.type })
+    if (e.type === 'takeover') { activeTakeover = e.id; $('handBack').hidden = false }
+    refreshPending()
+  } else if (e.type === 'approval_done' || e.type === 'takeover_done') {
+    open.delete(e.id)
+    if (e.type === 'takeover_done' && activeTakeover === e.id) { activeTakeover = null; $('handBack').hidden = true }
+    refreshPending()
+  }
+}
 function render(e) {
   if (e.type === 'message') message(e.role, e.text, e.files ?? [])
   else if (e.type === 'step') step(e.name)
   else if (e.type === 'error') notice(e.text, true)
   else if (e.type === 'notice') notice(t(e.code === 'BUDGET_NEAR' ? 'budgetNear' : 'budgetExceeded'), true)
-  else if (e.type === 'approval') openItem(e, 'approval')
+  else if (e.type === 'approval' || e.type === 'takeover') {
+    add(buildCard(e, e.type), 'card')
+    if (!open.has(e.id)) closeCard(e.id, t('expired'), false) // an old request nobody can answer any more
+  }
   else if (e.type === 'approval_done') closeCard(e.id, t(e.allowed ? 'approved' : 'rejected'), e.allowed)
-  else if (e.type === 'takeover') { activeTakeover = e.id; $('handBack').hidden = false; openItem(e, 'takeover') }
-  else if (e.type === 'takeover_done') { closeCard(e.id, t('doneTakeover')); activeTakeover = null; $('handBack').hidden = true }
+  else if (e.type === 'takeover_done') closeCard(e.id, t('doneTakeover'))
+}
+function route(e) {
+  track(e)
+  if (e.cid !== activeCid) return
+  render(e)
+  if (e.type === 'message' && e.role === 'assistant') speak(e.text)
 }
 
 function showBudget(b) {
   const pct = Math.min(100, (b.spentUsd / b.capUsd) * 100)
   const level = b.exceeded ? 'over' : b.near ? 'warn' : ''
-  $('spend').textContent = `$${b.spentUsd.toFixed(3)} / $${b.capUsd}`
-  $('spend').className = 'pill ' + level
+  $('drawerSpend').textContent = `${t('spendLabel')}  $${b.spentUsd.toFixed(3)} / $${b.capUsd}`
   $('spentBig').innerHTML = ''
   $('spentBig').append(`$${b.spentUsd.toFixed(3)} `, el('small', '', `/ $${b.capUsd}`))
   $('capBar').className = 'bar ' + level
@@ -501,22 +606,152 @@ function showBudget(b) {
   if (document.activeElement !== $('cap')) $('cap').value = b.capUsd
 }
 
+// ---- conversations and the history drawer ----
+let convs = []
+let convTimer
+const refreshConvs = () => { clearTimeout(convTimer); convTimer = setTimeout(loadConvs, 150) }
+async function loadConvs() {
+  const res = await fetch('/api/conversations')
+  if (!res.ok) return
+  const data = await res.json()
+  convs = data.items; runningCid = data.running
+  drawConvs(); refreshOrb()
+}
+async function loadHistory(cid) {
+  const res = await fetch('/api/conversations/' + encodeURIComponent(cid))
+  if (activeCid !== cid) return false
+  if (!res.ok) return false
+  const { events } = await res.json()
+  if (activeCid !== cid) return false
+  clearFeed()
+  events.forEach(render)
+  refreshOrb(); updateWelcome(); atEnd()
+  return true
+}
+async function selectConv(cid) {
+  activeCid = cid
+  closeDrawer(); show('chat'); clearFeed(); drawConvs(); refreshOrb()
+  if (!await loadHistory(cid) && activeCid === cid) { activeCid = null; drawConvs(); refreshOrb() }
+}
+function newChat() {
+  activeCid = null
+  closeDrawer(); show('chat'); clearFeed(); drawConvs(); refreshOrb()
+  $('text').focus()
+}
+function fmtTime(ts) {
+  const d = new Date(ts)
+  return d.toDateString() === new Date().toDateString()
+    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+}
+const REVEAL = 76
+const closeRows = except => document.querySelectorAll('.conv.open').forEach(r => { if (r !== except) r.classList.remove('open') })
+function drawConvs() {
+  const ul = $('convList')
+  ul.textContent = ''
+  if (!convs.length) { ul.append(el('li', 'conv empty-row', t('noChats'))); return }
+  for (const c of convs) ul.append(convRow(c))
+}
+function convRow(c) {
+  const li = el('li', 'conv' + (c.id === activeCid ? ' active' : ''))
+  const del = el('button', 'conv-del'); del.type = 'button'; del.innerHTML = icon('cross')
+  del.setAttribute('aria-label', t('delChat')); del.title = t('delChat')
+  const main = el('button', 'conv-main'); main.type = 'button'
+  main.append(el('span', 'ct', c.title || t('newChat')),
+    el('span', 'cs', fmtTime(c.updatedAt) + (c.id === runningCid ? ' · ' + t('stateThink') : '')))
+  del.onclick = () => deleteConv(c.id, li)
+  swipe(li, main, () => selectConv(c.id))
+  li.append(del, main)
+  return li
+}
+// Swipe a row left to reveal the red cross. Works with touch and mouse; the delete button is also reachable with the keyboard.
+function swipe(li, main, onTap) {
+  let startX = 0, startY = 0, base = 0, id = null, dragging = false, moved = false
+  main.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    id = e.pointerId; startX = e.clientX; startY = e.clientY; dragging = false; moved = false
+    base = li.classList.contains('open') ? -REVEAL : 0
+  })
+  main.addEventListener('pointermove', e => {
+    if (id !== e.pointerId) return
+    const dx = e.clientX - startX, dy = e.clientY - startY
+    if (!dragging) {
+      if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.2) { dragging = true; main.setPointerCapture(e.pointerId); closeRows(li); main.style.transition = 'none' }
+      else return
+    }
+    moved = true
+    main.style.transform = `translateX(${Math.max(-REVEAL, Math.min(0, base + dx))}px)`
+  })
+  const finish = e => {
+    if (id !== e.pointerId) return
+    id = null
+    if (!dragging) return
+    const x = new DOMMatrix(getComputedStyle(main).transform).m41
+    main.style.transition = ''; main.style.transform = ''
+    li.classList.toggle('open', x < -REVEAL / 2)
+  }
+  main.addEventListener('pointerup', finish)
+  main.addEventListener('pointercancel', finish)
+  main.addEventListener('click', () => {
+    if (moved) { moved = false; return }
+    if (li.classList.contains('open')) { li.classList.remove('open'); return }
+    onTap()
+  })
+}
+async function deleteConv(id, li) {
+  $('convMsg').textContent = ''
+  const { status } = await post('/api/conversations/delete', { id })
+  if (status === 409) { $('convMsg').textContent = t('cantDelete'); li.classList.remove('open'); return }
+  if (status !== 200 && status !== 404) { $('convMsg').textContent = t('failed') + status; return }
+  convs = convs.filter(c => c.id !== id)
+  li.classList.add('gone')
+  setTimeout(drawConvs, 200)
+  if (activeCid === id) { activeCid = null; clearFeed(); refreshOrb() }
+}
+function openDrawer() {
+  closeRows()
+  $('convMsg').textContent = ''
+  $('drawer').inert = false
+  $('drawer').classList.add('open'); $('scrim').classList.add('on')
+  loadConvs()
+}
+function closeDrawer() {
+  $('drawer').classList.remove('open'); $('scrim').classList.remove('on')
+  $('drawer').inert = true
+}
+$('drawer').inert = true
+$('menuBtn').onclick = openDrawer
+$('closeDrawer').onclick = closeDrawer
+$('scrim').onclick = closeDrawer
+$('newChat').onclick = newChat
+$('drawerSpend').onclick = () => { closeDrawer(); show('settings') }
+
 let source
 function connect() {
   source?.close()
   source = new EventSource('/api/events')
-  source.onmessage = m => {
+  source.onmessage = async m => {
     const e = JSON.parse(m.data)
     if (e.type === 'hello') {
-      [...feed.children].forEach(c => { if (c !== typing) c.remove() })
-      cards.clear(); open.clear(); activeTakeover = null; lastKind = null; stepsBox = null
-      $('handBack').hidden = true
-      e.history.forEach(render)
-      showBudget(e.budget); setBusy(e.busy); updateWelcome(); refreshPending()
+      open.clear()
+      for (const p of e.pending) open.set(p.id, { e: p, kind: p.type })
+      activeTakeover = [...open.values()].find(x => x.kind === 'takeover')?.e.id ?? null
+      $('handBack').hidden = !activeTakeover
+      showBudget(e.budget); runningCid = e.running
+      await loadConvs()
+      if (activeCid === undefined) { if (convs.length) await selectConv(convs[0].id); else newChat() }
+      else if (activeCid) await loadHistory(activeCid) // catch up after a dropped connection
+      else refreshPending()
     }
+    else if (e.type === 'conversations') refreshConvs()
     else if (e.type === 'budget') showBudget(e)
-    else if (e.type === 'status') setBusy(e.status === 'running')
-    else render(e)
+    else if (e.type === 'status') {
+      if (e.status === 'running') runningCid = e.cid
+      else if (runningCid === e.cid) runningCid = null
+      refreshOrb()
+      if (!$('drawer').inert) drawConvs()
+    }
+    else route(e)
   }
 }
 
@@ -525,6 +760,7 @@ function connect() {
   b.onclick = () => { $('text').value = t(prompt); $('text').focus() }
   $('chips').append(b)
 })
+
 // ---- attachments (text files) ----
 const MAX_FILES = 5, MAX_FILE_CHARS = 200000, MAX_TOTAL_CHARS = 500000
 const TEXT_NAME = /\.(txt|md|markdown|csv|tsv|json|jsonl|log|xml|html?|ya?ml|ini|sql)$/i
@@ -533,7 +769,7 @@ const kb = n => (n < 1024 ? n + ' B' : Math.round(n / 1024) + ' KB')
 function drawAttachments() {
   const row = $('attachRow')
   row.textContent = ''
-  row.hidden = attachments.length === 0
+  row.hidden = attachments.length === 0 || $('composer').hidden
   attachments.forEach((f, i) => {
     const chip = el('span', 'file-chip')
     chip.insertAdjacentHTML('afterbegin', icon('file'))
@@ -548,7 +784,7 @@ async function readText(file) {
   let text
   try { text = new TextDecoder('utf-8', { fatal: true }).decode(buf) }
   catch { try { text = new TextDecoder('gbk').decode(buf) } catch { return null } } // Excel in China often saves CSV as GBK
-  return /\u0000/.test(text) ? null : text.replace(/^\uFEFF/, '')
+  return /\u0000/.test(text) ? null : text.replace(/^﻿/, '')
 }
 $('attachBtn').onclick = () => $('filePick').click()
 $('filePick').onchange = async () => {
@@ -573,12 +809,19 @@ $('composer').onsubmit = async e => {
   const files = attachments
   $('text').value = ''
   attachments = []; drawAttachments()
-  const { status, data } = await post('/api/chat', { text, files })
-  if (status === 200) return
-  $('text').value = text; attachments = files; drawAttachments() // keep the draft so nothing is lost
+  const restore = () => { $('text').value = text; attachments = files; drawAttachments() } // keep the draft so nothing is lost
+  if (!activeCid) {
+    const made = await post('/api/conversations')
+    if (made.status !== 200) { restore(); notice(errText(made.data, made.status), true); return }
+    activeCid = made.data.id
+  }
+  const { status, data } = await post('/api/chat', { cid: activeCid, text, files })
+  if (status === 200) { refreshConvs(); return }
+  restore()
   if (data.error === 'NO_KEY') { $('settingsMsg').textContent = t('noKey'); show('settings') }
   else if (data.error === 'BUDGET_EXCEEDED') notice(t('budgetExceeded'), true)
-  else notice(I18N['err_' + data.error] ? t('err_' + data.error) : t('failed') + (data.error ?? status), true)
+  else if (data.error === 'BUSY_OTHER') notice(t('busyOther'), true)
+  else notice(errText(data, status), true)
 }
 
 // ---- settings ----
@@ -588,8 +831,7 @@ function renderModelCard() {
   const sel = $('modelSel'), custom = sel.value === CUSTOM
   $('customBox').hidden = !custom
   const saved = appState.model ?? {}
-  const sameKind = (saved.kind === 'custom') === custom
-  const has = sameKind && appState.hasKey
+  const has = (saved.kind === 'custom') === custom && appState.hasKey
   const ks = $('keyState')
   ks.className = 'keystate' + (has ? '' : ' none')
   ks.textContent = ''
@@ -602,11 +844,10 @@ function renderModelCard() {
     ks.append(b)
   }
   $('key').hidden = custom || has
-  $('key').placeholder = 'sk-...'
 }
 async function loadModelCard() {
   appState = await (await fetch('/api/state')).json()
-  try { deepseekModels = (await (await fetch('/api/models', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json()).deepseek ?? [] } catch { deepseekModels = [] }
+  try { deepseekModels = (await post('/api/models')).data.deepseek ?? [] } catch { deepseekModels = [] }
   const sel = $('modelSel'), saved = appState.model ?? {}
   sel.textContent = ''
   const ids = saved.kind === 'deepseek' && !deepseekModels.includes(saved.model) ? [saved.model, ...deepseekModels] : deepseekModels
@@ -630,7 +871,7 @@ $('saveModel').onclick = async () => {
     $('key').value = ''; $('cKey').value = ''
     await loadModelCard()
     $('settingsMsg').textContent = t('saved')
-  } else $('settingsMsg').textContent = I18N['err_' + data.error] ? t('err_' + data.error) : t('failed') + (data.error ?? status)
+  } else $('settingsMsg').textContent = errText(data, status)
 }
 $('saveCap').onclick = async () => {
   const { status, data } = await post('/api/budget', { capUsd: Number($('cap').value) })
@@ -697,8 +938,8 @@ async function boot() {
   $('login').hidden = s.authed
   $('app').hidden = !s.authed
   if (!s.authed) { if (!s.pinSet) $('loginMsg').textContent = t('noPin'); return }
-  show('chat'); setBusy(false)
   appState = s
+  show('chat'); refreshOrb()
   if (!s.hasKey) { $('settingsMsg').textContent = t('noKey'); show('settings') }
   connect()
 }
