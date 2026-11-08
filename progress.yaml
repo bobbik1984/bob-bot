@@ -1,0 +1,79 @@
+project:
+  name: bob-bot
+  directory: bob-bot
+  version: 0.1.0
+  status: planning
+  tier: Production
+  tech:
+    - Rust
+    - Axum
+    - Vue 3
+    - Headless Chromium (CDP)
+    - SQLite
+    - Docker
+  current_task: 完成面向普通办公室白领的轻量助理立项与五大核心缺失技术细节架构设计（BYOK 开箱、手机网页内嵌 CDP 虚拟浏览器窗口、DOM AXTree 操控、内置 Router-Worker、示教转 Routine），下一步在所在地区 VPS 上进行自测 POC。
+  development_plan: docs/CURRENT_STAGE.md
+
+phases:
+  - name: 📋 立项与架构定案 (Project Initialization)
+    tasks:
+      - text: 梳理面向普通办公室白领的产品愿景与定位切割 (docs/PROJECT_VISION.md)
+        status: done
+      - text: 完成单 VPS 架构蓝图与五大核心缺失技术细节设计 (docs/ARCHITECTURE.md)
+        status: done
+      - text: 制定 BB0–BB4 分阶段开发路线图、退出门与功能验收标准 (docs/DEVELOPMENT_ROUTE.md & FEATURES.md)
+        status: done
+
+  - name: 🚀 BB0：内核裁剪与 3 分钟 BYOK 开箱底座
+    tasks:
+      - text: "[BB0-01] 初始化 bob-bot Rust 后端与消费者版极简三栏 Vue 3 前端骨架"
+        status: todo
+      - text: "[BB0-02] 实现首次访问向导（服务器端设置的 4 位 PIN 登录 + 填 API Key + 连通性实测）"
+        status: todo
+      - text: "[BB0-03] 实现凭据密钥库（标准 AEAD）与快慢双模型（Clerk/Maker）自动绑定"
+        status: todo
+
+  - name: 🌐 BB1：云端 Chromium 与手机网页“虚拟窗口”人机接力
+    tasks:
+      - text: "[BB1-01] 实现 bob-browser Headless Chromium 守护与 --user-data-dir 登录态持久化"
+        status: todo
+      - text: "[BB1-02] 实现 CDP Page.startScreencast + WebSocket 实时画面帧推流与触控/输入映射"
+        status: todo
+      - text: "[BB1-03] 开发前端 <VirtualBrowserModal />：手机视口适配、滑块拖动与原生软键盘输入栏穿透"
+        status: todo
+      - text: "[BB1-04] 开发「网站授权中心」面板：查看已登录网站状态、一键预登录或清理 Cookie"
+        status: todo
+      - text: "[BB1-05] 在所在地区 VPS 上用测试账号完成 3~5 个办公站点的真实登录测试"
+        status: todo
+      - text: "[BB1-06] 落实测试期安全基线：HTTPS、WebSocket Origin 校验、禁止访问本机/内网地址、CDP 管道"
+        status: todo
+
+  - name: 🛠️ BB2：内置 Router-Worker 与 DOM 网页自动操控闭环
+    tasks:
+      - text: "[BB2-01] 实现网页无障碍树（AXTree + 元素编号）提取器"
+        status: todo
+      - text: "[BB2-02] 实现 6 个原子浏览器工具与 browser_request_human 人工接管挂起原语"
+        status: todo
+      - text: "[BB2-03] 实现内置 Resident Clerk + Native ReAct Worker 异步循环与高危点击气泡审批卡"
+        status: todo
+      - text: "[BB2-04] 实现模型用量记录与月度花费上限（默认 $10）"
+        status: todo
+
+  - name: ⏰ BB3 & BB4：示教转 Routine、无感记忆胶囊、可选渠道与单 VPS 一键部署
+    tasks:
+      - text: "[BB3-01] 实现「存为日常任务（Walkthrough to Routine）」轨迹蒸馏"
+        status: todo
+      - text: "[BB3-02] 实现内置 Cron 定时调度器与 Cookie 失效自动暂停呼叫人工接管"
+        status: todo
+      - text: "[BB3-03] 实现消费级「记忆胶囊（Memory Pills）」后台自动提取与可视化管理"
+        status: todo
+      - text: "[BB3-04]（可选）实现 ChannelAdapter 与 Telegram 通知/收发"
+        status: todo
+      - text: "[BB3-05]（可选）按需接入 Lark、Discord、微信 Bot"
+        status: todo
+      - text: "[BB3-06]（可选）接入现有远程 HTTP MCP 工具"
+        status: todo
+      - text: "[BB4-01] 打包单 VPS 一键部署 Docker 镜像"
+        status: todo
+      - text: "[BB4-02] 完成 2C/4G VPS 真机部署验证与 24 小时内存/CPU 压力巡检"
+        status: todo

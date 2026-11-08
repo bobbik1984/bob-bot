@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BobBot</title>
+<style>
+:root { --bg:#f6f6f4; --panel:#fff; --text:#1d1d1b; --muted:#73736d; --line:#e2e1dc; --accent:#2f6f5e; --accent-text:#fff; --user:#e4efe9; --danger:#b3382c; --shade:rgba(0,0,0,.45); --stage:#111; }
+@media (prefers-color-scheme: dark) { :root { --bg:#161715; --panel:#20211f; --text:#ececE7; --muted:#9a9a93; --line:#343531; --accent:#5fb39b; --accent-text:#10201b; --user:#27372f; --danger:#e8796d; --shade:rgba(0,0,0,.6); --stage:#000; } }
+* { box-sizing:border-box; }
+html, body { height:100%; margin:0; }
+body { background:var(--bg); color:var(--text); font:16px/1.5 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+button, input { font:inherit; color:inherit; }
+button { cursor:pointer; border:1px solid var(--line); background:var(--panel); border-radius:8px; padding:8px 12px; min-height:40px; }
+button.primary { background:var(--accent); color:var(--accent-text); border-color:var(--accent); }
+input { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:9px 11px; min-width:0; }
+[hidden] { display:none !important; }
+#login { height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:22px; padding:16px; }
+#login h1 { margin:0; font-size:22px; font-weight:600; }
+.dots { display:flex; gap:16px; }
+.dots i { width:14px; height:14px; border-radius:50%; border:2px solid var(--muted); }
+.dots i.on { background:var(--text); border-color:var(--text); }
+#loginMsg { min-height:24px; color:var(--danger); font-size:14px; text-align:center; }
+.pad { display:grid; grid-template-columns:repeat(3,76px); gap:14px; }
+.pad button { height:76px; border-radius:50%; font-size:26px; }
+.pad .ghost { border-color:transparent; background:transparent; font-size:16px; }
+#app { height:100%; display:flex; flex-direction:column; max-width:760px; margin:0 auto; }
+header { display:flex; align-items:center; gap:8px; padding:10px 16px; border-bottom:1px solid var(--line); }
+header b { font-size:17px; }
+#spend { color:var(--muted); font-size:13px; margin-right:auto; }
+#feed { flex:1; overflow-y:auto; scrollbar-gutter:stable; padding:16px; display:flex; flex-direction:column; gap:10px; }
+.msg { max-width:88%; padding:9px 13px; border-radius:12px; background:var(--panel); border:1px solid var(--line); white-space:pre-wrap; overflow-wrap:anywhere; align-self:flex-start; }
+.msg.user { align-self:flex-end; background:var(--user); border-color:transparent; }
+.step, .notice { font-size:13px; color:var(--muted); }
+.notice.err { color:var(--danger); }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:10px; }
+.card img { width:100%; max-height:260px; object-fit:contain; border-radius:8px; background:var(--stage); }
+.row { display:flex; gap:8px; align-items:center; }
+.row > input { flex:1; }
+#composer { display:flex; gap:8px; padding:10px 16px calc(10px + env(safe-area-inset-bottom)); border-top:1px solid var(--line); }
+#composer input { flex:1; }
+#thinking { padding:0 16px 6px; font-size:13px; color:var(--muted); min-height:20px; }
+.sheet { position:fixed; inset:0; background:var(--shade); display:flex; align-items:flex-end; justify-content:center; }
+.sheet > div { background:var(--panel); width:100%; max-width:520px; border-radius:14px 14px 0 0; padding:18px 16px calc(18px + env(safe-area-inset-bottom)); display:flex; flex-direction:column; gap:12px; }
+.sheet h2 { font-size:17px; margin:0; }
+.hint { font-size:13px; color:var(--muted); margin:0; }
+#browser { position:fixed; inset:0; background:var(--stage); display:flex; flex-direction:column; }
+#browser .bar { display:flex; gap:6px; padding:6px; background:var(--panel); align-items:center; }
+#browser .bar input { flex:1; }
+#browser button { padding:6px 10px; }
+#stage { flex:1; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+#screen { touch-action:none; display:block; }
+</style>
+</head>
+<body>
+<section id="login" hidden>
+  <h1>BobBot</h1>
+  <div class="dots" id="dots"><i></i><i></i><i></i><i></i></div>
+  <div id="loginMsg" role="status"></div>
+  <div class="pad" id="pad"></div>
+</section>
+
+<section id="app" hidden>
+  <header>
+    <b>Bob</b><span id="spend"></span>
+    <button id="openBrowser" data-t="browser"></button>
+    <button id="openSettings" data-t="settings"></button>
+  </header>
+  <div id="feed" aria-live="polite"></div>
+  <div id="thinking"></div>
+  <form id="composer"><input id="text" autocomplete="off" data-ph="placeholder"><button class="primary" data-t="send"></button></form>
+</section>
+
+<div class="sheet" id="settings" hidden><div>
+  <h2 data-t="settings"></h2>
+  <label class="hint" data-t="keyLabel" for="key"></label>
+  <div class="row"><input id="key" type="password" autocomplete="off" placeholder="sk-..."><button id="saveKey" class="primary" data-t="save"></button></div>
+  <label class="hint" data-t="capLabel" for="cap"></label>
+  <div class="row"><input id="cap" type="number" min="0.01" step="0.5"><button id="saveCap" data-t="save"></button></div>
+  <p class="hint" id="settingsMsg" role="status"></p>
+  <p class="hint" data-t="pinHint"></p>
+  <div class="row"><button id="logout" data-t="logout"></button><button id="closeSettings" data-t="close" style="margin-left:auto"></button></div>
+</div></div>
+
+<section id="browser" hidden>
+  <div class="bar">
+    <form id="navForm" class="row" style="flex:1"><input id="url" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="https://"><button data-t="go"></button></form>
+    <button id="scrollUp" aria-label="Scroll up">▲</button><button id="scrollDown" aria-label="Scroll down">▼</button>
+  </div>
+  <div id="stage"><canvas id="screen"></canvas></div>
+  <div class="bar">
+    <input id="fill" autocomplete="off" autocapitalize="off" data-ph="fillPh">
+    <button id="togglePw" data-t="hide"></button><button id="fillBtn" data-t="fill"></button><button id="enterBtn" aria-label="Enter">⏎</button><button id="backBtn" aria-label="Backspace">⌫</button>
+  </div>
+  <div class="bar"><button id="closeBrowser" data-t="close"></button><button id="handBack" class="primary" style="margin-left:auto" data-t="handBack" hidden></button></div>
+</section>
+
+<script>
+const zh = navigator.language.startsWith('zh')
+const I18N = {
+  browser:['浏览器','Browser'], settings:['设置','Settings'], send:['发送','Send'], placeholder:['让 Bob 帮你做点什么','Ask Bob to do something'],
+  keyLabel:['DeepSeek API Key（保存后不再显示）','DeepSeek API key (hidden after saving)'], capLabel:['每月模型花费上限（美元）','Monthly model spending limit (USD)'],
+  save:['保存','Save'], close:['关闭','Close'], logout:['退出登录','Log out'], pinHint:['PIN 只能在服务器上修改：npm run set-pin -- 1234','The PIN can only be changed on the server: npm run set-pin -- 1234'],
+  go:['前往','Go'], hide:['隐藏','Hide'], show:['显示','Show'], fill:['填入','Fill'], fillPh:['先点网页输入框，再在此输入','Tap a field on the page, then type here'],
+  handBack:['我已处理好，交还给 Bob','Done, hand back to Bob'], allow:['允许本次','Allow once'], reject:['拒绝','Reject'], approved:['已允许','Allowed'], rejected:['已拒绝','Rejected'],
+  needsApproval:['Bob 想执行这个操作：','Bob wants to do this:'], needsYou:['Bob 需要你帮忙：','Bob needs you:'], openWindow:['打开虚拟窗口','Open browser window'], doneTakeover:['已交还','Handed back'],
+  working:['Bob 正在处理…','Bob is working…'], step:['步骤','Step'], saved:['已保存','Saved'], noKey:['请先在设置中填入 API Key','Add an API key in Settings first'],
+  budgetNear:['本月花费已超过上限的 80%','You have used over 80% of this month\'s limit'], budgetExceeded:['已达到本月花费上限，Bob 已停止。可在设置中提高上限。','Monthly limit reached, so Bob has stopped. You can raise it in Settings.'],
+  wrongPin:['PIN 错误，还可尝试 {n} 次','Wrong PIN, {n} tries left'], locked:['尝试次数过多，请 {n} 分钟后再试','Too many tries. Try again in {n} min'], noPin:['尚未设置 PIN，请在服务器运行 npm run set-pin -- 1234','No PIN yet. On the server run: npm run set-pin -- 1234'],
+  del:['删除','Del'], invalidKey:['API Key 无效','Invalid API key'], failed:['操作失败：','Failed: '],
+}
+const t = (k, n) => (I18N[k]?.[zh ? 0 : 1] ?? k).replace('{n}', n)
+const $ = id => document.getElementById(id)
+document.documentElement.lang = zh ? 'zh-CN' : 'en'
+document.querySelectorAll('[data-t]').forEach(el => { el.textContent = t(el.dataset.t) })
+document.querySelectorAll('[data-ph]').forEach(el => { el.placeholder = t(el.dataset.ph) })
+
+const post = async (url, body) => {
+  const res = await fetch(url, { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(body ?? {}) })
+  return { status:res.status, data: await res.json().catch(() => ({})) }
+}
+
+// ---- PIN ----
+let entered = ''
+const drawDots = () => [...$('dots').children].forEach((d, i) => d.classList.toggle('on', i < entered.length))
+async function submitPin() {
+  const { status, data } = await post('/api/login', { pin: entered })
+  entered = ''
+  drawDots()
+  if (status === 200) return boot()
+  $('loginMsg').textContent = data.error === 'LOCKED' ? t('locked', Math.ceil(data.retryAfter / 60)) : data.error === 'PIN_NOT_SET' ? t('noPin') : t('wrongPin', data.remaining)
+}
+const press = d => {
+  if (entered.length >= 4) return
+  entered += d
+  drawDots()
+  $('loginMsg').textContent = ''
+  if (entered.length === 4) submitPin()
+}
+;['1','2','3','4','5','6','7','8','9',null,'0','del'].forEach(k => {
+  const b = document.createElement('button')
+  if (k === null) { b.style.visibility = 'hidden' }
+  else if (k === 'del') { b.className = 'ghost'; b.textContent = t('del'); b.onclick = () => { entered = entered.slice(0, -1); drawDots() } }
+  else { b.textContent = k; b.onclick = () => press(k) }
+  $('pad').append(b)
+})
+addEventListener('keydown', e => { if (!$('login').hidden && /^\d$/.test(e.key)) press(e.key) })
+
+// ---- feed ----
+const feed = $('feed')
+const cards = new Map()
+const atEnd = () => { feed.scrollTop = feed.scrollHeight }
+function line(cls, text) { const d = document.createElement('div'); d.className = cls; d.textContent = text; feed.append(d); atEnd(); return d }
+function showBudget(b) { $('spend').textContent = `$${b.spentUsd.toFixed(3)} / $${b.capUsd}`; $('cap').value = b.capUsd }
+function setBusy(on) { $('thinking').textContent = on ? t('working') : '' }
+
+function render(e) {
+  if (e.type === 'message') line('msg' + (e.role === 'user' ? ' user' : ''), e.text)
+  else if (e.type === 'step') line('step', `${t('step')}: ${e.name.replace('browser_', '')}`)
+  else if (e.type === 'error') line('notice err', e.text)
+  else if (e.type === 'notice') line('notice err', t(e.code === 'BUDGET_NEAR' ? 'budgetNear' : 'budgetExceeded'))
+  else if (e.type === 'approval') approvalCard(e)
+  else if (e.type === 'approval_done') closeCard(e.id, t(e.allowed ? 'approved' : 'rejected'))
+  else if (e.type === 'takeover') takeoverCard(e)
+  else if (e.type === 'takeover_done') { closeCard(e.id, t('doneTakeover')); activeTakeover = null; $('handBack').hidden = true }
+}
+function makeCard(id, title, detail) {
+  const c = document.createElement('div'); c.className = 'card'
+  const p = document.createElement('div'); p.textContent = title
+  const s = document.createElement('b'); s.textContent = detail
+  const row = document.createElement('div'); row.className = 'row'
+  c.append(p, s, row); feed.append(c); cards.set(id, { c, row }); atEnd()
+  return { c, row }
+}
+function closeCard(id, label) {
+  const card = cards.get(id)
+  if (!card) return
+  card.row.textContent = label
+  card.c.querySelector('img')?.remove()
+}
+function approvalCard(e) {
+  const { c, row } = makeCard(e.id, t('needsApproval'), e.summary)
+  if (e.screenshot) { const img = new Image(); img.alt = ''; img.src = 'data:image/jpeg;base64,' + e.screenshot; c.insertBefore(img, row) }
+  const go = allow => post('/api/approve', { id:e.id, allow })
+  const yes = document.createElement('button'); yes.className = 'primary'; yes.textContent = t('allow'); yes.onclick = () => go(true)
+  const no = document.createElement('button'); no.textContent = t('reject'); no.onclick = () => go(false)
+  row.append(yes, no)
+}
+let activeTakeover = null
+function takeoverCard(e) {
+  const { row } = makeCard(e.id, t('needsYou'), e.reason)
+  activeTakeover = e.id
+  const open = document.createElement('button'); open.className = 'primary'; open.textContent = t('openWindow'); open.onclick = openBrowser
+  row.append(open)
+  $('handBack').hidden = false
+}
+
+let source
+function connect() {
+  source?.close()
+  source = new EventSource('/api/events')
+  source.onmessage = m => {
+    const e = JSON.parse(m.data)
+    if (e.type === 'hello') {
+      feed.textContent = ''; cards.clear(); activeTakeover = null; $('handBack').hidden = true
+      e.history.forEach(render); showBudget(e.budget); setBusy(e.busy)
+    }
+    else if (e.type === 'budget') showBudget(e)
+    else if (e.type === 'status') setBusy(e.status === 'running')
+    else render(e)
+  }
+}
+$('composer').onsubmit = async e => {
+  e.preventDefault()
+  const text = $('text').value.trim()
+  if (!text) return
+  $('text').value = ''
+  const { status, data } = await post('/api/chat', { text })
+  if (status === 200) return
+  if (data.error === 'NO_KEY') { $('text').value = text; line('notice err', t('noKey')); $('settings').hidden = false }
+  else if (data.error === 'BUDGET_EXCEEDED') line('notice err', t('budgetExceeded'))
+  else line('notice err', t('failed') + (data.error ?? status))
+}
+
+// ---- settings ----
+$('openSettings').onclick = () => { $('settingsMsg').textContent = ''; $('settings').hidden = false }
+$('closeSettings').onclick = () => { $('settings').hidden = true }
+$('saveKey').onclick = async () => {
+  const { status, data } = await post('/api/key', { key: $('key').value })
+  $('settingsMsg').textContent = status === 200 ? t('saved') : data.error === 'INVALID_KEY' ? t('invalidKey') : t('failed') + (data.error ?? status)
+  if (status === 200) $('key').value = ''
+}
+$('saveCap').onclick = async () => {
+  const { status, data } = await post('/api/budget', { capUsd: Number($('cap').value) })
+  $('settingsMsg').textContent = status === 200 ? t('saved') : t('failed') + (data.error ?? status)
+}
+$('logout').onclick = async () => { await post('/api/logout'); location.reload() }
+
+// ---- phone browser window ----
+const canvas = $('screen'), ctx = canvas.getContext('2d')
+let ws, moveQueued = null
+const sendWs = m => { if (ws?.readyState === 1) ws.send(JSON.stringify(m)) }
+function openBrowser() {
+  $('browser').hidden = false
+  const area = $('stage').getBoundingClientRect()
+  const w = Math.floor(area.width), h = Math.floor(area.height)
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px'
+  ws = new WebSocket(location.origin.replace(/^http/, 'ws') + '/ws/browser')
+  ws.binaryType = 'blob'
+  ws.onopen = () => sendWs({ t:'viewport', w, h })
+  ws.onmessage = async m => {
+    if (typeof m.data === 'string') { const e = JSON.parse(m.data); if (e.error) line('notice err', e.error); return }
+    const bmp = await createImageBitmap(m.data)
+    if (canvas.width !== bmp.width || canvas.height !== bmp.height) { canvas.width = bmp.width; canvas.height = bmp.height }
+    ctx.drawImage(bmp, 0, 0); bmp.close()
+  }
+}
+function closeBrowser() { ws?.close(); ws = null; $('browser').hidden = true }
+$('openBrowser').onclick = openBrowser
+$('closeBrowser').onclick = closeBrowser
+$('handBack').onclick = async () => { closeBrowser(); await post('/api/takeover/done') }
+const point = e => {
+  const r = canvas.getBoundingClientRect()
+  return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) }
+}
+canvas.onpointerdown = e => { canvas.setPointerCapture(e.pointerId); sendWs({ t:'pointer', k:'down', ...point(e) }) }
+canvas.onpointermove = e => {
+  if (!e.buttons) return
+  const first = moveQueued === null
+  moveQueued = point(e)
+  if (first) requestAnimationFrame(() => { sendWs({ t:'pointer', k:'move', ...moveQueued }); moveQueued = null })
+}
+canvas.onpointerup = e => sendWs({ t:'pointer', k:'up', ...point(e) })
+canvas.onwheel = e => { e.preventDefault(); sendWs({ t:'wheel', d:e.deltaY }) }
+const scrollStep = () => Math.round($('stage').clientHeight * .7)
+$('scrollUp').onclick = () => sendWs({ t:'wheel', d:-scrollStep() })
+$('scrollDown').onclick = () => sendWs({ t:'wheel', d:scrollStep() })
+$('navForm').onsubmit = e => { e.preventDefault(); if ($('url').value.trim()) sendWs({ t:'nav', url:$('url').value.trim() }) }
+$('fillBtn').onclick = () => { if ($('fill').value) { sendWs({ t:'text', v:$('fill').value }); $('fill').value = '' } }
+$('enterBtn').onclick = () => sendWs({ t:'key', k:'Enter' })
+$('backBtn').onclick = () => sendWs({ t:'key', k:'Backspace' })
+$('togglePw').onclick = () => { const f = $('fill'), hide = f.type !== 'password'; f.type = hide ? 'password' : 'text'; $('togglePw').textContent = t(hide ? 'show' : 'hide') }
+
+async function boot() {
+  const s = await (await fetch('/api/state')).json()
+  $('login').hidden = s.authed
+  $('app').hidden = !s.authed
+  if (!s.authed) { if (!s.pinSet) $('loginMsg').textContent = t('noPin'); return }
+  if (!s.hasKey) $('settings').hidden = false
+  connect()
+}
+boot()
+</script>
+</body>
+</html>
