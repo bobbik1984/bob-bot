@@ -3,58 +3,151 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>BobBot</title>
+<meta name="theme-color" content="#f4f6fb">
+<title>Bob</title>
 <style>
-:root { --bg:#f6f6f4; --panel:#fff; --text:#1d1d1b; --muted:#73736d; --line:#e2e1dc; --accent:#2f6f5e; --accent-text:#fff; --user:#e4efe9; --danger:#b3382c; --shade:rgba(0,0,0,.45); --stage:#111; }
-@media (prefers-color-scheme: dark) { :root { --bg:#161715; --panel:#20211f; --text:#ececE7; --muted:#9a9a93; --line:#343531; --accent:#5fb39b; --accent-text:#10201b; --user:#27372f; --danger:#e8796d; --shade:rgba(0,0,0,.6); --stage:#000; } }
-* { box-sizing:border-box; }
+:root {
+  --bg:#f4f6fb; --surface:#ffffff; --surface-2:#eef1f7; --text:#1b2230; --muted:#6c778a; --line:#e3e8f1;
+  --accent:#2f6bff; --accent-text:#ffffff; --accent-soft:#e4edff; --accent-ink:#2457d6; --bubble-user:#dbe8ff;
+  --danger:#d64545; --danger-soft:#fdeceb; --ok:#1f9d6b; --ok-soft:#e3f6ee; --warn:#b7791f; --warn-soft:#fff3dc;
+  --shadow:0 6px 24px rgba(30,50,110,.08); --shade:rgba(15,23,42,.45); --stage:#0b0f1a;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg:#0f131c; --surface:#181d29; --surface-2:#212836; --text:#e8ecf4; --muted:#98a3b8; --line:#2a3243;
+  --accent:#5b8cff; --accent-text:#0b1020; --accent-soft:#1d2a4a; --accent-ink:#9db9ff; --bubble-user:#23365e;
+  --danger:#ff7b7b; --danger-soft:#3a2226; --ok:#4cc38f; --ok-soft:#173326; --warn:#e3b455; --warn-soft:#3a2f1a;
+  --shadow:0 6px 24px rgba(0,0,0,.35); --shade:rgba(0,0,0,.6); --stage:#000;
+} }
+* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 html, body { height:100%; margin:0; }
-body { background:var(--bg); color:var(--text); font:16px/1.5 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+body { background:var(--bg); color:var(--text); font:16px/1.55 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
 button, input { font:inherit; color:inherit; }
-button { cursor:pointer; border:1px solid var(--line); background:var(--panel); border-radius:8px; padding:8px 12px; min-height:40px; }
-button.primary { background:var(--accent); color:var(--accent-text); border-color:var(--accent); }
-input { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:9px 11px; min-width:0; }
+button { cursor:pointer; border:0; background:none; padding:0; }
+button:focus-visible, input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+svg { width:1.25em; height:1.25em; flex:none; }
 [hidden] { display:none !important; }
-#login { height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:22px; padding:16px; }
-#login h1 { margin:0; font-size:22px; font-weight:600; }
-.dots { display:flex; gap:16px; }
-.dots i { width:14px; height:14px; border-radius:50%; border:2px solid var(--muted); }
-.dots i.on { background:var(--text); border-color:var(--text); }
-#loginMsg { min-height:24px; color:var(--danger); font-size:14px; text-align:center; }
-.pad { display:grid; grid-template-columns:repeat(3,76px); gap:14px; }
-.pad button { height:76px; border-radius:50%; font-size:26px; }
-.pad .ghost { border-color:transparent; background:transparent; font-size:16px; }
-#app { height:100%; display:flex; flex-direction:column; max-width:760px; margin:0 auto; }
-header { display:flex; align-items:center; gap:8px; padding:10px 16px; border-bottom:1px solid var(--line); }
-header b { font-size:17px; }
-#spend { color:var(--muted); font-size:13px; margin-right:auto; }
-#feed { flex:1; overflow-y:auto; scrollbar-gutter:stable; padding:16px; display:flex; flex-direction:column; gap:10px; }
-.msg { max-width:88%; padding:9px 13px; border-radius:12px; background:var(--panel); border:1px solid var(--line); white-space:pre-wrap; overflow-wrap:anywhere; align-self:flex-start; }
-.msg.user { align-self:flex-end; background:var(--user); border-color:transparent; }
-.step, .notice { font-size:13px; color:var(--muted); }
-.notice.err { color:var(--danger); }
-.card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:10px; }
-.card img { width:100%; max-height:260px; object-fit:contain; border-radius:8px; background:var(--stage); }
+
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:44px; padding:0 18px; border-radius:14px; background:var(--surface-2); font-weight:600; }
+.btn.primary { background:var(--accent); color:var(--accent-text); }
+.btn.danger { background:var(--danger-soft); color:var(--danger); }
+.btn.block { width:100%; }
+.icon-btn { width:40px; height:40px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; color:var(--muted); }
+.icon-btn:active, .btn:active { transform:scale(.97); }
+.field { width:100%; min-width:0; min-height:44px; padding:0 14px; border-radius:14px; border:1px solid var(--line); background:var(--surface); }
+.avatar { width:30px; height:30px; flex:none; color:var(--accent); }
+.avatar svg { width:100%; height:100%; }
+.avatar.big { width:84px; height:84px; }
+
+/* login */
+#login { height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:16px; }
+#login h1 { margin:0; font-size:28px; letter-spacing:.2px; }
+#login .sub { margin:0; color:var(--muted); font-size:14px; }
+.dots { display:flex; gap:16px; margin-top:10px; }
+.dots i { width:14px; height:14px; border-radius:50%; border:2px solid var(--line); background:var(--surface); transition:background .12s, border-color .12s; }
+.dots i.on { background:var(--accent); border-color:var(--accent); }
+#loginMsg { min-height:24px; color:var(--danger); font-size:14px; text-align:center; max-width:300px; }
+.pad { display:grid; grid-template-columns:repeat(3,72px); gap:14px 18px; }
+.pad button { height:72px; border-radius:50%; font-size:26px; background:var(--surface); box-shadow:var(--shadow); border:1px solid var(--line); }
+.pad button:active { background:var(--accent-soft); }
+.pad .ghost { background:transparent; box-shadow:none; border-color:transparent; font-size:15px; color:var(--muted); }
+
+/* app shell */
+#app { height:100%; height:100dvh; display:flex; flex-direction:column; max-width:720px; margin:0 auto; background:var(--bg); }
+header { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:8px; padding:calc(8px + env(safe-area-inset-top)) 14px 8px; }
+header .title { text-align:center; line-height:1.2; }
+header .title b { display:block; font-size:18px; }
+header .title small { display:block; font-size:12px; color:var(--muted); min-height:16px; }
+header .right { justify-self:end; }
+.pill { justify-self:start; font-size:12px; color:var(--accent-ink); background:var(--accent-soft); border-radius:999px; padding:4px 10px; white-space:nowrap; }
+.pill.warn { color:var(--warn); background:var(--warn-soft); }
+.pill.over { color:var(--danger); background:var(--danger-soft); }
+main { flex:1; min-height:0; position:relative; }
+.view { position:absolute; inset:0; overflow-y:auto; scrollbar-gutter:stable; padding:6px 14px 14px; }
+
+/* chat */
+#welcome { display:flex; flex-direction:column; align-items:center; gap:4px; padding:28px 0 8px; text-align:center; }
+#welcome b { font-size:20px; margin-top:6px; }
+#welcome span { color:var(--muted); font-size:14px; }
+.chips { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:14px; }
+.chip-btn { padding:9px 14px; border-radius:999px; background:var(--surface); border:1px solid var(--line); font-size:14px; box-shadow:var(--shadow); }
+#feed { display:flex; flex-direction:column; gap:10px; }
+.bubble-row { display:flex; gap:8px; align-items:flex-end; }
+.bubble-row.user { justify-content:flex-end; }
+.bubble-row .spacer { width:30px; flex:none; }
+.msg { max-width:84%; padding:10px 14px; border-radius:20px; white-space:pre-wrap; overflow-wrap:anywhere; background:var(--surface); border:1px solid var(--line); border-bottom-left-radius:6px; }
+.bubble-row.user .msg { background:var(--bubble-user); border-color:transparent; border-bottom-left-radius:20px; border-bottom-right-radius:6px; }
+.typing { display:flex; gap:5px; padding:14px 16px; }
+.typing i { width:7px; height:7px; border-radius:50%; background:var(--muted); opacity:.45; animation:blink 1.2s infinite; }
+.typing i:nth-child(2) { animation-delay:.2s; } .typing i:nth-child(3) { animation-delay:.4s; }
+@keyframes blink { 40% { opacity:1; transform:translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) { .typing i { animation:none; opacity:.7; } }
+.steps { margin-left:38px; font-size:13px; color:var(--muted); background:var(--surface-2); border-radius:14px; padding:2px 12px; max-width:84%; }
+.steps summary { cursor:pointer; padding:8px 0; list-style:none; display:flex; align-items:center; gap:8px; }
+.steps summary::-webkit-details-marker { display:none; }
+.steps summary svg { width:1em; height:1em; }
+.steps ul { margin:0 0 8px; padding:0 0 0 22px; }
+.notice { font-size:13px; color:var(--muted); text-align:center; padding:2px 8px; }
+.notice.err { color:var(--danger); background:var(--danger-soft); border-radius:12px; padding:8px 12px; }
+
+/* cards */
+.card { background:var(--surface); border:1px solid var(--line); border-radius:20px; padding:14px; display:flex; flex-direction:column; gap:10px; box-shadow:var(--shadow); }
+.card-top { display:flex; align-items:center; gap:8px; }
+.card-top .chipicon { width:32px; height:32px; border-radius:10px; display:inline-flex; align-items:center; justify-content:center; background:var(--accent-soft); color:var(--accent-ink); }
+.card.help .chipicon { background:var(--warn-soft); color:var(--warn); }
+.tag { font-size:12px; font-weight:600; color:var(--accent-ink); background:var(--accent-soft); padding:2px 8px; border-radius:6px; }
+.card.help .tag { color:var(--warn); background:var(--warn-soft); }
+.card .time { margin-left:auto; font-size:12px; color:var(--muted); }
+.card .lead { color:var(--muted); font-size:13px; }
+.card .what { font-weight:700; overflow-wrap:anywhere; }
+.card img { width:100%; max-height:240px; object-fit:contain; border-radius:12px; background:var(--stage); }
+.card .actions { display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:10px; }
+.card .done { display:flex; align-items:center; gap:6px; color:var(--ok); font-weight:600; font-size:14px; }
+.card .done.no { color:var(--muted); }
+#pendingEmpty { display:flex; flex-direction:column; align-items:center; gap:8px; padding:60px 20px; color:var(--muted); text-align:center; }
+#pendingEmpty svg { width:44px; height:44px; color:var(--ok); }
+#pendingList { display:flex; flex-direction:column; gap:12px; }
+
+/* settings */
+.section { background:var(--surface); border:1px solid var(--line); border-radius:20px; padding:16px; margin-bottom:12px; display:flex; flex-direction:column; gap:10px; box-shadow:var(--shadow); }
+.section h3 { margin:0; font-size:15px; }
+.hint { margin:0; font-size:13px; color:var(--muted); }
 .row { display:flex; gap:8px; align-items:center; }
-.row > input { flex:1; }
-#composer { display:flex; gap:8px; padding:10px 16px calc(10px + env(safe-area-inset-bottom)); border-top:1px solid var(--line); }
-#composer input { flex:1; }
-#thinking { padding:0 16px 6px; font-size:13px; color:var(--muted); min-height:20px; }
-.sheet { position:fixed; inset:0; background:var(--shade); display:flex; align-items:flex-end; justify-content:center; }
-.sheet > div { background:var(--panel); width:100%; max-width:520px; border-radius:14px 14px 0 0; padding:18px 16px calc(18px + env(safe-area-inset-bottom)); display:flex; flex-direction:column; gap:12px; }
-.sheet h2 { font-size:17px; margin:0; }
-.hint { font-size:13px; color:var(--muted); margin:0; }
-#browser { position:fixed; inset:0; background:var(--stage); display:flex; flex-direction:column; }
-#browser .bar { display:flex; gap:6px; padding:6px; background:var(--panel); align-items:center; }
-#browser .bar input { flex:1; }
-#browser button { padding:6px 10px; }
-#stage { flex:1; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
-#screen { touch-action:none; display:block; }
+.row > .field { flex:1; }
+.bar { height:8px; border-radius:99px; background:var(--surface-2); overflow:hidden; }
+.bar i { display:block; height:100%; width:0; background:var(--accent); border-radius:99px; transition:width .3s; }
+.bar.warn i { background:var(--warn); } .bar.over i { background:var(--danger); }
+.big { font-size:26px; font-weight:700; }
+.big small { font-size:14px; font-weight:400; color:var(--muted); }
+#settingsMsg { min-height:20px; }
+
+/* composer and tabs */
+#composer { display:flex; align-items:center; gap:6px; margin:4px 12px 8px; padding:5px 5px 5px 16px; background:var(--surface); border:1px solid var(--line); border-radius:28px; box-shadow:var(--shadow); }
+#composer input { flex:1; min-width:0; border:0; background:none; min-height:40px; }
+#composer input:focus-visible { outline:0; }
+#composer:focus-within { border-color:var(--accent); }
+#composer .send { width:42px; height:42px; border-radius:50%; background:var(--accent); color:var(--accent-text); display:inline-flex; align-items:center; justify-content:center; }
+nav { display:flex; border-top:1px solid var(--line); background:var(--surface); padding-bottom:env(safe-area-inset-bottom); }
+nav button { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 0 7px; font-size:12px; color:var(--muted); position:relative; }
+nav button.on { color:var(--accent); font-weight:600; }
+nav button svg { width:24px; height:24px; }
+.badge { position:absolute; top:3px; left:calc(50% + 6px); min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:var(--danger); color:#fff; font-size:11px; line-height:18px; text-align:center; }
+
+/* browser window */
+#browser { position:fixed; inset:0; background:var(--bg); display:flex; flex-direction:column; z-index:5; }
+#browser .top { display:flex; gap:8px; align-items:center; padding:calc(8px + env(safe-area-inset-top)) 10px 8px; }
+#browser .top form { flex:1; display:flex; gap:8px; min-width:0; }
+#stage { flex:1; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; background:var(--stage); }
+#screen { touch-action:none; display:block; background:#fff; }
+#browser .tools { padding:8px 10px calc(8px + env(safe-area-inset-bottom)); display:flex; flex-direction:column; gap:8px; }
+#browser .tools .icon-btn { background:var(--surface); border:1px solid var(--line); border-radius:12px; width:44px; height:44px; color:var(--text); }
+#browser .tools .row.keys { justify-content:space-between; }
 </style>
 </head>
 <body>
 <section id="login" hidden>
-  <h1>BobBot</h1>
+  <div class="avatar big" data-avatar></div>
+  <h1>Bob</h1>
+  <p class="sub" data-t="loginSub"></p>
   <div class="dots" id="dots"><i></i><i></i><i></i><i></i></div>
   <div id="loginMsg" role="status"></div>
   <div class="pad" id="pad"></div>
@@ -62,58 +155,126 @@ header b { font-size:17px; }
 
 <section id="app" hidden>
   <header>
-    <b>Bob</b><span id="spend"></span>
-    <button id="openBrowser" data-t="browser"></button>
-    <button id="openSettings" data-t="settings"></button>
+    <span class="pill" id="spend"></span>
+    <div class="title"><b id="title">Bob</b><small id="sub"></small></div>
+    <button class="icon-btn right" id="openBrowser" data-al="browser" data-i="globe"></button>
   </header>
-  <div id="feed" aria-live="polite"></div>
-  <div id="thinking"></div>
-  <form id="composer"><input id="text" autocomplete="off" data-ph="placeholder"><button class="primary" data-t="send"></button></form>
+  <main>
+    <div class="view" id="viewChat">
+      <div id="welcome">
+        <div class="avatar big" data-avatar></div>
+        <b>Bob</b><span data-t="welcomeSub"></span>
+        <div class="chips" id="chips"></div>
+      </div>
+      <div id="feed" aria-live="polite"></div>
+    </div>
+    <div class="view" id="viewPending" hidden>
+      <div id="pendingList"></div>
+      <div id="pendingEmpty"><span data-i="check"></span><b data-t="pendingEmpty"></b><span class="hint" data-t="pendingHint"></span></div>
+    </div>
+    <div class="view" id="viewSettings" hidden>
+      <div class="section">
+        <h3 data-t="keyTitle"></h3>
+        <p class="hint" data-t="keyLabel"></p>
+        <div class="row"><input class="field" id="key" type="password" autocomplete="off" placeholder="sk-..." aria-label="API key"><button class="btn primary" id="saveKey" data-t="save"></button></div>
+      </div>
+      <div class="section">
+        <h3 data-t="capTitle"></h3>
+        <div class="big" id="spentBig"></div>
+        <div class="bar" id="capBar"><i></i></div>
+        <p class="hint" data-t="capLabel"></p>
+        <div class="row"><input class="field" id="cap" type="number" inputmode="decimal" min="0.01" step="0.5" aria-label="Monthly limit"><button class="btn" id="saveCap" data-t="save"></button></div>
+      </div>
+      <p class="hint" id="settingsMsg" role="status"></p>
+      <div class="section">
+        <h3 data-t="pinTitle"></h3>
+        <p class="hint" data-t="pinHint"></p>
+        <button class="btn danger block" id="logout" data-t="logout"></button>
+      </div>
+    </div>
+  </main>
+  <form id="composer"><input id="text" autocomplete="off" data-ph="placeholder" aria-label="Message"><button class="send" data-al="send" data-i="send"></button></form>
+  <nav>
+    <button class="on" data-view="chat"><span data-i="chat"></span><span data-t="tabChat"></span></button>
+    <button data-view="pending"><span data-i="check"></span><span data-t="tabPending"></span><span class="badge" id="badge" hidden></span></button>
+    <button data-view="settings"><span data-i="sliders"></span><span data-t="tabSettings"></span></button>
+  </nav>
 </section>
 
-<div class="sheet" id="settings" hidden><div>
-  <h2 data-t="settings"></h2>
-  <label class="hint" data-t="keyLabel" for="key"></label>
-  <div class="row"><input id="key" type="password" autocomplete="off" placeholder="sk-..."><button id="saveKey" class="primary" data-t="save"></button></div>
-  <label class="hint" data-t="capLabel" for="cap"></label>
-  <div class="row"><input id="cap" type="number" min="0.01" step="0.5"><button id="saveCap" data-t="save"></button></div>
-  <p class="hint" id="settingsMsg" role="status"></p>
-  <p class="hint" data-t="pinHint"></p>
-  <div class="row"><button id="logout" data-t="logout"></button><button id="closeSettings" data-t="close" style="margin-left:auto"></button></div>
-</div></div>
-
 <section id="browser" hidden>
-  <div class="bar">
-    <form id="navForm" class="row" style="flex:1"><input id="url" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="https://"><button data-t="go"></button></form>
-    <button id="scrollUp" aria-label="Scroll up">▲</button><button id="scrollDown" aria-label="Scroll down">▼</button>
+  <div class="top">
+    <button class="icon-btn" id="closeBrowser" data-al="close" data-i="back"></button>
+    <form id="navForm"><input class="field" id="url" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="https://" aria-label="URL"><button class="btn" data-t="go"></button></form>
   </div>
   <div id="stage"><canvas id="screen"></canvas></div>
-  <div class="bar">
-    <input id="fill" autocomplete="off" autocapitalize="off" data-ph="fillPh">
-    <button id="togglePw" data-t="hide"></button><button id="fillBtn" data-t="fill"></button><button id="enterBtn" aria-label="Enter">⏎</button><button id="backBtn" aria-label="Backspace">⌫</button>
+  <div class="tools">
+    <div class="row"><input class="field" id="fill" autocomplete="off" autocapitalize="off" data-ph="fillPh" aria-label="Text to fill"><button class="icon-btn" id="togglePw" data-al="toggle" data-i="eye"></button><button class="btn primary" id="fillBtn" data-t="fill"></button></div>
+    <div class="row keys">
+      <button class="icon-btn" id="scrollUp" data-al="up" data-i="up"></button>
+      <button class="icon-btn" id="scrollDown" data-al="down" data-i="down"></button>
+      <button class="icon-btn" id="backBtn" data-al="backspace" data-i="backspace"></button>
+      <button class="icon-btn" id="enterBtn" data-al="enter" data-i="enter"></button>
+    </div>
+    <button class="btn primary block" id="handBack" data-t="handBack" hidden></button>
   </div>
-  <div class="bar"><button id="closeBrowser" data-t="close"></button><button id="handBack" class="primary" style="margin-left:auto" data-t="handBack" hidden></button></div>
 </section>
 
 <script>
 const zh = navigator.language.startsWith('zh')
 const I18N = {
-  browser:['浏览器','Browser'], settings:['设置','Settings'], send:['发送','Send'], placeholder:['让 Bob 帮你做点什么','Ask Bob to do something'],
-  keyLabel:['DeepSeek API Key（保存后不再显示）','DeepSeek API key (hidden after saving)'], capLabel:['每月模型花费上限（美元）','Monthly model spending limit (USD)'],
-  save:['保存','Save'], close:['关闭','Close'], logout:['退出登录','Log out'], pinHint:['PIN 只能在服务器上修改：npm run set-pin -- 1234','The PIN can only be changed on the server: npm run set-pin -- 1234'],
-  go:['前往','Go'], hide:['隐藏','Hide'], show:['显示','Show'], fill:['填入','Fill'], fillPh:['先点网页输入框，再在此输入','Tap a field on the page, then type here'],
-  handBack:['我已处理好，交还给 Bob','Done, hand back to Bob'], allow:['允许本次','Allow once'], reject:['拒绝','Reject'], approved:['已允许','Allowed'], rejected:['已拒绝','Rejected'],
-  needsApproval:['Bob 想执行这个操作：','Bob wants to do this:'], needsYou:['Bob 需要你帮忙：','Bob needs you:'], openWindow:['打开虚拟窗口','Open browser window'], doneTakeover:['已交还','Handed back'],
-  working:['Bob 正在处理…','Bob is working…'], step:['步骤','Step'], saved:['已保存','Saved'], noKey:['请先在设置中填入 API Key','Add an API key in Settings first'],
+  loginSub:['输入 PIN 进入','Enter your PIN'], welcomeSub:['随时为你效劳','At your service'],
+  tabChat:['对话','Chat'], tabPending:['待确认','Pending'], tabSettings:['设置','Settings'],
+  pendingTitle:['待确认','Pending'], settingsTitle:['设置','Settings'], ready:['随时为你效劳','Ready'], working:['正在处理…','Working…'],
+  browser:['浏览器','Browser'], send:['发送','Send'], placeholder:['发送消息给 Bob…','Message Bob…'], close:['关闭','Close'],
+  chip1:['总结一个网页','Summarize a page'], chip1q:['帮我打开并总结这个网页：','Open and summarize this page: '],
+  chip2:['查最新资讯','Look up news'], chip2q:['帮我查一下今天的科技新闻要点','Find today\'s top tech news for me'],
+  keyTitle:['模型','Model'], keyLabel:['DeepSeek API Key（保存后不再显示）','DeepSeek API key (hidden after saving)'],
+  capTitle:['本月花费','This month'], capLabel:['每月模型花费上限（美元）','Monthly model spending limit (USD)'],
+  pinTitle:['账号','Account'], pinHint:['PIN 只能在服务器上修改：npm run set-pin -- 1234','The PIN can only be changed on the server: npm run set-pin -- 1234'],
+  save:['保存','Save'], logout:['退出登录','Log out'], saved:['已保存','Saved'], noKey:['请先填入 API Key','Add an API key first'],
+  go:['前往','Go'], fill:['填入','Fill'], fillPh:['在此输入文字','Type text here'],
+  toggle:['显示或隐藏','Show or hide'], up:['向上滚动','Scroll up'], down:['向下滚动','Scroll down'], backspace:['退格','Backspace'], enter:['回车','Enter'],
+  handBack:['我已处理好，交还给 Bob','Done, hand back to Bob'],
+  allow:['确认执行','Allow once'], reject:['拒绝','Reject'], approved:['已允许','Allowed'], rejected:['已拒绝','Rejected'], expired:['已过期','Expired'],
+  tagApprove:['待确认','Needs approval'], tagHelp:['待处理','Needs you'],
+  needsApproval:['Bob 想执行这个操作','Bob wants to do this'], needsYou:['Bob 需要你帮忙','Bob needs your help'],
+  openWindow:['打开浏览器窗口','Open browser window'], doneTakeover:['已交还给 Bob','Handed back to Bob'],
+  pendingEmpty:['没有待确认事项','Nothing pending'], pendingHint:['Bob 需要你时会出现在这里','Bob will show items here when it needs you'],
+  step_browser_navigate:['打开网页','Opening page'], step_browser_snapshot:['查看页面','Reading page'], step_browser_click:['点击','Clicking'],
+  step_browser_type:['输入文字','Typing'], step_browser_scroll:['滚动页面','Scrolling'], step_browser_request_human:['请你协助','Asking you for help'],
+  stepsCount:['共 {n} 步','{n} steps'],
   budgetNear:['本月花费已超过上限的 80%','You have used over 80% of this month\'s limit'], budgetExceeded:['已达到本月花费上限，Bob 已停止。可在设置中提高上限。','Monthly limit reached, so Bob has stopped. You can raise it in Settings.'],
-  wrongPin:['PIN 错误，还可尝试 {n} 次','Wrong PIN, {n} tries left'], locked:['尝试次数过多，请 {n} 分钟后再试','Too many tries. Try again in {n} min'], noPin:['尚未设置 PIN，请在服务器运行 npm run set-pin -- 1234','No PIN yet. On the server run: npm run set-pin -- 1234'],
+  wrongPin:['PIN 错误，还可尝试 {n} 次','Wrong PIN, {n} tries left'], locked:['尝试次数过多，请 {n} 分钟后再试','Too many tries. Try again in {n} min'],
+  noPin:['尚未设置 PIN，请在服务器运行 npm run set-pin -- 1234','No PIN yet. On the server run: npm run set-pin -- 1234'],
   del:['删除','Del'], invalidKey:['API Key 无效','Invalid API key'], failed:['操作失败：','Failed: '],
 }
 const t = (k, n) => (I18N[k]?.[zh ? 0 : 1] ?? k).replace('{n}', n)
 const $ = id => document.getElementById(id)
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e }
 document.documentElement.lang = zh ? 'zh-CN' : 'en'
-document.querySelectorAll('[data-t]').forEach(el => { el.textContent = t(el.dataset.t) })
-document.querySelectorAll('[data-ph]').forEach(el => { el.placeholder = t(el.dataset.ph) })
+
+const ICONS = {
+  globe:'<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/>',
+  send:'<path d="M12 19V5M5 12l7-7 7 7"/>', chat:'<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+  check:'<path d="M22 11.1V12a10 10 0 1 1-5.9-9.1M22 4 12 14l-3-3"/>',
+  sliders:'<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
+  back:'<path d="M15 18l-6-6 6-6"/>', up:'<path d="M12 19V5M5 12l7-7 7 7"/>', down:'<path d="M12 5v14M5 12l7 7 7-7"/>',
+  enter:'<path d="M9 10l-5 5 5 5M20 4v7a4 4 0 0 1-4 4H4"/>',
+  backspace:'<path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM18 9l-6 6M12 9l6 6"/>',
+  eye:'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/>',
+  eyeoff:'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/><path d="M3 3l18 18"/>',
+  shield:'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM12 8v4M12 16h.01"/>',
+  hand:'<path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v7M10 10.5V6a2 2 0 0 0-4 0v8M18 8a2 2 0 0 1 4 0v6a8 8 0 0 1-8 8h-2c-2.5 0-4-1-5.4-2.4L3 15.6a2 2 0 0 1 3-2.6L8 15"/>',
+  tick:'<path d="M20 6 9 17l-5-5"/>', cross:'<path d="M18 6 6 18M6 6l12 12"/>',
+}
+const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`
+const AVATAR = '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="24" fill="currentColor"/><rect x="10" y="14" width="28" height="21" rx="10.5" fill="#fff"/><circle cx="19" cy="25" r="2.6" fill="currentColor"/><circle cx="29" cy="25" r="2.6" fill="currentColor"/><path d="M24 14V9" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><circle cx="24" cy="8" r="2.2" fill="#fff"/></svg>'
+
+document.querySelectorAll('[data-t]').forEach(e => { e.textContent = t(e.dataset.t) })
+document.querySelectorAll('[data-ph]').forEach(e => { e.placeholder = t(e.dataset.ph) })
+document.querySelectorAll('[data-al]').forEach(e => { e.setAttribute('aria-label', t(e.dataset.al)); e.title = t(e.dataset.al) })
+document.querySelectorAll('[data-i]').forEach(e => e.insertAdjacentHTML('afterbegin', icon(e.dataset.i)))
+document.querySelectorAll('[data-avatar]').forEach(e => { e.innerHTML = AVATAR })
 
 const post = async (url, body) => {
   const res = await fetch(url, { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(body ?? {}) })
@@ -139,60 +300,150 @@ const press = d => {
 }
 ;['1','2','3','4','5','6','7','8','9',null,'0','del'].forEach(k => {
   const b = document.createElement('button')
-  if (k === null) { b.style.visibility = 'hidden' }
+  if (k === null) { b.style.visibility = 'hidden'; b.tabIndex = -1 }
   else if (k === 'del') { b.className = 'ghost'; b.textContent = t('del'); b.onclick = () => { entered = entered.slice(0, -1); drawDots() } }
   else { b.textContent = k; b.onclick = () => press(k) }
   $('pad').append(b)
 })
 addEventListener('keydown', e => { if (!$('login').hidden && /^\d$/.test(e.key)) press(e.key) })
 
-// ---- feed ----
-const feed = $('feed')
-const cards = new Map()
-const atEnd = () => { feed.scrollTop = feed.scrollHeight }
-function line(cls, text) { const d = document.createElement('div'); d.className = cls; d.textContent = text; feed.append(d); atEnd(); return d }
-function showBudget(b) { $('spend').textContent = `$${b.spentUsd.toFixed(3)} / $${b.capUsd}`; $('cap').value = b.capUsd }
-function setBusy(on) { $('thinking').textContent = on ? t('working') : '' }
+// ---- views ----
+const VIEWS = ['chat', 'pending', 'settings']
+function show(view) {
+  VIEWS.forEach(v => { $('view' + v[0].toUpperCase() + v.slice(1)).hidden = v !== view })
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.view === view))
+  $('composer').hidden = view !== 'chat'
+  $('title').textContent = view === 'chat' ? 'Bob' : t(view === 'pending' ? 'pendingTitle' : 'settingsTitle')
+  $('sub').hidden = view !== 'chat'
+  if (view === 'chat') atEnd()
+}
+document.querySelectorAll('nav button').forEach(b => { b.onclick = () => show(b.dataset.view) })
 
+// ---- feed ----
+const feed = $('feed'), scroller = $('viewChat')
+const typing = el('div', 'bubble-row')
+typing.append(el('div', 'spacer'))
+const typingBubble = el('div', 'msg typing'); typingBubble.append(el('i'), el('i'), el('i')); typing.append(typingBubble)
+typing.hidden = true
+feed.append(typing)
+const atEnd = () => { scroller.scrollTop = scroller.scrollHeight }
+let lastKind = null, stepsBox = null, busy = false
+const cards = new Map(), open = new Map()
+const updateWelcome = () => { $('welcome').hidden = feed.children.length > 1 }
+function add(node, kind) {
+  feed.insertBefore(node, typing)
+  lastKind = kind
+  if (kind !== 'steps') stepsBox = null
+  updateWelcome(); atEnd()
+}
+function message(role, text) {
+  const row = el('div', 'bubble-row' + (role === 'user' ? ' user' : ''))
+  if (role !== 'user') {
+    if (lastKind === 'assistant') row.append(el('div', 'spacer'))
+    else { const a = el('div', 'avatar'); a.innerHTML = AVATAR; row.append(a) }
+  }
+  row.append(el('div', 'msg', text))
+  add(row, role === 'user' ? 'user' : 'assistant')
+}
+function step(name) {
+  const label = t('step_' + name)
+  if (!stepsBox) {
+    const box = el('details', 'steps')
+    const sum = el('summary'); sum.insertAdjacentHTML('afterbegin', icon('globe')); sum.append(el('span', 'now'))
+    box.append(sum, el('ul'))
+    box.count = 0
+    add(box, 'steps'); stepsBox = box
+  }
+  stepsBox.count += 1
+  stepsBox.querySelector('ul').append(el('li', '', label))
+  stepsBox.querySelector('.now').textContent = `${label} · ${t('stepsCount', stepsBox.count)}`
+  lastKind = 'steps'
+  atEnd()
+}
+function notice(text, err) { add(el('div', 'notice' + (err ? ' err' : ''), text), 'notice') }
+
+function setBusy(on) {
+  busy = on
+  typing.hidden = !on
+  $('sub').textContent = t(on ? 'working' : 'ready')
+  if (on) { feed.append(typing); atEnd() }
+}
+
+// ---- cards ----
+function buildCard(e, kind, pending = false) {
+  const c = el('div', 'card ' + (kind === 'approval' ? 'ask' : 'help'))
+  const top = el('div', 'card-top')
+  const ic = el('span', 'chipicon'); ic.innerHTML = icon(kind === 'approval' ? 'shield' : 'hand')
+  top.append(ic, el('span', 'tag', t(kind === 'approval' ? 'tagApprove' : 'tagHelp')),
+    el('span', 'time', new Date(e.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })))
+  c.append(top, el('div', 'lead', t(kind === 'approval' ? 'needsApproval' : 'needsYou')), el('div', 'what', kind === 'approval' ? e.summary : e.reason))
+  if (e.screenshot) { const img = new Image(); img.alt = ''; img.src = 'data:image/jpeg;base64,' + e.screenshot; c.append(img) }
+  const row = el('div', 'actions')
+  if (kind === 'approval') {
+    const go = async allow => {
+      const { status } = await post('/api/approve', { id: e.id, allow })
+      if (status === 404) closeCard(e.id, t('expired'), false)
+    }
+    const no = el('button', 'btn', t('reject')); no.onclick = () => go(false)
+    const yes = el('button', 'btn primary', t('allow')); yes.onclick = () => go(true)
+    row.append(no, yes)
+  } else {
+    const openBtn = el('button', 'btn primary', t('openWindow')); openBtn.onclick = openBrowser
+    row.append(openBtn)
+  }
+  c.append(row)
+  const list = cards.get(e.id) ?? []
+  list.push({ c, row, pending }); cards.set(e.id, list)
+  return c
+}
+function closeCard(id, label, ok = true) {
+  open.delete(id)
+  for (const { c, row } of cards.get(id) ?? []) {
+    row.className = 'done' + (ok ? '' : ' no')
+    row.innerHTML = ''
+    row.insertAdjacentHTML('afterbegin', icon(ok ? 'tick' : 'cross'))
+    row.append(el('span', '', label))
+    c.querySelector('img')?.remove()
+  }
+  refreshPending()
+}
+function refreshPending() {
+  const list = $('pendingList')
+  list.textContent = ''
+  for (const [id, entries] of cards) cards.set(id, entries.filter(x => !x.pending))
+  for (const [id, item] of open) list.append(buildCard(item.e, item.kind, true))
+  $('pendingEmpty').hidden = open.size > 0
+  $('badge').hidden = open.size === 0
+  $('badge').textContent = open.size
+}
+function openItem(e, kind) {
+  open.set(e.id, { e, kind })
+  add(buildCard(e, kind), 'card')
+  refreshPending()
+}
+
+let activeTakeover = null
 function render(e) {
-  if (e.type === 'message') line('msg' + (e.role === 'user' ? ' user' : ''), e.text)
-  else if (e.type === 'step') line('step', `${t('step')}: ${e.name.replace('browser_', '')}`)
-  else if (e.type === 'error') line('notice err', e.text)
-  else if (e.type === 'notice') line('notice err', t(e.code === 'BUDGET_NEAR' ? 'budgetNear' : 'budgetExceeded'))
-  else if (e.type === 'approval') approvalCard(e)
-  else if (e.type === 'approval_done') closeCard(e.id, t(e.allowed ? 'approved' : 'rejected'))
-  else if (e.type === 'takeover') takeoverCard(e)
+  if (e.type === 'message') message(e.role, e.text)
+  else if (e.type === 'step') step(e.name)
+  else if (e.type === 'error') notice(e.text, true)
+  else if (e.type === 'notice') notice(t(e.code === 'BUDGET_NEAR' ? 'budgetNear' : 'budgetExceeded'), true)
+  else if (e.type === 'approval') openItem(e, 'approval')
+  else if (e.type === 'approval_done') closeCard(e.id, t(e.allowed ? 'approved' : 'rejected'), e.allowed)
+  else if (e.type === 'takeover') { activeTakeover = e.id; $('handBack').hidden = false; openItem(e, 'takeover') }
   else if (e.type === 'takeover_done') { closeCard(e.id, t('doneTakeover')); activeTakeover = null; $('handBack').hidden = true }
 }
-function makeCard(id, title, detail) {
-  const c = document.createElement('div'); c.className = 'card'
-  const p = document.createElement('div'); p.textContent = title
-  const s = document.createElement('b'); s.textContent = detail
-  const row = document.createElement('div'); row.className = 'row'
-  c.append(p, s, row); feed.append(c); cards.set(id, { c, row }); atEnd()
-  return { c, row }
-}
-function closeCard(id, label) {
-  const card = cards.get(id)
-  if (!card) return
-  card.row.textContent = label
-  card.c.querySelector('img')?.remove()
-}
-function approvalCard(e) {
-  const { c, row } = makeCard(e.id, t('needsApproval'), e.summary)
-  if (e.screenshot) { const img = new Image(); img.alt = ''; img.src = 'data:image/jpeg;base64,' + e.screenshot; c.insertBefore(img, row) }
-  const go = allow => post('/api/approve', { id:e.id, allow })
-  const yes = document.createElement('button'); yes.className = 'primary'; yes.textContent = t('allow'); yes.onclick = () => go(true)
-  const no = document.createElement('button'); no.textContent = t('reject'); no.onclick = () => go(false)
-  row.append(yes, no)
-}
-let activeTakeover = null
-function takeoverCard(e) {
-  const { row } = makeCard(e.id, t('needsYou'), e.reason)
-  activeTakeover = e.id
-  const open = document.createElement('button'); open.className = 'primary'; open.textContent = t('openWindow'); open.onclick = openBrowser
-  row.append(open)
-  $('handBack').hidden = false
+
+function showBudget(b) {
+  const pct = Math.min(100, (b.spentUsd / b.capUsd) * 100)
+  const level = b.exceeded ? 'over' : b.near ? 'warn' : ''
+  $('spend').textContent = `$${b.spentUsd.toFixed(3)} / $${b.capUsd}`
+  $('spend').className = 'pill ' + level
+  $('spentBig').innerHTML = ''
+  $('spentBig').append(`$${b.spentUsd.toFixed(3)} `, el('small', '', `/ $${b.capUsd}`))
+  $('capBar').className = 'bar ' + level
+  $('capBar').firstElementChild.style.width = pct + '%'
+  if (document.activeElement !== $('cap')) $('cap').value = b.capUsd
 }
 
 let source
@@ -202,14 +453,23 @@ function connect() {
   source.onmessage = m => {
     const e = JSON.parse(m.data)
     if (e.type === 'hello') {
-      feed.textContent = ''; cards.clear(); activeTakeover = null; $('handBack').hidden = true
-      e.history.forEach(render); showBudget(e.budget); setBusy(e.busy)
+      [...feed.children].forEach(c => { if (c !== typing) c.remove() })
+      cards.clear(); open.clear(); activeTakeover = null; lastKind = null; stepsBox = null
+      $('handBack').hidden = true
+      e.history.forEach(render)
+      showBudget(e.budget); setBusy(e.busy); updateWelcome(); refreshPending()
     }
     else if (e.type === 'budget') showBudget(e)
     else if (e.type === 'status') setBusy(e.status === 'running')
     else render(e)
   }
 }
+
+;[['chip1', 'chip1q'], ['chip2', 'chip2q']].forEach(([label, prompt]) => {
+  const b = el('button', 'chip-btn', t(label)); b.type = 'button'
+  b.onclick = () => { $('text').value = t(prompt); $('text').focus() }
+  $('chips').append(b)
+})
 $('composer').onsubmit = async e => {
   e.preventDefault()
   const text = $('text').value.trim()
@@ -217,14 +477,12 @@ $('composer').onsubmit = async e => {
   $('text').value = ''
   const { status, data } = await post('/api/chat', { text })
   if (status === 200) return
-  if (data.error === 'NO_KEY') { $('text').value = text; line('notice err', t('noKey')); $('settings').hidden = false }
-  else if (data.error === 'BUDGET_EXCEEDED') line('notice err', t('budgetExceeded'))
-  else line('notice err', t('failed') + (data.error ?? status))
+  if (data.error === 'NO_KEY') { $('text').value = text; $('settingsMsg').textContent = t('noKey'); show('settings') }
+  else if (data.error === 'BUDGET_EXCEEDED') notice(t('budgetExceeded'), true)
+  else notice(t('failed') + (data.error ?? status), true)
 }
 
 // ---- settings ----
-$('openSettings').onclick = () => { $('settingsMsg').textContent = ''; $('settings').hidden = false }
-$('closeSettings').onclick = () => { $('settings').hidden = true }
 $('saveKey').onclick = async () => {
   const { status, data } = await post('/api/key', { key: $('key').value })
   $('settingsMsg').textContent = status === 200 ? t('saved') : data.error === 'INVALID_KEY' ? t('invalidKey') : t('failed') + (data.error ?? status)
@@ -249,7 +507,7 @@ function openBrowser() {
   ws.binaryType = 'blob'
   ws.onopen = () => sendWs({ t:'viewport', w, h })
   ws.onmessage = async m => {
-    if (typeof m.data === 'string') { const e = JSON.parse(m.data); if (e.error) line('notice err', e.error); return }
+    if (typeof m.data === 'string') { const e = JSON.parse(m.data); if (e.error) notice(e.error, true); return }
     const bmp = await createImageBitmap(m.data)
     if (canvas.width !== bmp.width || canvas.height !== bmp.height) { canvas.width = bmp.width; canvas.height = bmp.height }
     ctx.drawImage(bmp, 0, 0); bmp.close()
@@ -258,7 +516,12 @@ function openBrowser() {
 function closeBrowser() { ws?.close(); ws = null; $('browser').hidden = true }
 $('openBrowser').onclick = openBrowser
 $('closeBrowser').onclick = closeBrowser
-$('handBack').onclick = async () => { closeBrowser(); await post('/api/takeover/done') }
+$('handBack').onclick = async () => {
+  const id = activeTakeover
+  closeBrowser()
+  await post('/api/takeover/done')
+  if (id) { closeCard(id, t('doneTakeover')); activeTakeover = null; $('handBack').hidden = true }
+}
 const point = e => {
   const r = canvas.getBoundingClientRect()
   return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) }
@@ -279,14 +542,19 @@ $('navForm').onsubmit = e => { e.preventDefault(); if ($('url').value.trim()) se
 $('fillBtn').onclick = () => { if ($('fill').value) { sendWs({ t:'text', v:$('fill').value }); $('fill').value = '' } }
 $('enterBtn').onclick = () => sendWs({ t:'key', k:'Enter' })
 $('backBtn').onclick = () => sendWs({ t:'key', k:'Backspace' })
-$('togglePw').onclick = () => { const f = $('fill'), hide = f.type !== 'password'; f.type = hide ? 'password' : 'text'; $('togglePw').textContent = t(hide ? 'show' : 'hide') }
+$('togglePw').onclick = () => {
+  const f = $('fill'), hide = f.type !== 'password'
+  f.type = hide ? 'password' : 'text'
+  $('togglePw').innerHTML = icon(hide ? 'eyeoff' : 'eye')
+}
 
 async function boot() {
   const s = await (await fetch('/api/state')).json()
   $('login').hidden = s.authed
   $('app').hidden = !s.authed
   if (!s.authed) { if (!s.pinSet) $('loginMsg').textContent = t('noPin'); return }
-  if (!s.hasKey) $('settings').hidden = false
+  show('chat'); setBusy(false)
+  if (!s.hasKey) { $('settingsMsg').textContent = t('noKey'); show('settings') }
   connect()
 }
 boot()
