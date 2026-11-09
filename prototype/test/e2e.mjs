@@ -738,6 +738,30 @@ try {
     assert.equal(requests.length, count)
   })
 
+  console.log('Extensions and WeChat')
+  await check('a tool server whose command does not exist is refused before anyone is asked', async () => {
+    const t0 = Date.now()
+    script.push(use('mcp_add', { name: 'ghost', command: 'bobbot-no-such-command', args: [] }), say('could not add'))
+    assert.equal((await post('/api/chat', { text: 'add a ghost server' })).status, 200)
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'could not add')
+    assert.ok(!events.some(e => e.type === 'approval' && e.kind === 'mcp' && e.at >= t0), 'an approval was shown for a server that cannot start')
+    assert.ok(JSON.stringify(requests.at(-1)?.messages ?? '').includes('not installed'), 'the model was not told why')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
+    assert.equal((await getJson('/api/extensions')).body.mcp.some(m => m.name === 'ghost'), false)
+  })
+
+  await check('a WeChat message becomes its own conversation and the reply is sent back', async () => {
+    const secret = JSON.parse(fs.readFileSync(path.join(data, 'wechat.json'), 'utf8')).secret
+    const call = body => fetch(`${base}/api/wechat/in`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    assert.equal((await call({ secret: 'wrong', from: 'wxid_ann', name: 'Ann', text: 'hi' })).status, 403)
+    script.push(say('微信里也能聊'))
+    const response = await call({ secret, from: 'wxid_ann', name: 'Ann', text: '你好' })
+    assert.equal(response.status, 200)
+    assert.equal((await response.json()).reply, '微信里也能聊')
+    const convs = (await getJson('/api/conversations')).body.items
+    assert.ok(convs.some(c => c.title === 'WeChat · Ann'), 'no conversation was created for the WeChat contact')
+  })
+
   console.log('Spending limit')
   await check('at the cap, new chat is refused with no model call', async () => {
     assert.equal((await post('/api/budget', { capUsd: 0.000001 })).status, 200)

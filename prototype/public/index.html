@@ -34,7 +34,7 @@ svg { width:1.25em; height:1.25em; flex:none; }
 .field { width:100%; min-width:0; min-height:44px; padding:0 14px; border-radius:14px; border:1px solid var(--line); background:var(--surface); }
 
 /* the Bob orb: napping, thinking, speaking */
-.orb { --s:28px; position:relative; width:var(--s); height:var(--s); flex:none; display:inline-block; }
+.orb { --s:28px; position:relative; width:var(--s); height:var(--s); flex:none; display:inline-block; font-size:var(--s); }
 .orb.big { --s:84px; }
 .orb i { position:absolute; inset:0; border-radius:50%; pointer-events:none; }
 .orb .core { background:radial-gradient(circle at 34% 28%, #a9c1ff, var(--accent) 60%, #2349b8); box-shadow:0 2px 10px rgba(47,107,255,.35); }
@@ -48,13 +48,50 @@ svg { width:1.25em; height:1.25em; flex:none; }
 .orb[data-state=speak] .wave { animation:ripple 1.5s ease-out infinite; }
 .orb[data-state=speak] .wave.w2 { animation-delay:.55s; }
 .orb.static .core { animation:none !important; filter:none; box-shadow:none; }
+
+/* the three moods are drawn around the circle itself, never as words in the header */
+.orb .fx { position:absolute; inset:0; display:none; pointer-events:none; }
+.orb .fx b { display:block; }
+.orb[data-state=nap] .fx.napfx, .orb[data-state=speak] .fx.sayfx { display:block; }
+.orb[data-state=think] .fx.thinkfx { display:flex; }
+
+/* napping: soft bubbles drift up from the circle */
+.fx.napfx b { position:absolute; left:64%; top:54%; width:.14em; height:.14em; border-radius:50%; background:var(--accent); opacity:0; animation:napb 3.4s ease-in-out infinite; }
+.fx.napfx b:nth-child(2) { width:.09em; height:.09em; animation-delay:1.15s; }
+.fx.napfx b:nth-child(3) { width:.18em; height:.18em; animation-delay:2.3s; }
+@keyframes napb { 0% { transform:translate(0,0) scale(.55); opacity:0; } 22% { opacity:.5; } 100% { transform:translate(.5em,-.78em) scale(1.25); opacity:0; } }
+
+/* thinking: a small cloud above the head, with a trail down to it */
+.fx.thinkfx { position:absolute; inset:auto; left:56%; bottom:104%; width:.62em; height:.3em; border-radius:.2em; background:var(--surface); border:1px solid var(--line); box-shadow:0 .06em .22em rgba(30,50,110,.14); align-items:center; justify-content:center; gap:.09em; animation:cloudin .5s ease-out both; }
+.fx.thinkfx::before, .fx.thinkfx::after { content:''; position:absolute; border-radius:50%; background:var(--surface); border:1px solid var(--line); }
+.fx.thinkfx::before { width:.1em; height:.1em; left:.08em; bottom:-.15em; }
+.fx.thinkfx::after { width:.06em; height:.06em; left:.02em; bottom:-.26em; }
+.fx.thinkfx b { width:.07em; height:.07em; border-radius:50%; background:var(--accent); animation:thinkdot 1.25s ease-in-out infinite; }
+.fx.thinkfx b:nth-child(2) { animation-delay:.16s; }
+.fx.thinkfx b:nth-child(3) { animation-delay:.32s; }
+@keyframes thinkdot { 0%,100% { opacity:.28; transform:translateY(0); } 40% { opacity:1; transform:translateY(-.06em); } }
+@keyframes cloudin { from { opacity:0; transform:translateY(.12em) scale(.8); } to { opacity:1; transform:none; } }
+
+#app:not(.hero) .orb-btn .fx.thinkfx { inset:auto; left:106%; bottom:2%; width:1.5em; height:.7em; }
+#app:not(.hero) .orb-btn .fx.thinkfx::before { left:-.16em; bottom:.16em; width:.16em; height:.16em; }
+#app:not(.hero) .orb-btn .fx.thinkfx::after { left:-.3em; bottom:0; width:.1em; height:.1em; }
+
+/* speaking: little words leave the mouth and fade away */
+.fx.sayfx b { position:absolute; left:48%; bottom:6%; width:.14em; height:.14em; border-radius:50%; background:var(--accent); opacity:0; animation:sayb 1.15s ease-out infinite; }
+.fx.sayfx b:nth-child(1) { --dx:.5em; }
+.fx.sayfx b:nth-child(2) { --dx:.72em; width:.11em; height:.11em; animation-delay:.22s; }
+.fx.sayfx b:nth-child(3) { --dx:.38em; animation-delay:.44s; }
+.fx.sayfx b:nth-child(4) { --dx:.9em; width:.16em; height:.16em; animation-delay:.66s; }
+@keyframes sayb { 0% { transform:translate(0,0) scale(.4); opacity:0; } 15% { opacity:.95; } 100% { transform:translate(var(--dx),-.62em) scale(1.1); opacity:0; } }
+
 @keyframes nap { 0%,100% { transform:scale(.88); opacity:.75; } 50% { transform:scale(1); opacity:1; } }
 @keyframes think { 0%,100% { transform:scale(.92); } 50% { transform:scale(1.04); } }
 @keyframes talk { 0%,100% { transform:scale(1); } 25% { transform:scale(1.08); } 50% { transform:scale(.95); } 75% { transform:scale(1.05); } }
 @keyframes ripple { 0% { transform:scale(1); opacity:.55; } 100% { transform:scale(1.9); opacity:0; } }
 @keyframes spin { to { transform:rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
-  .orb i { animation:none !important; }
+  .orb i, .orb .fx, .orb .fx b { animation:none !important; }
+  .orb .fx { display:none !important; }
   .orb[data-state=think] .ring { opacity:.9; }
   .orb[data-state=speak] .wave { opacity:.4; transform:scale(1.35); }
   .typing i { animation:none !important; opacity:.7 !important; }
@@ -77,7 +114,8 @@ svg { width:1.25em; height:1.25em; flex:none; }
 #app { height:100%; height:100dvh; display:flex; flex-direction:column; max-width:720px; margin:0 auto; background:var(--bg); position:relative; overflow:hidden; }
 .orb-btn { position:absolute; z-index:2; padding:0; border-radius:50%; width:34px; height:34px; left:12px; top:calc(env(safe-area-inset-top) + 9px);
   transition:left .6s cubic-bezier(.22,.8,.2,1), top .6s cubic-bezier(.22,.8,.2,1), width .6s cubic-bezier(.22,.8,.2,1), height .6s cubic-bezier(.22,.8,.2,1); }
-.orb-btn .orb { width:100%; height:100%; }
+.orb-btn .orb { width:100%; height:100%; font-size:34px; }
+#app.hero .orb-btn .orb { font-size:132px; }
 #app.hero .orb-btn { width:132px; height:132px; left:calc(50% - 66px); top:calc(env(safe-area-inset-top) + 15vh); }
 header { display:grid; grid-template-columns:56px 1fr 56px; align-items:center; padding:calc(8px + env(safe-area-inset-top)) 8px 8px; min-height:56px; }
 header .title { text-align:center; font-size:16px; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -333,6 +371,20 @@ nav button svg { width:24px; height:24px; }
     </div>
     <div class="view" id="viewSettings" hidden>
       <div class="section">
+        <h3 data-t="langTitle"></h3>
+        <select class="field" id="langSel" data-al="langTitle"></select>
+      </div>
+      <div class="section">
+        <h3 data-t="wxTitle"></h3>
+        <div class="keystate none" id="wxState"></div>
+        <img id="wxQr" alt="" hidden style="width:220px;height:220px;align-self:center;border-radius:16px;background:#fff">
+        <p class="hint" data-t="wxHint"></p>
+        <div class="row">
+          <button class="btn primary" id="wxStart" data-t="wxConnect"></button>
+          <button class="btn" id="wxStop" data-t="wxDisconnect"></button>
+        </div>
+      </div>
+      <div class="section">
         <h3 data-t="modelTitle"></h3>
         <label class="hint" for="modelSel" data-t="modelLabel"></label>
         <select class="field" id="modelSel"></select>
@@ -415,7 +467,13 @@ nav button svg { width:24px; height:24px; }
 </section>
 
 <script>
-const zh = navigator.language.startsWith('zh')
+// Languages: every string below is a list in the same order as LANGS. Add a language by adding its code
+// and one more entry to each list; anything missing falls back to English.
+const LANGS = [{ code: 'zh', label: '简体中文' }, { code: 'en', label: 'English' }]
+const savedLang = localStorage.getItem('bobbot.lang') || 'auto'
+const lang = savedLang === 'auto' ? (navigator.language.startsWith('zh') ? 'zh' : 'en') : savedLang
+const langIndex = Math.max(0, LANGS.findIndex(l => l.code === lang))
+const zh = lang === 'zh'
 const I18N = {
   loginSub:['输入 PIN 进入','Enter your PIN'], welcomeSub:['随时为你效劳','At your service'],
   tabChat:['对话','Chat'], tabClerk:['文员','Clerk'], tabSettings:['设置','Settings'],
@@ -432,6 +490,13 @@ const I18N = {
   // clerk
   jobsTitle:['定时任务','Scheduled'], todosTitle:['待办','To-dos'], markDone:['标为完成','Mark done'], undo:['撤销完成','Undo'], jobsEmpty:['还没有。对 Bob 说一句试试。','None yet. Try saying one to Bob.'],
   tagSaved:['已添加','Added'], kindTodo:['待办','To-do'],
+  langTitle:['语言','Language'], langAuto:['跟随系统','Automatic'],
+  wxTitle:['微信','WeChat'], wxConnect:['连接微信','Connect'], wxInstall:['安装组件','Install bridge'], wxDisconnect:['断开','Disconnect'],
+  wxScan:['用微信扫码登录','Scan with WeChat'], wxOnline:['已登录：{n}','Signed in: {n}'], wxOff:['未连接','Not connected'],
+  wxStarting:['连接中…','Connecting…'], wxInstalling:['正在安装微信组件…','Installing the WeChat bridge…'],
+  wxError:['出错：{n}','Error: {n}'], wxNotInstalled:['尚未安装微信组件','The WeChat bridge is not installed'],
+  wxHint:['扫码登录后可以直接在微信里和 Bob 聊天。个人微信登录依赖第三方协议，可能被微信限制，建议使用备用账号。','After scanning you can chat with Bob in WeChat. This uses an unofficial protocol, so WeChat may restrict the account, so a spare one is safer.'],
+  err_WECHAT_NOT_INSTALLED:['请先安装微信组件','Install the WeChat bridge first'],
   today:['今天','Today'], tomorrow:['明天','Tomorrow'], dayAfter:['后天','In two days'],
   cancel:['取消','Cancel'], confirm:['确认','Confirm'], confirmAdd:['确认添加','Add it'], confirmDeleteBtn:['确认删除','Delete'], askDelete:['删除','Delete'], askPause:['暂停','Pause'], askResume:['恢复','Resume'],
   firstAt:['首次 {n}','First {n}'], alsoTo:['同时发到 {n}','Also to {n}'],
@@ -497,6 +562,8 @@ const I18N = {
   fileUnsupported:['暂只支持文本类文件（txt、md、csv、json 等）：{n}','Text files only for now (txt, md, csv, json…): {n}'],
   fileBig:['文件太大（单个上限约 200KB）：{n}','File too large (about 200KB each): {n}'], fileBinary:['无法读取为文本：{n}','Cannot read as text: {n}'],
   filesMany:['最多添加 5 个文件','At most 5 files'], filesTotal:['附件总量过大（合计上限约 500KB）','Attachments are too large in total (about 500KB)'],
+  err_TOO_MANY_MCP:['工具服务器数量已达上限（10 个）','Too many tool servers (at most 10)'], err_TOO_MANY_SKILLS:['技能数量已达上限（50 个）','Too many skills (at most 50)'],
+  extensionsBroken:['有一个扩展没能启动，已临时停用所有扩展，Bob 仍在正常工作。可在设置里移除有问题的扩展。','An extension failed to start, so all extensions were turned off for now. Bob keeps working; remove the broken one in Settings.'],
   err_UNKNOWN_MODEL:['不支持这个模型','Unknown model'], err_BAD_MODEL:['模型名称无效','Invalid model name'], err_BAD_PRICE:['价格无效','Invalid price'],
   err_HTTPS_REQUIRED:['接口地址必须以 https:// 开头','The endpoint must start with https://'], err_BAD_ENDPOINT:['接口地址无法使用（不能是本机或内网地址）','Endpoint not allowed (no local or private addresses)'],
   err_NO_KEY:['请填写 API Key','Enter an API key'], err_INVALID_KEY:['API Key 无效','Invalid API key'], err_NO_PRICE:['这个模型没有价格，无法统计花费','No price for this model, so spending cannot be counted'],
@@ -506,10 +573,10 @@ const I18N = {
   noPin:['尚未设置 PIN，请在服务器运行 npm run set-pin -- 1234','No PIN yet. On the server run: npm run set-pin -- 1234'],
   failed:['操作失败：','Failed: '],
 }
-const t = (k, n) => (I18N[k]?.[zh ? 0 : 1] ?? k).replace('{n}', n)
+const t = (k, n) => (I18N[k]?.[langIndex] ?? I18N[k]?.[1] ?? k).replace('{n}', n)
 const $ = id => document.getElementById(id)
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e }
-document.documentElement.lang = zh ? 'zh-CN' : 'en'
+document.documentElement.lang = zh ? 'zh-CN' : lang === 'en' ? 'en' : lang
 
 const ICONS = {
   globe:'<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/>',
@@ -533,7 +600,10 @@ const ICONS = {
   calendar:'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
 }
 const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`
-const ORB = '<i class="core"></i><i class="ring"></i><i class="wave"></i><i class="wave w2"></i>'
+const ORB = '<i class="core"></i><i class="ring"></i><i class="wave"></i><i class="wave w2"></i>' +
+  '<span class="fx napfx"><b></b><b></b><b></b></span>' +
+  '<span class="fx thinkfx"><b></b><b></b><b></b></span>' +
+  '<span class="fx sayfx"><b></b><b></b><b></b><b></b></span>'
 
 document.querySelectorAll('[data-t]').forEach(e => { e.textContent = t(e.dataset.t) })
 document.querySelectorAll('[data-ph]').forEach(e => { e.placeholder = t(e.dataset.ph) })
@@ -589,7 +659,7 @@ function show(view) {
   else drawAttachments()
   if (view === 'chat') atEnd()
   if (view === 'clerk') loadClerk()
-  if (view === 'settings') { loadModelCard().catch(() => {}); loadExtensions() }
+  if (view === 'settings') { loadModelCard().catch(() => {}); loadExtensions(); loadWechat() }
   refreshOrb(); refreshBanner(); setHero()
 }
 document.querySelectorAll('nav button').forEach(b => { b.onclick = () => show(b.dataset.view) })
@@ -606,9 +676,10 @@ let runningCid = null, speakUntil = 0, speakTimer = null
 function refreshOrb() {
   const mine = Boolean(runningCid) && runningCid === activeCid
   const state = Date.now() < speakUntil ? 'speak' : mine ? 'think' : 'nap'
-  $('hOrb').dataset.state = state
-  const hero = $('app').classList.contains('hero')
-  $('title').textContent = currentView === 'chat' ? (hero ? '' : t(state === 'nap' ? 'stateNap' : state === 'think' ? 'stateThink' : 'stateSpeak')) : t(currentView === 'clerk' ? 'clerkTitle' : 'settingsTitle')
+  const mood = t(state === 'nap' ? 'stateNap' : state === 'think' ? 'stateThink' : 'stateSpeak')
+  document.querySelectorAll('[data-orb]').forEach(orb => { orb.dataset.state = state; orb.setAttribute('aria-label', mood) })
+  // The mood is drawn by the orb itself, so the header stays quiet.
+  $('title').textContent = currentView === 'chat' ? '' : t(currentView === 'clerk' ? 'clerkTitle' : 'settingsTitle')
   typing.hidden = !mine
   if (mine) { feed.append(typing); atEnd() }
 }
@@ -894,7 +965,7 @@ function render(e) {
   if (e.type === 'message') message(e.role, e.text, e.files ?? [])
   else if (e.type === 'step') step(e.name)
   else if (e.type === 'error') notice(e.text, true)
-  else if (e.type === 'notice') notice(t(e.code === 'BUDGET_NEAR' ? 'budgetNear' : 'budgetExceeded'), true)
+  else if (e.type === 'notice') notice(t(e.code === 'BUDGET_NEAR' ? 'budgetNear' : e.code === 'EXTENSIONS_BROKEN' ? 'extensionsBroken' : 'budgetExceeded'), true)
   else if (e.type === 'card') add(e.card.kind === 'job' ? jobCard(e.card.job, e.card.timezone, true, e.card.created) : e.card.kind === 'todo' ? todoCard(e.card.todo, e.card.timezone, e.card.created) : infoCard(e.card), 'card')
   else if (e.type === 'approval' || e.type === 'takeover') {
     add(buildCard(e, e.type), 'card')
@@ -1180,6 +1251,13 @@ function drawClerk() {
   $('channelList').replaceChildren(...d.channels.map(channelRow))
   if (document.activeElement !== $('zone')) $('zone').value = d.timezone
 }
+$('langSel').append(new Option(t('langAuto'), 'auto'), ...LANGS.map(l => new Option(l.label, l.code)))
+$('langSel').value = savedLang
+$('langSel').onchange = () => {
+  const value = $('langSel').value
+  if (value === 'auto') localStorage.removeItem('bobbot.lang'); else localStorage.setItem('bobbot.lang', value)
+  location.reload()
+}
 CHANNEL_TYPES.forEach(k => $('chType').append(new Option(t('ch_' + k), k)))
 function showChannelFields() {
   const type = $('chType').value
@@ -1206,6 +1284,33 @@ $('saveZone').onclick = async () => {
 }
 
 // ---- extensions: tool servers and skills that Bob installed ----
+let wechatStatus = null
+async function loadWechat() {
+  const data = await getJson('/api/wechat')
+  if (!data) return
+  wechatStatus = data
+  const state = data.installing ? 'installing' : data.state
+  const box = $('wxState')
+  box.className = 'keystate ' + (state === 'online' ? '' : 'none')
+  box.textContent = state === 'online' ? t('wxOnline', data.name || 'WeChat')
+    : state === 'qr' ? t('wxScan')
+      : state === 'starting' ? t('wxStarting')
+        : state === 'installing' ? t('wxInstalling')
+          : state === 'error' ? t('wxError', data.error === 'NOT_INSTALLED' ? t('wxNotInstalled') : data.error)
+            : t('wxOff')
+  $('wxQr').hidden = !data.qr
+  if (data.qr) $('wxQr').src = data.qr
+  $('wxStart').hidden = ['online', 'qr', 'starting', 'installing'].includes(state)
+  $('wxStop').hidden = !['online', 'qr', 'starting', 'error'].includes(state)
+  $('wxStart').textContent = data.installed ? t('wxConnect') : t('wxInstall')
+  if (['starting', 'qr', 'installing'].includes(state) && currentView === 'settings') setTimeout(loadWechat, 2500)
+}
+$('wxStart').onclick = async () => {
+  if (wechatStatus?.installed) await post('/api/wechat/start')
+  else await post('/api/wechat/install')
+  loadWechat()
+}
+$('wxStop').onclick = async () => { await post('/api/wechat/stop'); loadWechat() }
 async function loadExtensions() {
   const data = await getJson('/api/extensions')
   if (!data) return

@@ -131,6 +131,7 @@ export class Extensions {
   #save() { fs.writeFileSync(this.file, JSON.stringify({ mcp: this.mcp, secrets: this.secrets }), { mode: 0o600 }) }
 
   addMcp(spec) {
+    if (!this.mcp.some(s => s.name === spec.name) && this.mcp.length >= 10) throw fail('TOO_MANY_MCP')
     this.mcp = [...this.mcp.filter(s => s.name !== spec.name), spec]
     this.#save()
   }
@@ -172,6 +173,7 @@ export class Extensions {
     })
   }
   writeSkill(skill) {
+    if (!fs.existsSync(path.join(this.skillsDir, skill.name)) && this.listSkills().length >= 50) throw fail('TOO_MANY_SKILLS')
     const dir = path.join(this.skillsDir, skill.name)
     fs.mkdirSync(dir, { recursive: true })
     fs.writeFileSync(path.join(dir, 'SKILL.md'), skill.file)

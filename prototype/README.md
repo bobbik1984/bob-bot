@@ -4,6 +4,16 @@ A small Node.js server that combines PIN login, chat through DeepSeek Harness (D
 
 This is a test prototype. Use test accounts and do not connect financial accounts.
 
+The interface follows the browser language, and Settings → Language lets you pin 简体中文 or English.
+
+The orb draws its own mood: sleeping bubbles while idle, a thought cloud while working, and little dots from its mouth while answering. No status words are shown.
+
+## WeChat
+
+Settings → WeChat installs a separate bridge (wechaty with the wechat4u puppet) with its own `node_modules` under `data/wechat`, shows a QR code, and after scanning turns each WeChat contact into its own conversation. The bridge is a child process, so a WeChat problem can never take Bob down.
+
+This uses the unofficial personal-WeChat web protocol. WeChat may restrict or block such logins, so try a spare account first.
+
 ## Run it
 
 Needs Node.js 24.9+ (DSH requires it) and Chrome, Edge or Chromium. Set `CHROME_PATH` if it is installed somewhere unusual.

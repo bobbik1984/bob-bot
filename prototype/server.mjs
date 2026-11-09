@@ -1,5 +1,6 @@
 // BobBot test prototype: PIN login, chats over DSH, a shared cloud browser with phone takeover, and gated server tools.
 import crypto from 'node:crypto'
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
@@ -14,6 +15,8 @@ import { Clerk, describeSchedule, formatLocal, nextRun, normalizeSchedule } from
 import { createHostTools, MAX_COMMAND_SECONDS } from './host-tools.mjs'
 import { Extensions, checkMcp, checkPackages, checkSkill, installSteps, parseSkillFile, runSteps, showSteps } from './extensions.mjs'
 import { webFetch } from './web-fetch.mjs'
+import QRCode from 'qrcode'
+import { WeChat } from './wechat.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const HOST = process.env.HOST || '127.0.0.1'
@@ -32,6 +35,7 @@ const APPROVAL_TIMEOUT_MS = 10 * 60 * 1000
 const RISKY = /支付|付款|购买|下单|结算|删除|发送|发布|提交|转账|\b(pay|buy|purchase|checkout|order|delete|remove|send|post|publish|submit|transfer|tweet)\b/i
 
 const browser = new CloudBrowser(DATA_DIR)
+const wechat = new WeChat(DATA_DIR, PORT)
 const agent = new Agent(DATA_DIR)
 const budget = new Budget(DATA_DIR)
 const host = createHostTools(DATA_DIR)
@@ -373,6 +377,67 @@ function todoTool(name, args) {
 
 const pushJobCard = (job, created = false) => push({ type: 'card', card: { kind: 'job', job: jobView(job), timezone: clerk.timezone, created } })
 
+// ---- WeChat: one conversation per contact, so contexts stay separate ----
+const wechatContactsFile = path.join(DATA_DIR, 'wechat-contacts.json')
+let wechatContacts = readJson(wechatContactsFile, {})
+const wechatWaiters = new Map()
+
+function wechatConversation(from, name) {
+  const key = String(from).slice(0, 200)
+  let cid = wechatContacts[key]
+  if (!cid || !convOf(cid)) {
+    const conv = createConversation(name ? `WeChat · ${name}`.slice(0, 40) : 'WeChat')
+    cid = conv.id
+    wechatContacts[key] = cid
+    fs.writeFileSync(wechatContactsFile, JSON.stringify(wechatContacts))
+    broadcast({ type: 'conversations' })
+  }
+  return cid
+}
+
+/** Collects the texts Bob writes in this conversation until the turn ends. */
+function waitWechatReply(cid, ms = 180_000) {
+  return new Promise(resolve => {
+    const entry = { texts: [], done: false }
+    const timer = setTimeout(() => { entry.done = true; wechatWaiters.delete(cid); resolve(entry.texts.join('\n\n').trim()) }, ms)
+    entry.finish = () => {
+      if (entry.done) return
+      entry.done = true
+      clearTimeout(timer)
+      wechatWaiters.delete(cid)
+      resolve(entry.texts.join('\n\n').trim())
+    }
+    wechatWaiters.set(cid, entry)
+  })
+}
+
+async function wechatAsk({ from, name, text }) {
+  const cfg = modelConfig()
+  const apiKey = loadKey(cfg.kind)
+  if (!apiKey) return 'Bob 还没有设置模型的 API Key，请先在网页版 bob-bot 里配置。'
+  if (!priceOf(cfg)) return '这个模型没有设置价格，无法统计花费。'
+  if (budget.status().exceeded) return '本月的花费额度已经用完，暂时不能回复。'
+  const cid = wechatConversation(from, name)
+  if (runningCid && runningCid !== cid) return 'Bob 正在处理另一个对话，请稍后再发一次。'
+  const conv = convOf(cid)
+  if (!conv.title) { conv.title = name ? `WeChat · ${name}`.slice(0, 40) : 'WeChat'; saveConvs() }
+  runningCid = cid
+  lastPromptCid = cid
+  push({ type: 'message', role: 'user', text }, true, cid)
+  const reply = waitWechatReply(cid)
+  try {
+    await ensureAgent(cfg, apiKey)
+    await agent.prompt(cid, `${nowHeader()}\n${text}`)
+  } catch (error) {
+    const waiter = wechatWaiters.get(cid)
+    if (waiter) { wechatWaiters.delete(cid); waiter.done = true }
+    if (runningCid === cid) runningCid = null
+    return `出错了：${error.message}`
+  }
+  const answer = await reply
+  return answer || '这件事还在处理，稍后可以在网页版里看到结果。'
+}
+
 /** A card Bob asks for. During a scheduled run it is kept with the result as well. */
 function showCard(args) {
   let card
@@ -582,6 +647,7 @@ async function extTool(name, args) {
     let spec
     try { spec = checkMcp(args) } catch (error) { throw refused(error) }
     if (spec.transport === 'http') { try { await assertPublicUrl(spec.url) } catch { throw new Error('Not allowed: a remote MCP server must be on a public https address.') } }
+    else if (spawnSync('sh', ['-c', 'command -v -- "$1" >/dev/null 2>&1', 'sh', spec.command]).status !== 0) throw new Error(`Not allowed: "${spec.command}" is not installed on this server, so this server could never start.`)
     const needs = spec.transport === 'stdio' ? spec.envNames : spec.bearerName ? [spec.bearerName] : []
     const detail = [
       spec.transport === 'stdio' ? `Runs on this server: ${[spec.command, ...spec.args].join(' ')}` : `Remote server: ${spec.url}`,
@@ -633,12 +699,23 @@ async function extTool(name, args) {
 
 async function ensureAgent(cfg, apiKey) {
   const extras = extensions.launchExtras()
-  await agent.ensure({ apiKey, mcpUrl, mcpToken, model: cfg.model, baseUrl: cfg.kind === 'custom' ? cfg.baseUrl : undefined, patches: extras.patches, extraEnv: extras.env })
+  const base = { apiKey, mcpUrl, mcpToken, model: cfg.model, baseUrl: cfg.kind === 'custom' ? cfg.baseUrl : undefined }
+  try {
+    await agent.ensure({ ...base, patches: extras.patches, extraEnv: extras.env })
+  } catch (error) {
+    if (!extras.patches.length) throw error
+    // An installed extension stopped DSH from starting. Keep Bob alive without extensions rather than locking him out.
+    agent.stop()
+    await agent.ensure({ ...base, patches: [], extraEnv: { BOBBOT_SKILLS_DIR: extensions.skillsDir } })
+    push({ type: 'notice', code: 'EXTENSIONS_BROKEN' }, false, runningCid ?? lastPromptCid)
+    console.error(`[bobbot] extensions disabled after a startup error: ${error.message}`)
+  }
 }
 
 // ---- agent wiring ----
 agent.on('text', (cid, text) => {
   if (!convOf(cid)) return
+  wechatWaiters.get(cid)?.texts.push(text)
   if (activeRun?.cid === cid) activeRun.texts.push(text)
   push({ type: 'message', role: 'assistant', text }, true, cid)
 })
@@ -649,6 +726,7 @@ agent.on('status', (cid, status) => {
     if (activeRun?.cid === cid) activeRun.started = true
   } else {
     if (runningCid === cid) runningCid = null
+    wechatWaiters.get(cid)?.finish()
     if (activeRun?.cid === cid && activeRun.started) finishRun('ok')
     if (extensionsDirty && !runningCid && !activeRun) { extensionsDirty = false; agent.stop() }
   }
@@ -818,6 +896,17 @@ async function route(req, res) {
   if (req.method === 'GET' && pathname === '/api/version') {
     return send(res, 200, { name: 'bobbot', ...readBuild() })
   }
+  // The WeChat bridge is a local child process, so it has no browser Origin and uses a shared secret instead.
+  if (req.method === 'POST' && pathname === '/api/wechat/in') {
+    const remote = req.socket.remoteAddress ?? ''
+    if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(remote)) return send(res, 403, { error: 'LOOPBACK_ONLY' })
+    const body = JSON.parse(await readBody(req) || '{}')
+    if (!body.secret || String(body.secret) !== wechat.secret) return send(res, 403, { error: 'BAD_SECRET' })
+    const text = String(body.text ?? '').trim().slice(0, 4000)
+    if (!text) return send(res, 400, { error: 'EMPTY' })
+    const reply = await wechatAsk({ from: String(body.from ?? 'unknown').slice(0, 200), name: String(body.name ?? 'WeChat').slice(0, 40), text })
+    return send(res, 200, { reply })
+  }
   if (req.method === 'POST' && !sameOrigin(req)) return send(res, 403, { error: 'BAD_ORIGIN' })
   if (req.method === 'POST' && pathname === '/api/login') {
     const result = await login(JSON.parse(await readBody(req)).pin ?? '')
@@ -838,6 +927,12 @@ async function route(req, res) {
   }
   if (req.method === 'GET' && pathname === '/api/clerk') return send(res, 200, clerkView())
   if (req.method === 'GET' && pathname === '/api/extensions') return send(res, 200, extensionsView())
+  if (req.method === 'GET' && pathname === '/api/wechat') {
+    if (wechat.state === 'qr' && wechat.qr && !wechat.qrImage) {
+      wechat.qrImage = await QRCode.toDataURL(wechat.qr, { margin: 1, width: 260, errorCorrectionLevel: 'M' }).catch(() => '')
+    }
+    return send(res, 200, wechat.status())
+  }
   if (req.method === 'GET' && pathname === '/api/conversations') {
     return send(res, 200, { items: listConversations(), running: runningCid })
   }
@@ -946,6 +1041,13 @@ async function route(req, res) {
     case '/api/takeover/done':
       takeover?.finish()
       return send(res, 200, { ok: true })
+    case '/api/wechat/start': {
+      if (!wechat.installed) return send(res, 400, { error: 'WECHAT_NOT_INSTALLED' })
+      try { wechat.start() } catch (error) { return send(res, 500, { error: error.message }) }
+      return send(res, 200, { ok: true })
+    }
+    case '/api/wechat/stop': { wechat.stop(); return send(res, 200, { ok: true }) }
+    case '/api/wechat/install': { wechat.install(); return send(res, 200, { ok: true }) }
     case '/api/clerk/timezone': {
       try { clerk.setTimezone(String(body.timezone ?? '')) } catch { return send(res, 400, { error: 'BAD_TIMEZONE' }) }
       broadcast({ type: 'clerk' })

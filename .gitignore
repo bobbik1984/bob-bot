@@ -2,3 +2,4 @@ node_modules/
 prototype/data/
 *.log
 .env
+debug/ui-shots/
