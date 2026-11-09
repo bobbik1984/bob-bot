@@ -788,6 +788,23 @@ try {
     assert.equal((await post('/api/conversations/delete', { id: cid })).status, 200)
   })
 
+  await check('a feature package adds a tool, a route and a panel, and a broken one is refused', async () => {
+    const code = `export default function setup(ctx) {
+  ctx.registerTool({ name: 'ping', description: 'Ping', handler: () => 'pong' })
+  ctx.registerRoute({ method: 'GET', path: '/ping', handler: () => ({ ok: true }) })
+}`
+    const installed = await post('/api/features/install', { name: 'demo', title: 'Demo', description: 'test feature', code, panelHtml: '<h1>demo</h1>' })
+    assert.equal(installed.status, 200)
+    const list = (await getJson('/api/features')).body.items
+    assert.ok(list.some(f => f.name === 'demo' && f.status === 'ok' && f.tools.includes('f_demo_ping')), 'feature not listed with its tool')
+    assert.equal((await fetch(`${base}/api/f/demo/ping`, { headers: { cookie } })).status, 200)
+    assert.equal((await fetch(`${base}/f/demo/panel.html`, { headers: { cookie } })).status, 200)
+    const broken = await post('/api/features/install', { name: 'broken', title: 'Broken', code: 'export default function setup() { throw new Error("boom") }' })
+    assert.equal(broken.status, 400)
+    assert.equal((await post('/api/features/remove', { name: 'demo' })).status, 200)
+    assert.ok(!(await getJson('/api/features')).body.items.some(f => f.name === 'demo'))
+  })
+
   console.log('Spending limit')
   await check('at the cap, new chat is refused with no model call', async () => {
     assert.equal((await post('/api/budget', { capUsd: 0.000001 })).status, 200)

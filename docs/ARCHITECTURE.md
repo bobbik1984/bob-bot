@@ -210,6 +210,23 @@ last_status: "success"
 - 推送失败必须如实记录在应用内收件箱的 `delivery` 字段，不得伪装成功。
 - iOS 与 Android 客户端共用同一套服务端接口，通知内容只包含任务标题与结果摘要，不包含密钥或完整网页内容。
 
+### 功能包（受控的自扩展）
+
+Bob 可以通过对话安装「功能包」，但只能落在 `data/features/<name>/`，不能改 bob-bot 自身源码：
+
+```
+data/features/<name>/
+├── feature.json      # name / title / description / panel
+├── server.mjs        # export default function setup(ctx)
+└── panel.html        # 可选，设置页里以 iframe 打开
+```
+
+- `setup(ctx)` 可调用 `ctx.registerTool()`（新增给 Bob 的工具，自动加前缀 `f_<feature>_`）、`ctx.registerRoute()`（挂载在 `/api/f/<name>/…`）、`ctx.storage`（该功能自己的 JSON 存储）、`ctx.log()`
+- 安装必须经用户确认，确认卡展示完整代码；单文件 ≤ 60 KB，setup 超过 5 秒视为失败
+- 加载失败的功能标记为 error 并跳过，不影响主服务；工具在下一轮对话生效（重启 DSH，不重启站点）
+- 设置页「功能扩展」列出已装功能：打开面板、移除
+- 功能包与主进程同权限运行，因此只接受用户亲自确认过的代码；正式版再考虑子进程隔离
+
 - **MCP**：BB3 之后作为可选扩展，界面上称为「连接应用」。默认只接入远程 HTTP MCP，避免 stdio 服务引入 Node/Python 依赖；写入类工具默认需要审批。
 
 ## 6. 测试期安全基线

@@ -257,6 +257,18 @@ details.add summary::-webkit-details-marker { display:none; }
 details.add .stack { padding-bottom:14px; }
 .empty-note { margin:4px 2px; }
 
+/* feature packages */
+.feature-row { display:flex; flex-direction:column; gap:8px; padding:12px; border-radius:16px; background:var(--surface-2); }
+.feature-info b { display:block; }
+.feature-info small { color:var(--muted); font-size:12px; }
+.hint.err { color:var(--danger); }
+#fpModal { position:fixed; inset:0; z-index:60; background:var(--shade); display:flex; }
+#fpModal .modal-card { background:var(--surface); width:100%; max-width:720px; margin:auto; height:min(92vh,900px); display:flex; flex-direction:column; overflow:hidden; border-radius:20px 20px 0 0; }
+#fpModal header { display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid var(--line); }
+#fpModal header b { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#fpModal iframe { flex:1; width:100%; border:0; background:var(--bg); }
+@media (min-width:720px) { #fpModal { padding:24px; } #fpModal .modal-card { border-radius:20px; } }
+
 /* settings */
 .section { background:var(--surface); border:1px solid var(--line); border-radius:20px; padding:16px; margin-bottom:12px; display:flex; flex-direction:column; gap:10px; box-shadow:var(--shadow); }
 .section h3 { margin:0; font-size:15px; }
@@ -410,6 +422,11 @@ html.fine .conv-main { padding-right:92px; }
         </details>
       </div>
       <div class="section">
+        <h3 data-t="featuresTitle"></h3>
+        <p class="hint" data-t="featuresHint"></p>
+        <div id="featureList" class="stack"></div>
+      </div>
+      <div class="section">
         <h3 data-t="pushTitle"></h3>
         <div class="keystate none" id="pushState"></div>
         <p class="hint" id="pushHint" data-t="pushHint"></p>
@@ -469,6 +486,12 @@ html.fine .conv-main { padding-right:92px; }
     <button type="button" class="mic" id="micBtn" data-al="voiceInput" data-i="mic"></button>
     <button class="send" data-al="send" data-i="send"></button>
   </form>
+  <div id="fpModal" hidden>
+    <div class="modal-card">
+      <header><b id="fpTitle"></b><button class="icon-btn" id="fpClose" aria-label="close" data-i="cross"></button></header>
+      <iframe id="fpFrame" title="feature" src="about:blank"></iframe>
+    </div>
+  </div>
   <input type="file" id="filePick" multiple hidden accept=".txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.log,.xml,.html,.htm,.yaml,.yml,.ini,.sql,text/*">
   <nav>
     <button class="on" data-view="chat"><span data-i="chat"></span><span data-t="tabChat"></span></button>
@@ -547,6 +570,8 @@ const I18N = {
   confirmDelete:['确定删除「{n}」？','Delete "{n}"?'], toApp:['应用内','This app'],
   lastOk:['上次：','Last: '], lastFailed:['上次失败：','Last failed: '], lastMissed:['上次错过：','Last missed: '],
   ch_wechat:['微信（官方 iLink）','WeChat (official iLink)'],
+  featuresTitle:['功能扩展','Features'], featuresHint:['Bob 可以在对话里给自己安装小型功能包（工具 + 设置面板），安装前会把代码给你确认。','Bob can install small feature packages (tools plus a settings panel) through chat; you review the code before it lands.'],
+  featuresEmpty:['还没有安装功能包。','No feature packages installed yet.'], featuresOpen:['打开','Open'], featuresFailed:['加载失败','failed to load'],
   pushTitle:['手机通知','Phone notifications'],
   pushHint:['把本站添加到主屏幕后，可以从桌面像 App 一样打开；提醒由系统推送，Safari 关掉也能收到。','Add this site to the Home Screen and open it from there; reminders arrive as system notifications even when Safari is closed.'],
   pushIosHint:['iPhone（iOS 16.4+）：用 Safari 打开 → 分享 → 添加到主屏幕 → 从桌面图标打开，再点“启用通知”。','iPhone (iOS 16.4+): open in Safari → Share → Add to Home Screen → open from the icon → tap Enable.'],
@@ -717,7 +742,7 @@ function show(view) {
   else drawAttachments()
   if (view === 'chat') atEnd()
   if (view === 'clerk') loadClerk()
-  if (view === 'settings') { loadModelCard().catch(() => {}); loadExtensions(); loadClerk(); loadPushState() }
+  if (view === 'settings') { loadModelCard().catch(() => {}); loadExtensions(); loadClerk(); loadPushState(); loadFeatures() }
   refreshOrb(); refreshBanner(); setHero()
 }
 document.querySelectorAll('nav button').forEach(b => { b.onclick = () => show(b.dataset.view) })
@@ -1256,6 +1281,7 @@ function connect() {
     else if (e.type === 'conversations') refreshConvs()
     else if (e.type === 'clerk') loadClerk()
     else if (e.type === 'extensions') { if (currentView === 'settings') loadExtensions() }
+    else if (e.type === 'features') { if (currentView === 'settings') loadFeatures() }
     else if (e.type === 'budget') showBudget(e)
     else if (e.type === 'status') {
       if (e.status === 'running') runningCid = e.cid
@@ -1378,6 +1404,32 @@ $('langSel').onchange = () => {
   location.reload()
 }
 CHANNEL_TYPES.forEach(k => $('chType').append(new Option(t('ch_' + k), k)))
+async function loadFeatures() {
+  const data = await getJson('/api/features')
+  if (!data) return
+  const list = $('featureList')
+  list.replaceChildren()
+  if (!data.items.length) { list.append(el('p', 'hint', t('featuresEmpty'))); return }
+  for (const feature of data.items) {
+    const row = el('div', 'feature-row')
+    const info = el('div', 'feature-info')
+    info.append(el('b', '', feature.title), el('small', '', feature.name + (feature.status === 'error' ? ' · ' + t('featuresFailed') : '')))
+    if (feature.description) info.append(el('div', 'hint', feature.description))
+    if (feature.error) info.append(el('div', 'hint err', feature.error))
+    const actions = el('div', 'row')
+    if (feature.panel) {
+      const open = el('button', 'btn small', t('featuresOpen'))
+      open.onclick = () => { $('fpTitle').textContent = feature.title; $('fpFrame').src = `/f/${feature.name}/${feature.panel}`; $('fpModal').hidden = false }
+      actions.append(open)
+    }
+    const remove = el('button', 'btn small danger', t('remove'))
+    remove.onclick = async () => { if (!confirm(t('confirmDelete', feature.title))) return; await post('/api/features/remove', { name: feature.name }); loadFeatures() }
+    actions.append(remove)
+    row.append(info, actions)
+    list.append(row)
+  }
+}
+$('fpClose').onclick = () => { $('fpModal').hidden = true; $('fpFrame').src = 'about:blank' }
 let pushConfig = null
 const isInstalled = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
 const urlB64ToBytes = base64 => {

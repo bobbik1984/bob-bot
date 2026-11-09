@@ -16,6 +16,7 @@ import { createHostTools, MAX_COMMAND_SECONDS } from './host-tools.mjs'
 import { Extensions, checkMcp, checkPackages, checkSkill, installSteps, parseSkillFile, runSteps, showSteps } from './extensions.mjs'
 import { webFetch } from './web-fetch.mjs'
 import { startCompatApi } from './compat-api.mjs'
+import { Features } from './features.mjs'
 import QRCode from 'qrcode'
 import * as webpush from 'web-push'
 
@@ -41,6 +42,7 @@ const budget = new Budget(DATA_DIR)
 const host = createHostTools(DATA_DIR)
 const clerk = new Clerk(DATA_DIR)
 const extensions = new Extensions(DATA_DIR)
+const features = new Features(path.join(DATA_DIR, 'features'))
 let extensionsDirty = false // MCP changes load when DSH next starts
 const mcpToken = crypto.randomBytes(32).toString('hex')
 let mcpUrl = ''
@@ -186,6 +188,15 @@ const TOOLS = [
   ['todo_list', 'List the to-dos.', {}, []],
   ['todo_done', 'Mark a to-do done (or not done) by its id.', { id: { type: 'string' }, done: { type: 'boolean' } }, ['id']],
   ['todo_remove', 'Remove a to-do by its id.', { id: { type: 'string' } }, ['id']],
+  ['feature_list', 'List the feature packages installed on this BobBot.', {}, []],
+  ['feature_create', 'Create or update a small feature package that adds server tools, an HTTP route and an optional settings panel. The user reads the code and confirms first.', {
+    name: { type: 'string', description: 'lowercase-with-dashes, stable id' },
+    title: { type: 'string', description: 'Short human name' },
+    description: { type: 'string' },
+    code: { type: 'string', description: 'ES module: export default function setup(ctx) { ctx.registerTool(...); ctx.registerRoute(...) }' },
+    panel_html: { type: 'string', description: 'Optional small HTML panel shown in Settings' },
+  }, ['name', 'title', 'code']],
+  ['feature_remove', 'Remove a feature package, after the user confirms.', { name: { type: 'string' } }, ['name']],
   ['show_card', 'Show organized information to the user as a card in the chat: weather advice, a comparison, a list of results. Use it instead of a long text block.', {
     title: { type: 'string' }, subtitle: { type: 'string' }, tag: { type: 'string', description: 'A short label such as Weather or Result' },
     fields: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, value: { type: 'string' } }, required: ['label', 'value'] }, description: 'Up to 12 label and value pairs' },
@@ -247,12 +258,18 @@ async function hostTool(name, args) {
 
 async function callTool(name, args) {
   if (budget.status().exceeded) throw new Error('The monthly spending limit has been reached. Stop and tell the user.')
+  const fromFeature = features.findTool(name)
+  if (fromFeature) {
+    const result = await fromFeature.tool.handler(args)
+    return typeof result === 'string' ? result : JSON.stringify(result ?? null)
+  }
   if (['list_files', 'read_file', 'write_file', 'run_command'].includes(name)) return hostTool(name, args)
   if (name === 'web_fetch') return webFetch(String(args.url ?? ''))
   if (name === 'show_card') return showCard(args)
   if (name.startsWith('clerk_')) return clerkTool(name, args)
   if (name.startsWith('todo_')) return todoTool(name, args)
   if (['ext_list', 'install_package', 'mcp_add', 'mcp_remove', 'skill_create', 'skill_install', 'skill_remove'].includes(name)) return extTool(name, args)
+  if (name.startsWith('feature_')) return featureTool(name, args)
   await waitForHuman()
   switch (name) {
     case 'browser_navigate':
@@ -309,7 +326,7 @@ async function handleMcp(req, res) {
     return reply({ protocolVersion: msg.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: 'bobbot-tools', version: '0.0.1' } })
   }
   if (msg.method === 'ping') return reply({})
-  if (msg.method === 'tools/list') return reply({ tools: TOOLS })
+  if (msg.method === 'tools/list') return reply({ tools: [...TOOLS, ...features.toolList()] })
   if (msg.method === 'tools/call') {
     const { name, arguments: args = {} } = msg.params
     push({ type: 'step', name })
@@ -794,6 +811,51 @@ async function extTool(name, args) {
   throw new Error(`Unknown tool: ${name}`)
 }
 
+async function featureTool(name, args) {
+  if (name === 'feature_list') {
+    const items = features.list()
+    return items.length
+      ? items.map(f => `${f.name}: ${f.title} (${f.status})${f.tools.length ? ` tools=${f.tools.join(',')}` : ''}${f.routes.length ? ` routes=${f.routes.join(',')}` : ''}${f.error ? ` error=${f.error}` : ''}`).join('\n')
+      : 'No features installed.'
+  }
+  if (name === 'feature_create') {
+    const featureName = String(args.name ?? '').trim()
+    if (!/^[a-z][a-z0-9-]{1,32}$/.test(featureName)) throw new Error('name must look like lowercase-with-dashes')
+    const title = String(args.title ?? '').trim()
+    const code = String(args.code ?? '')
+    if (!title) throw new Error('title is required')
+    if (!code.trim()) throw new Error('code is required')
+    await requireApproval({
+      kind: 'feature', summary: `Add feature: ${title}`, target: featureName,
+      detail: code.slice(0, 2000), extra: { action: 'add' },
+    })
+    let item
+    try {
+      item = await features.install({ name: featureName, title, description: args.description, code, panelHtml: args.panel_html })
+    } catch (error) {
+      throw new Error(`The feature did not load: ${error.message}`)
+    }
+    if (item.status === 'error') {
+      features.remove(featureName)
+      throw new Error(`The feature did not load: ${item.error}`)
+    }
+    agent.stop() // its tools appear from the next message
+    broadcast({ type: 'features' })
+    const toolNames = item.tools.map(t => t.fullName)
+    return `Installed "${item.title}"${toolNames.length ? ` with tools: ${toolNames.join(', ')}` : ''}. It is available from your next step.`
+  }
+  if (name === 'feature_remove') {
+    const featureName = String(args.name ?? '')
+    if (!features.list().some(f => f.name === featureName)) throw new Error(`No feature named "${featureName}". Call feature_list.`)
+    await requireApproval({ kind: 'feature', summary: `Remove feature: ${featureName}`, target: featureName, extra: { action: 'remove' } })
+    features.remove(featureName)
+    agent.stop()
+    broadcast({ type: 'features' })
+    return 'Removed.'
+  }
+  throw new Error(`Unknown tool: ${name}`)
+}
+
 async function ensureAgent(cfg, apiKey) {
   const extras = extensions.launchExtras()
   const base = { apiKey, mcpUrl, mcpToken, model: cfg.model, baseUrl: cfg.kind === 'custom' ? cfg.baseUrl : undefined }
@@ -1006,6 +1068,22 @@ async function route(req, res) {
     return send(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(req, session.value, session.maxAge) })
   }
   if (!authed(req)) return send(res, 401, { error: 'UNAUTHORIZED' })
+  if (req.method === 'GET' && pathname.startsWith('/f/')) {
+    const parts = pathname.split('/').filter(Boolean) // ['f', name, file]
+    const full = parts.length === 3 ? features.panelFile(parts[1], parts[2]) : null
+    if (!full) return send(res, 404, { error: 'NO_PANEL' })
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Frame-Options': 'SAMEORIGIN' })
+    return res.end(fs.readFileSync(full))
+  }
+  if (pathname.startsWith('/api/f/')) {
+    const rest = pathname.slice('/api/f/'.length)
+    const [featureName, ...tail] = rest.split('/')
+    const route = features.findRoute(featureName, req.method, `/${tail.join('/')}`)
+    if (!route) return send(res, 404, { error: 'NO_FEATURE_ROUTE' })
+    const body = req.method === 'GET' ? null : JSON.parse(await readBody(req) || '{}')
+    const result = await route.handler({ query: new URL(req.url, 'http://local').searchParams, body })
+    return send(res, 200, result ?? { ok: true })
+  }
   if (req.method === 'POST' && pathname === '/api/logout') {
     return send(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(req, '', 0) })
   }
@@ -1018,6 +1096,7 @@ async function route(req, res) {
   }
   if (req.method === 'GET' && pathname === '/api/clerk') return send(res, 200, clerkView())
   if (req.method === 'GET' && pathname === '/api/extensions') return send(res, 200, extensionsView())
+  if (req.method === 'GET' && pathname === '/api/features') return send(res, 200, { items: features.list() })
   if (req.method === 'GET' && pathname === '/api/wechat/status') return send(res, 200, await wechatBridgeStatus())
   if (req.method === 'GET' && pathname === '/api/push/config') {
     return send(res, 200, { publicKey: vapid.publicKey, subscriptions: pushSubs.length })
@@ -1141,6 +1220,29 @@ async function route(req, res) {
     case '/api/takeover/done':
       takeover?.finish()
       return send(res, 200, { ok: true })
+    case '/api/features/install': {
+      try {
+        const item = await features.install(body)
+        if (item.status === 'error') { features.remove(item.name); return send(res, 400, { error: 'FEATURE_FAILED', message: item.error }) }
+        agent.stop()
+        broadcast({ type: 'features' })
+        return send(res, 200, { ok: true, items: features.list() })
+      } catch (error) {
+        return send(res, 400, { error: 'FEATURE_FAILED', message: error.message })
+      }
+    }
+    case '/api/features/remove': {
+      try { features.remove(String(body.name ?? '')) } catch (error) { return send(res, 400, { error: error.code ?? 'BAD_NAME' }) }
+      agent.stop()
+      broadcast({ type: 'features' })
+      return send(res, 200, { ok: true, items: features.list() })
+    }
+    case '/api/features/reload': {
+      await features.loadAll()
+      agent.stop()
+      broadcast({ type: 'features' })
+      return send(res, 200, { ok: true, items: features.list() })
+    }
     case '/api/push/subscribe': {
       const sub = body.subscription
       if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth) return send(res, 400, { error: 'BAD_SUBSCRIPTION' })
@@ -1312,6 +1414,8 @@ const mcpServer = http.createServer((req, res) => {
 })
 await new Promise(resolve => mcpServer.listen(0, '127.0.0.1', resolve))
 mcpUrl = `http://127.0.0.1:${mcpServer.address().port}/mcp`
+
+await features.loadAll()
 
 server.listen(PORT, HOST, () => {
   // bob-agent's wechat-bot-bridge speaks this contract, so it can talk to BobBot without changes.
