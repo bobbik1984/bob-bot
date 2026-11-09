@@ -741,13 +741,21 @@ function todoCard(todo, tz, created = false) {
   const row = el('div', 'todo-row')
   const box = el('button', 'check' + (todo.done ? ' on' : '')); box.type = 'button'; box.innerHTML = icon('tick')
   box.setAttribute('aria-label', t(todo.done ? 'undo' : 'markDone')); box.title = t(todo.done ? 'undo' : 'markDone')
-  box.onclick = () => post('/api/clerk/todo/toggle', { id: todo.id, done: !todo.done })
+  box.onclick = async () => {
+    const r = await post('/api/clerk/todo/toggle', { id: todo.id, done: !todo.done })
+    if (r.status !== 200) return
+    todo.done = !todo.done
+    c.classList.toggle('finished', todo.done)
+    box.classList.toggle('on', todo.done)
+    const label = t(todo.done ? 'undo' : 'markDone')
+    box.setAttribute('aria-label', label); box.title = label
+  }
   const body = el('div', 'todo-body')
   body.append(el('div', 'what', todo.title))
   if (todo.due) { const w = el('div', 'when'); w.innerHTML = icon('calendar'); w.append(el('span', '', dueText(todo.due, tz))); body.append(w) }
   if (todo.note) body.append(el('div', 'meta', todo.note))
   const rm = el('button', 'icon-btn rm'); rm.type = 'button'; rm.innerHTML = icon('cross'); rm.title = t('remove'); rm.setAttribute('aria-label', t('remove'))
-  rm.onclick = () => post('/api/clerk/todo/delete', { id: todo.id })
+  rm.onclick = async () => { const r = await post('/api/clerk/todo/delete', { id: todo.id }); if (r.status === 200) c.remove() }
   row.append(box, body, rm)
   c.append(top, row)
   return c
