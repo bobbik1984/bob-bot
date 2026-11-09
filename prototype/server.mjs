@@ -1,6 +1,6 @@
 // BobBot test prototype: PIN login, chats over DSH, a shared cloud browser with phone takeover, and gated server tools.
 import crypto from 'node:crypto'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
@@ -16,6 +16,7 @@ import { createHostTools, MAX_COMMAND_SECONDS } from './host-tools.mjs'
 import { Extensions, checkMcp, checkPackages, checkSkill, installSteps, parseSkillFile, runSteps, showSteps } from './extensions.mjs'
 import { webFetch } from './web-fetch.mjs'
 import { startCompatApi } from './compat-api.mjs'
+import QRCode from 'qrcode'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const HOST = process.env.HOST || '127.0.0.1'
@@ -523,6 +524,50 @@ async function finishRun(status, detail = '', { stop = false } = {}) {
 }
 
 let ticking = false
+// ---- the official WeChat bridge: status and login ----
+const WECHAT_BRIDGE_DIR = path.join(here, '..', 'wechat', 'wechat-bot-bridge')
+const WECHAT_QR_FILE = path.join(WECHAT_BRIDGE_DIR, 'data', 'qr.txt')
+const WECHAT_BRIDGE_URL = process.env.WECHAT_BRIDGE_URL || 'http://127.0.0.1:3722'
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+async function wechatBridgeStatus() {
+  let bridge = null
+  try {
+    const response = await fetch(`${WECHAT_BRIDGE_URL}/status`, { signal: AbortSignal.timeout(1500) })
+    bridge = await response.json()
+  } catch { /* the bridge only serves this after login */ }
+  let qr = ''
+  let at = 0
+  try { qr = fs.readFileSync(WECHAT_QR_FILE, 'utf8').trim(); at = fs.statSync(WECHAT_QR_FILE).mtimeMs } catch { /* no code yet */ }
+  const fresh = Boolean(qr) && Date.now() - at < 6 * 60_000
+  const image = fresh && !bridge?.connected
+    ? await QRCode.toDataURL(qr, { margin: 1, width: 260, errorCorrectionLevel: 'M' }).catch(() => '')
+    : ''
+  return {
+    installed: fs.existsSync(WECHAT_BRIDGE_DIR),
+    connected: Boolean(bridge?.connected),
+    owner: bridge?.owner ?? '',
+    accountId: bridge?.accountId ?? '',
+    qr: image, qrAt: at || null, qrFresh: fresh,
+  }
+}
+
+/** Restarts the bridge so it requests a new official login code, then waits for it to appear. */
+async function wechatLogin() {
+  const before = (() => { try { return fs.statSync(WECHAT_QR_FILE).mtimeMs } catch { return 0 } })()
+  await new Promise((resolve, reject) => {
+    const child = spawn('sudo', ['-n', 'systemctl', 'restart', 'bobbot-wechat'], { stdio: 'ignore' })
+    child.on('error', reject)
+    child.on('close', code => (code === 0 ? resolve() : reject(new Error(`systemctl restart exited ${code}`))))
+  })
+  for (let i = 0; i < 40; i++) {
+    await sleep(500)
+    const status = await wechatBridgeStatus()
+    if (status.qrFresh && status.qrAt && status.qrAt > before) return status
+  }
+  throw new Error('the bridge did not produce a QR code in time')
+}
+
 // After the official WeChat bridge logs in, offer a reminder channel once, so jobs can send there by name.
 const WECHAT_CHANNEL_MARKER = path.join(DATA_DIR, 'wechat-channel-offered.json')
 async function offerWechatChannel() {
@@ -930,6 +975,7 @@ async function route(req, res) {
   }
   if (req.method === 'GET' && pathname === '/api/clerk') return send(res, 200, clerkView())
   if (req.method === 'GET' && pathname === '/api/extensions') return send(res, 200, extensionsView())
+  if (req.method === 'GET' && pathname === '/api/wechat/status') return send(res, 200, await wechatBridgeStatus())
   if (req.method === 'GET' && pathname === '/api/conversations') {
     return send(res, 200, { items: listConversations(), running: runningCid })
   }
@@ -1038,6 +1084,14 @@ async function route(req, res) {
     case '/api/takeover/done':
       takeover?.finish()
       return send(res, 200, { ok: true })
+    case '/api/wechat/login': {
+      try {
+        const status = await wechatLogin()
+        return send(res, 200, status)
+      } catch (error) {
+        return send(res, 500, { error: 'WECHAT_LOGIN_FAILED', message: error.message })
+      }
+    }
     case '/api/clerk/timezone': {
       try { clerk.setTimezone(String(body.timezone ?? '')) } catch { return send(res, 400, { error: 'BAD_TIMEZONE' }) }
       broadcast({ type: 'clerk' })

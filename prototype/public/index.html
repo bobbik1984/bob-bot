@@ -366,6 +366,11 @@ nav button svg { width:24px; height:24px; }
           <div class="stack">
             <select class="field" id="chType" data-al="chType"></select>
             <p class="hint" id="chHelp"></p>
+            <div class="stack" id="wxLoginBox" hidden>
+              <p class="hint" id="wxLoginMsg"></p>
+              <img id="wxLoginQr" alt="" hidden style="width:220px;height:220px;align-self:center;border-radius:16px;background:#fff">
+              <button class="btn block" id="wxLoginBtn" data-t="wxLoginBtn"></button>
+            </div>
             <input class="field" id="chName" autocomplete="off" data-ph="chName" data-al="chName">
             <input class="field" id="chWebhook" inputmode="url" autocapitalize="off" autocomplete="off" data-ph="chWebhook" data-al="chWebhook">
             <input class="field" id="chSecret" type="password" autocomplete="off" data-ph="chSecret" data-al="chSecret">
@@ -502,7 +507,11 @@ const I18N = {
   confirmDelete:['确定删除「{n}」？','Delete "{n}"?'], toApp:['应用内','This app'],
   lastOk:['上次：','Last: '], lastFailed:['上次失败：','Last failed: '], lastMissed:['上次错过：','Last missed: '],
   ch_wechat:['微信（官方 iLink）','WeChat (official iLink)'],
-  help_wechat:['通过已登录的官方微信桥发送，默认发给扫码登录的人。先在设置里完成微信登录。','Sends through the signed-in official WeChat bridge, to the person who scanned the code. Log in from Settings first.'],
+  wxLoginBtn:['生成登录二维码','Generate login code'], wxRefresh:['重新生成二维码','New code'], wxWorking:['正在生成…','Generating…'],
+  wxNotLogged:['微信桥还没有登录。','The WeChat bridge is not signed in yet.'],
+  wxScanHint:['用手机微信扫码并确认授权，成功后这里会自动变成已登录。','Scan with WeChat and confirm; this switches to signed in automatically.'],
+  wxConnected:['已登录：{n}','Signed in: {n}'], wxLoginFailed:['生成失败：{n}','Could not generate a code: {n}'],
+  help_wechat:['通过官方微信桥发送；第一次需要扫码登录，之后默认发给扫码的人。','Sends through the official WeChat bridge. Sign in with a QR code once; later messages go to the person who scanned it.'],
   ch_lark:['飞书 / Lark 群机器人','Lark / Feishu group bot'], ch_wecom:['企业微信群机器人','WeCom group bot'], ch_telegram:['Telegram 机器人','Telegram bot'], ch_discord:['Discord Webhook','Discord webhook'],
   help_lark:['群设置 → 机器人 → 添加自定义机器人，复制 Webhook 地址；如开启了签名校验，再填签名密钥。','In the group: Settings → Bots → Add custom bot. Copy its webhook; add the signing secret if you turned signing on.'],
   help_wecom:['在群里添加群机器人，复制 Webhook 地址。个人微信没有官方机器人接口，暂不支持。','Add a group bot in the group and copy its webhook. Personal WeChat has no official bot API, so it is not supported.'],
@@ -1256,10 +1265,46 @@ $('langSel').onchange = () => {
   location.reload()
 }
 CHANNEL_TYPES.forEach(k => $('chType').append(new Option(t('ch_' + k), k)))
+let wxLoginTimer = null
+async function loadWechatLogin() {
+  clearTimeout(wxLoginTimer)
+  const data = await getJson('/api/wechat/status')
+  if (!data) return
+  const box = $('wxLoginBox')
+  if (box.hidden) return
+  const img = $('wxLoginQr')
+  if (data.connected) {
+    $('wxLoginMsg').textContent = t('wxConnected', data.owner || data.accountId || 'WeChat')
+    img.hidden = true
+    $('wxLoginBtn').hidden = true
+    return
+  }
+  $('wxLoginBtn').hidden = false
+  $('wxLoginBtn').textContent = data.qr ? t('wxRefresh') : t('wxLoginBtn')
+  if (data.qr) {
+    $('wxLoginMsg').textContent = t('wxScanHint')
+    img.src = data.qr; img.hidden = false
+  } else {
+    $('wxLoginMsg').textContent = data.installed ? t('wxNotLogged') : t('wxLoginFailed', 'bridge missing')
+    img.hidden = true
+  }
+  wxLoginTimer = setTimeout(loadWechatLogin, 3000)
+}
+$('wxLoginBtn').onclick = async () => {
+  const button = $('wxLoginBtn')
+  button.disabled = true
+  $('wxLoginMsg').textContent = t('wxWorking')
+  const result = await post('/api/wechat/login')
+  button.disabled = false
+  if (result.status !== 200) $('wxLoginMsg').textContent = t('wxLoginFailed', result.data.message ?? result.data.error)
+  loadWechatLogin()
+}
 function showChannelFields() {
   const type = $('chType').value
   $('chHelp').textContent = t('help_' + type)
   const wechatType = type === 'wechat'
+  $('wxLoginBox').hidden = !wechatType
+  if (wechatType) loadWechatLogin()
   $('chWebhook').hidden = type === 'telegram' || wechatType
   $('chSecret').hidden = type !== 'lark'
   $('chToken').hidden = type !== 'telegram'
