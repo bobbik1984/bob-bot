@@ -57,7 +57,7 @@ const fake = http.createServer((req, res) => {
 await new Promise(r => fake.listen(0, '127.0.0.1', r))
 
 // ---- server under test ----
-const env = { ...process.env, BOBBOT_DATA: data, PORT: String(PORT), HOST: '127.0.0.1', DEEPSEEK_API_KEY: 'test-key', BOBBOT_TICK_MS: '1000', BOB_COMPAT_PORT: '3731', DEEPSEEK_BASE_URL: `http://127.0.0.1:${fake.address().port}` }
+const env = { ...process.env, BOBBOT_DATA: data, PORT: String(PORT), HOST: '127.0.0.1', DEEPSEEK_API_KEY: 'test-key', BOBBOT_TICK_MS: '1000', BOB_COMPAT_PORT: '3731', WECHAT_BRIDGE_URL: 'http://127.0.0.1:3999', DEEPSEEK_BASE_URL: `http://127.0.0.1:${fake.address().port}` }
 const setPin = pin => spawnSync(process.execPath, ['set-pin.mjs', pin], { cwd: root, env, encoding: 'utf8' })
 const server = spawn(process.execPath, ['server.mjs'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] })
 let log = ''
@@ -547,7 +547,7 @@ try {
     const entry = (await clerkView()).inbox.find(n => n.text === 'Stand-up time')
     assert.equal(entry.delivery[0].channel, 'Team Lark'); assert.equal(entry.delivery[0].ok, false)
     assert.ok(entry.delivery[0].error, 'the failure has no reason')
-    const channelId = (await clerkView()).channels[0].id
+    const channelId = (await clerkView()).channels.find(c => c.name === 'Team Lark').id
     assert.equal((await post('/api/channels/delete', { id: channelId })).status, 200)
     assert.deepEqual((await clerkView()).jobs.find(j => j.id === ping.id).channels, [])
   })

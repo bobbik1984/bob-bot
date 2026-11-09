@@ -150,22 +150,32 @@ main { flex:1; min-height:0; position:relative; }
 #banner { display:flex; align-items:center; gap:8px; margin:0 12px 6px; padding:9px 14px; border-radius:14px; background:var(--warn-soft); color:var(--warn); font-size:14px; font-weight:600; text-align:left; }
 #banner svg { width:1.1em; height:1.1em; }
 
-/* cards */
-.card { background:var(--surface); border:1px solid var(--line); border-radius:20px; padding:14px; display:flex; flex-direction:column; gap:10px; box-shadow:var(--shadow); }
-.card-top { display:flex; align-items:center; gap:8px; }
-.card-top .chipicon { width:32px; height:32px; border-radius:10px; display:inline-flex; align-items:center; justify-content:center; background:var(--accent-soft); color:var(--accent-ink); }
+/* cards: one clean block, aligned rows, actions at the bottom */
+.card { background:var(--surface); border:1px solid var(--line); border-radius:22px; padding:16px; display:flex; flex-direction:column; gap:12px; box-shadow:0 10px 30px rgba(30,50,110,.07); }
+.card-top { display:flex; align-items:center; gap:10px; }
+.card-top .chipicon { width:36px; height:36px; border-radius:12px; display:inline-flex; align-items:center; justify-content:center; background:var(--accent-soft); color:var(--accent-ink); flex:none; }
+.card-top .chipicon svg { width:18px; height:18px; }
 .card.help .chipicon { background:var(--warn-soft); color:var(--warn); }
-.tag { font-size:12px; font-weight:600; color:var(--accent-ink); background:var(--accent-soft); padding:2px 8px; border-radius:6px; }
+.tag { font-size:12px; font-weight:600; color:var(--accent-ink); background:var(--accent-soft); padding:4px 10px; border-radius:999px; white-space:nowrap; }
 .card.help .tag { color:var(--warn); background:var(--warn-soft); }
-.card .time { margin-left:auto; font-size:12px; color:var(--muted); }
-.card .lead { color:var(--muted); font-size:13px; }
-.card .what { font-weight:700; overflow-wrap:anywhere; }
-.card .where { font-size:12px; color:var(--muted); overflow-wrap:anywhere; margin-top:-6px; }
+.card .time { margin-left:auto; font-size:12px; color:var(--muted); flex:none; }
+.card .lead { color:var(--muted); font-size:14px; }
+.card .what { font-size:17px; font-weight:700; line-height:1.4; overflow-wrap:anywhere; }
+.card .where { font-size:13px; color:var(--muted); overflow-wrap:anywhere; margin-top:-6px; }
+.card .rows { display:flex; flex-direction:column; gap:8px; }
+.card .kv { display:flex; align-items:baseline; justify-content:space-between; gap:16px; font-size:14px; }
+.card .kv .k { color:var(--muted); flex:none; }
+.card .kv .v { font-weight:600; text-align:right; overflow-wrap:anywhere; }
+.card .quote { margin:0; padding:12px 14px; border-radius:14px; background:var(--surface-2); font-size:14px; line-height:1.55; white-space:pre-wrap; overflow-wrap:anywhere; max-height:160px; overflow:auto; }
 .card pre.detail { margin:0; padding:10px 12px; border-radius:12px; background:var(--surface-2); font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; max-height:180px; overflow:auto; }
 .card img { width:100%; max-height:240px; object-fit:contain; border-radius:12px; background:var(--stage); }
 .card .actions { display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:10px; }
+.card .actions .btn { width:100%; min-height:42px; border-radius:14px; }
+.card .actions .link { justify-self:start; }
 .card .done { display:flex; align-items:center; gap:6px; color:var(--ok); font-weight:600; font-size:14px; }
 .card .done.no { color:var(--muted); }
+.card.saved .tag { background:var(--ok-soft); color:var(--ok); }
+.card.saved .chipicon { background:var(--ok-soft); color:var(--ok); }
 
 /* to-dos and formatted replies */
 .todo-row { display:flex; gap:12px; align-items:flex-start; }
@@ -189,11 +199,13 @@ main { flex:1; min-height:0; position:relative; }
 .info-fields { display:grid; grid-template-columns:minmax(72px,auto) 1fr; gap:6px 14px; font-size:14px; }
 .info-fields .k { color:var(--muted); }
 .info-fields .v { font-weight:600; overflow-wrap:anywhere; }
-.info-items { margin:0; padding-left:20px; font-size:14px; display:flex; flex-direction:column; gap:4px; }
+.info-items { list-style:none; margin:0; padding:0; font-size:14px; display:flex; flex-direction:column; gap:8px; }
+.info-items li { position:relative; padding-left:16px; }
+.info-items li::before { content:''; position:absolute; left:2px; top:.55em; width:5px; height:5px; border-radius:50%; background:var(--accent); }
 .inbox-item .card { box-shadow:none; margin-top:6px; background:var(--surface-2); border-color:transparent; }
 
 /* friendly cards: a saved schedule, a to-do, and the card that asks to confirm one */
-.card.saved { border-color:var(--ok); box-shadow:0 8px 26px rgba(31,157,107,.14); }
+.card.saved { border-color:var(--line); }
 .card.saved .chipicon, .card.saved .tag { background:var(--ok-soft); color:var(--ok); }
 .card .what.big { font-size:18px; line-height:1.35; }
 .card .when { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted); margin-top:-4px; }
@@ -493,7 +505,9 @@ const I18N = {
   jobsTitle:['定时任务','Scheduled'], todosTitle:['待办','To-dos'], markDone:['标为完成','Mark done'], undo:['撤销完成','Undo'],
   jobsEmpty:['还没有定时任务。对 Bob 说「每天早上 8 点看看天气」试试。','No scheduled jobs yet. Tell Bob "every morning at 8, check the weather".'],
   todosEmpty:['还没有待办。对 Bob 说「提醒我有个会」试试。','No to-dos yet. Tell Bob "remind me about the meeting".'],
-  tagSaved:['已添加','Added'], kindTodo:['待办','To-do'],
+  tagSaved:['已添加','Added'], kindTodo:['待办','To-do'], tagDone:['已完成','Done'],
+  whenLabel:['时间','When'], noteLabel:['备注','Note'], repeatLabel:['重复','Repeats'], nextLabel:['下次','Next'],
+  sendLabel:['发送到','Sends to'], appInbox:['应用内','This app'], firstAtLabel:['首次','First'],
   langTitle:['语言','Language'], langAuto:['跟随系统','Automatic'],
   today:['今天','Today'], tomorrow:['明天','Tomorrow'], dayAfter:['后天','In two days'],
   cancel:['取消','Cancel'], confirm:['确认','Confirm'], confirmAdd:['确认添加','Add it'], confirmDeleteBtn:['确认删除','Delete'], askDelete:['删除','Delete'], askPause:['暂停','Pause'], askResume:['恢复','Resume'],
@@ -808,45 +822,49 @@ function dueText(due, tz) {
 }
 
 // ---- cards Bob shows: schedules and organized information ----
+const tile = name => { const ic = el('span', 'chipicon'); ic.innerHTML = icon(name); return ic }
+const kv = (label, value) => { const row = el('div', 'kv'); row.append(el('span', 'k', label), el('span', 'v', value)); return row }
+const rowsOf = pairs => {
+  const box = el('div', 'rows')
+  for (const [label, value] of pairs) if (value) box.append(kv(label, value))
+  return box
+}
 function todoCard(todo, tz, created = false) {
   const c = el('div', 'card todo' + (todo.done ? ' finished' : '') + (created ? ' saved' : ''))
   const top = el('div', 'card-top')
-  const ic = el('span', 'chipicon'); ic.innerHTML = icon('check')
-  top.append(ic, el('span', 'tag', created ? t('tagSaved') : t('kindTodo')))
-  const row = el('div', 'todo-row')
-  const box = el('button', 'check' + (todo.done ? ' on' : '')); box.type = 'button'; box.innerHTML = icon('tick')
-  box.setAttribute('aria-label', t(todo.done ? 'undo' : 'markDone')); box.title = t(todo.done ? 'undo' : 'markDone')
-  box.onclick = async () => {
+  const tag = el('span', 'tag', todo.done ? t('tagDone') : created ? t('tagSaved') : t('kindTodo'))
+  top.append(tile('check'), tag)
+  c.append(top, el('div', 'what', todo.title))
+  const rows = rowsOf([[t('whenLabel'), todo.due ? dueText(todo.due, tz) : ''], [t('noteLabel'), todo.note]])
+  if (rows.children.length) c.append(rows)
+  const actions = el('div', 'actions')
+  const done = el('button', 'btn' + (todo.done ? '' : ' primary'), t(todo.done ? 'undo' : 'markDone'))
+  done.onclick = async () => {
     const r = await post('/api/clerk/todo/toggle', { id: todo.id, done: !todo.done })
     if (r.status !== 200) return
     todo.done = !todo.done
     c.classList.toggle('finished', todo.done)
-    box.classList.toggle('on', todo.done)
-    const label = t(todo.done ? 'undo' : 'markDone')
-    box.setAttribute('aria-label', label); box.title = label
+    done.textContent = t(todo.done ? 'undo' : 'markDone')
+    done.className = 'btn' + (todo.done ? '' : ' primary')
+    tag.textContent = todo.done ? t('tagDone') : t('kindTodo')
   }
-  const body = el('div', 'todo-body')
-  body.append(el('div', 'what', todo.title))
-  if (todo.due) { const w = el('div', 'when'); w.innerHTML = icon('calendar'); w.append(el('span', '', dueText(todo.due, tz))); body.append(w) }
-  if (todo.note) body.append(el('div', 'meta', todo.note))
-  const rm = el('button', 'icon-btn rm'); rm.type = 'button'; rm.innerHTML = icon('cross'); rm.title = t('remove'); rm.setAttribute('aria-label', t('remove'))
+  const rm = el('button', 'btn danger', t('remove'))
   rm.onclick = async () => { const r = await post('/api/clerk/todo/delete', { id: todo.id }); if (r.status === 200) c.remove() }
-  row.append(box, body, rm)
-  c.append(top, row)
+  actions.append(done, rm)
+  c.append(actions)
   return c
 }
 function infoCard(card) {
   const c = el('div', 'card info')
   const top = el('div', 'card-top')
-  const ic = el('span', 'chipicon'); ic.innerHTML = icon('list')
-  top.append(ic)
+  top.append(tile('list'))
   if (card.tag) top.append(el('span', 'tag', card.tag))
   c.append(top, el('div', 'what', card.title))
   if (card.subtitle) c.append(el('div', 'lead', card.subtitle))
   if (card.fields?.length) {
-    const grid = el('div', 'info-fields')
-    for (const f of card.fields) grid.append(el('span', 'k', f.label), el('span', 'v', f.value))
-    c.append(grid)
+    const rows = el('div', 'rows')
+    for (const f of card.fields) rows.append(kv(f.label, f.value))
+    c.append(rows)
   }
   if (card.items?.length) {
     const list = el('ul', 'info-items')
@@ -888,17 +906,13 @@ function buildCard(e, kind) {
   else if (e.kind === 'clerk') {
     // A reminder or a scheduled task: the words, and when it happens in plain language. No ids, no zone names.
     const verb = e.action === 'create' ? '' : t({ delete: 'askDelete', pause: 'askPause', resume: 'askResume' }[e.action])
-    c.append(el('div', 'what big', verb ? `${verb}「${e.target}」` : e.target))
-    const when = el('div', 'when'); when.innerHTML = icon('calendar')
-    when.append(el('span', '', describeSchedule(e.schedule)))
-    if (e.firstRun) when.append(el('span', '', '·'), el('span', '', t('firstAt', whenText(e.firstRun, e.timezone))))
-    c.append(when)
-    if (e.detail) c.append(el('div', 'quote' + (e.action === 'create' ? ' said' : ''), e.detail))
-    if (e.channels?.length) {
-      const chips = el('div', 'chiplist')
-      for (const n of e.channels) chips.append(el('span', 'mini', t('alsoTo', n)))
-      c.append(chips)
-    }
+    c.append(el('div', 'what', verb ? `${verb}「${e.target}」` : e.target))
+    c.append(rowsOf([
+      [t('repeatLabel'), describeSchedule(e.schedule)],
+      [t('firstAtLabel'), e.firstRun ? whenText(e.firstRun, e.timezone) : ''],
+      [t('sendLabel'), e.channels?.length ? e.channels.join('、') : t('appInbox')],
+    ]))
+    if (e.detail) c.append(el('div', 'quote', e.detail))
   }
   else { const [first, ...rest] = cardTitle(e); c.append(el('div', 'what', first)); for (const line of rest) if (line) c.append(el('div', 'where', line)) }
   // Show what matters to the owner: the words to be saved, or the command itself. Paths, sizes and package commands stay out of sight.
@@ -1170,40 +1184,35 @@ async function loadClerk() {
 function jobCard(job, tz = clerkData?.timezone, compact = false, created = false) {
   const c = el('div', 'card job' + (job.enabled ? '' : ' paused') + (created ? ' saved' : ''))
   const top = el('div', 'card-top')
-  const ic = el('span', 'chipicon'); ic.innerHTML = icon(job.kind === 'task' ? 'clock' : 'bell')
-  top.append(ic, el('span', 'tag', created ? t('tagSaved') : t(job.kind === 'task' ? 'kindTask' : 'kindReminder')))
+  top.append(tile(job.kind === 'task' ? 'clock' : 'bell'),
+    el('span', 'tag', created ? t('tagSaved') : t(job.kind === 'task' ? 'kindTask' : 'kindReminder')))
   if (job.running) top.append(el('span', 'mini good', t('running')))
-  c.append(top, el('div', 'what big', job.title))
-  const when = el('div', 'when'); when.innerHTML = icon('calendar')
-  when.append(el('span', '', describeSchedule(job.schedule)))
-  if (job.enabled && job.nextRun) when.append(el('span', '', '·'), el('span', '', t('nextRun', whenText(job.nextRun, tz))))
-  else when.append(el('span', '', '·'), el('span', '', t('paused')))
-  c.append(when)
-  if (job.kind === 'reminder' && job.text && job.text !== job.title) c.append(el('div', 'quote said', job.text))
-  if (job.channels?.length) {
-    const chips = el('div', 'chiplist')
-    for (const n of job.channels) chips.append(el('span', 'mini', t('alsoTo', n)))
-    c.append(chips)
-  }
+  c.append(top, el('div', 'what', job.title))
+  c.append(rowsOf([
+    [t('repeatLabel'), describeSchedule(job.schedule)],
+    [t('nextLabel'), job.enabled && job.nextRun ? whenText(job.nextRun, tz) : t('paused')],
+    [t('sendLabel'), job.channels?.length ? job.channels.join('、') : t('appInbox')],
+  ]))
+  if (job.kind === 'reminder' && job.text && job.text !== job.title) c.append(el('div', 'quote', job.text))
   if (job.lastStatus) {
     const prefix = t(job.lastStatus === 'ok' ? 'lastOk' : job.lastStatus === 'missed' ? 'lastMissed' : 'lastFailed')
     c.append(el('div', 'last' + (job.lastStatus === 'ok' ? '' : ' failed'), `${prefix}${fmtWhen(job.lastRun, tz)} · ${job.lastResult ?? ''}`))
   }
   const actions = el('div', 'actions')
   if (compact) { // inside the chat a job card only points to the Clerk tab, where it can be changed
-    const openTab = el('button', 'btn small', t('openClerk')); openTab.onclick = () => show('clerk')
+    const openTab = el('button', 'btn', t('openClerk')); openTab.onclick = () => show('clerk')
     actions.append(openTab); c.append(actions)
     return c
   }
-  const run = el('button', 'btn small', t(job.kind === 'task' ? 'runNow' : 'sendNow')); run.disabled = job.running
+  const run = el('button', 'btn', t(job.kind === 'task' ? 'runNow' : 'sendNow')); run.disabled = job.running
   run.onclick = async () => { const r = await post('/api/clerk/job/run', { id: job.id }); if (r.status !== 200) { c.append(el('div', 'last failed', errText(r.data, r.status))) } }
-  const toggle = el('button', 'btn small', t(job.enabled ? 'pause' : 'resume'))
+  const toggle = el('button', 'btn', t(job.enabled ? 'pause' : 'resume'))
   toggle.onclick = () => post('/api/clerk/job/toggle', { id: job.id, enabled: !job.enabled })
-  const del = el('button', 'btn small danger', t('remove'))
+  const del = el('button', 'btn danger', t('remove'))
   del.onclick = async () => { if (confirm(t('confirmDelete', job.title))) { const r = await post('/api/clerk/job/delete', { id: job.id }); if (r.status !== 200) c.append(el('div', 'last failed', errText(r.data, r.status))) } }
   actions.append(run, toggle, del)
-  if (job.cid) { const see = el('button', 'btn small', t('openRun')); see.onclick = () => selectConv(job.cid); actions.append(see) }
   c.append(actions)
+  if (job.cid) { const see = el('button', 'link', t('openRun')); see.onclick = () => selectConv(job.cid); c.append(see) }
   return c
 }
 function inboxItem(n) {
