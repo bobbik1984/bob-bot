@@ -352,6 +352,7 @@ nav button svg { width:24px; height:24px; }
         <p class="hint" id="extEmpty" data-t="extEmpty"></p>
       </div>
       <p class="hint" id="settingsMsg" role="status"></p>
+      <p class="hint" id="buildInfo"></p>
       <div class="section">
         <h3 data-t="pinTitle"></h3>
         <p class="hint" data-t="pinHint"></p>
@@ -476,6 +477,7 @@ const I18N = {
   capTitle:['本月花费','This month'], capLabel:['每月模型花费上限（美元）','Monthly model spending limit (USD)'],
   pinTitle:['账号','Account'], pinHint:['PIN 只能在服务器上修改：npm run set-pin -- 1234','The PIN can only be changed on the server: npm run set-pin -- 1234'],
   save:['保存','Save'], logout:['退出登录','Log out'], saved:['已保存','Saved'], noKey:['请先填入 API Key','Add an API key first'],
+  build:['版本','Build'],
   // browser window
   go:['前往','Go'], fill:['填入','Fill'], fillPh:['在此输入文字（中文请在这里输入）','Type text here (use this box for Chinese)'],
   toggle:['显示或隐藏','Show or hide'], up:['向上滚动','Scroll up'], down:['向下滚动','Scroll down'], backspace:['退格','Backspace'], enter:['回车','Enter'],
@@ -1267,8 +1269,15 @@ function renderModelCard() {
   }
   $('key').hidden = custom || has
 }
+function showBuild(s) {
+  const b = s?.build
+  if (!b?.commit) return
+  const commit = b.commit === 'dev' ? 'dev' : b.commit.slice(0, 7)
+  $('buildInfo').textContent = t('build') + ' ' + commit + (b.at ? ' · ' + b.at : '')
+}
 async function loadModelCard() {
   appState = await (await fetch('/api/state')).json()
+  showBuild(appState)
   try { deepseekModels = (await post('/api/models')).data.deepseek ?? [] } catch { deepseekModels = [] }
   const sel = $('modelSel'), saved = appState.model ?? {}
   sel.textContent = ''
@@ -1467,6 +1476,7 @@ async function boot() {
   $('app').hidden = !s.authed
   if (!s.authed) { if (!s.pinSet) $('loginMsg').textContent = t('noPin'); return }
   appState = s
+  showBuild(s)
   setBadge(s.unread)
   show('chat')
   if (!s.hasKey) { $('settingsMsg').textContent = t('noKey'); show('settings') }

@@ -43,6 +43,10 @@ let mcpUrl = ''
 
 const readJson = (file, fallback) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return fallback } }
 
+// Deploy stamp written by scripts/deploy-ry.sh, so anyone can tell which build the page is serving.
+const BUILD_FILE = path.join(DATA_DIR, 'build.json')
+const readBuild = () => readJson(BUILD_FILE, { commit: 'dev', at: null })
+
 // ---- conversations ----
 // Each conversation is one DSH session, so it keeps its own context. Only one conversation works at a time
 // because they all share one browser and one machine.
@@ -808,8 +812,11 @@ async function route(req, res) {
     const cfg = modelConfig()
     return send(res, 200, {
       authed: ok, pinSet: hasPin(),
-      ...(ok ? { hasKey: Boolean(loadKey(cfg.kind)), keyHint: keyHint(cfg.kind), model: publicModel(cfg), budget: budget.status(), unread: clerk.unread() } : {}),
+      ...(ok ? { hasKey: Boolean(loadKey(cfg.kind)), keyHint: keyHint(cfg.kind), model: publicModel(cfg), budget: budget.status(), unread: clerk.unread(), build: readBuild() } : {}),
     })
+  }
+  if (req.method === 'GET' && pathname === '/api/version') {
+    return send(res, 200, { name: 'bobbot', ...readBuild() })
   }
   if (req.method === 'POST' && !sameOrigin(req)) return send(res, 403, { error: 'BAD_ORIGIN' })
   if (req.method === 'POST' && pathname === '/api/login') {

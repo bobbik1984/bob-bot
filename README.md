@@ -12,6 +12,7 @@
 - **分阶段开发路线与退出门**：[docs/DEVELOPMENT_ROUTE.md](docs/DEVELOPMENT_ROUTE.md)
 - **当前施工合同（What Now）**：[docs/CURRENT_STAGE.md](docs/CURRENT_STAGE.md)
 - **测试原型（Node.js + DSH）**：[prototype/README.md](prototype/README.md)
+- **部署到 RY 测试机**：[scripts/deploy-ry.sh](scripts/deploy-ry.sh)（见下文「部署到 RY」）
 - **Super-agent 研究笔记**：[docs/SUPER_AGENT_NOTES.md](docs/SUPER_AGENT_NOTES.md)
 - **需求与待办池**：[todo.md](todo.md)
 - **机器可读进度投影**：[progress.yaml](progress.yaml)
@@ -32,3 +33,53 @@ bob-bot/
     ├── DEVELOPMENT_ROUTE.md   # BB0–BB4 长期演进路线与退出门
     └── CURRENT_STAGE.md       # 当前施工阶段与第一顺位 POC 合同
 ```
+
+## 部署到 RY
+
+RY 是当前的自测 VPS（`ubuntu@82.157.186.181`，腾讯云 2C/2G，Ubuntu 24.04），已作为 systemd 服务运行测试原型，并通过 Cloudflare 隧道对外提供 **https://ry.bobbik.org**。
+
+日常迭代只需要三步，全部在 x1t 上完成：
+
+```sh
+# 1. 改代码并提交
+git add -A && git commit -m "..."
+
+# 2. 推送到 GitHub 并自动同步、重启、验收
+bash scripts/deploy-ry.sh
+```
+
+脚本会：push `main` → RY 上 `git fetch && git reset --hard origin/main` → 依赖变化时 `npm install` → 重启 `bobbot.service` → 写入构建戳（`prototype/data/build.json`）→ 本机与公网双重健康检查，最后打印 `/api/version`。
+
+**验收方式**：打开 https://ry.bobbik.org 登录后进入「设置」，底部会显示当前版本号与部署时间；`curl https://ry.bobbik.org/api/version` 也会返回同一个 commit。
+
+`prototype/data/`（对话、浏览器登录态、密钥）和 `prototype/node_modules/` 不进仓库，部署时不会被覆盖。
+
+### 一次性初始化（仅新机器或重建时需要）
+
+```sh
+ssh ubuntu@<RY-IP>
+sudo mkdir -p /home/ubuntu/bob-bot && sudo chown ubuntu:ubuntu /home/ubuntu/bob-bot
+git clone https://github.com/bobbik1984/bob-bot.git /home/ubuntu/bob-bot
+cd /home/ubuntu/bob-bot/prototype && npm install && npm run set-pin -- <PIN>
+sudo tee /etc/systemd/system/bobbot.service >/dev/null <<'EOF'
+[Unit]
+Description=BobBot test prototype
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/bob-bot/prototype
+Environment=HOST=127.0.0.1 PORT=8787
+ExecStart=/usr/bin/node server.mjs
+Restart=on-failure
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload && sudo systemctl enable --now bobbot
+```
+
