@@ -14,6 +14,16 @@ Settings → WeChat installs a separate bridge (wechaty with the wechat4u puppet
 
 This uses the unofficial personal-WeChat web protocol. WeChat may restrict or block such logins, so try a spare account first.
 
+### bob-agent bridge compatibility
+
+bob-agent exposes `POST /v1/chat` (SSE), `GET /v1/conversations` and `GET /v1/health` on `127.0.0.1:3721` for its `wechat-bot-bridge`. The prototype serves the same contract, so that bridge can talk to BobBot after changing only its base URL:
+
+- events: `text`, `thinking`, `tool_start`, `tool_end`, `done` (with `conversation_id` and `full_text`)
+- request: `{ message, conversation_id, from_channel, from_user }`
+- each `from_user` becomes its own conversation, titled `WeChat · <name>`
+
+By default it listens on loopback. Set `BOB_COMPAT_HOST=100.64.0.3` (a Tailscale address) or `0.0.0.0` to let a bridge on another machine reach it; there is no extra authentication, so keep it on the tailnet.
+
 ## Run it
 
 Needs Node.js 24.9+ (DSH requires it) and Chrome, Edge or Chromium. Set `CHROME_PATH` if it is installed somewhere unusual.
