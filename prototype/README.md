@@ -6,7 +6,7 @@ This is a test prototype. Use test accounts and do not connect financial account
 
 ## Run it
 
-Needs Node.js 22+ and Chrome, Edge or Chromium. Set `CHROME_PATH` if it is installed somewhere unusual.
+Needs Node.js 24.9+ (DSH requires it) and Chrome, Edge or Chromium. Set `CHROME_PATH` if it is installed somewhere unusual.
 
 ```sh
 npm install

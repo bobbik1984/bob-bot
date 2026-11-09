@@ -36,7 +36,7 @@ bob-bot/
 
 ## 部署到 RY
 
-RY 是当前的自测 VPS（`ubuntu@82.157.186.181`，腾讯云 2C/2G，Ubuntu 24.04），已作为 systemd 服务运行测试原型，并通过 Cloudflare 隧道对外提供 **https://ry.bobbik.org**。
+RY 是当前的自测 VPS（`ubuntu@82.157.186.181`，腾讯云 2C/2G，Ubuntu 24.04，Node 24.22.2 / Chrome 157），已作为 systemd 服务运行测试原型，并通过 Cloudflare 隧道对外提供 **https://ry.bobbik.org**。
 
 日常迭代只需要三步，全部在 x1t 上完成：
 
