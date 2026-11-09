@@ -777,6 +777,17 @@ try {
     assert.equal((await post('/api/push/unsubscribe', { endpoint })).status, 200)
   })
 
+  await check('a conversation can be renamed, and an empty name is refused', async () => {
+    const cid = (await post('/api/conversations', {})).data.id
+    assert.equal((await post('/api/conversations/rename', { id: cid, title: '   ' })).status, 400)
+    assert.equal((await post('/api/conversations/rename', { id: 'nope', title: 'x' })).status, 404)
+    const renamed = await post('/api/conversations/rename', { id: cid, title: '  My weekly review  ' })
+    assert.equal(renamed.status, 200)
+    const item = (await getJson('/api/conversations')).body.items.find(c => c.id === cid)
+    assert.equal(item.title, 'My weekly review')
+    assert.equal((await post('/api/conversations/delete', { id: cid })).status, 200)
+  })
+
   console.log('Spending limit')
   await check('at the cap, new chat is refused with no model call', async () => {
     assert.equal((await post('/api/budget', { capUsd: 0.000001 })).status, 200)

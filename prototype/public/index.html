@@ -320,6 +320,17 @@ nav button svg { width:24px; height:24px; }
 .conv-main .ct { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; display:flex; align-items:center; gap:6px; }
 .conv-main .ct svg { width:1em; height:1em; color:var(--muted); }
 .conv-main .cs { color:var(--muted); font-size:12px; }
+.conv-tools { position:absolute; right:8px; top:50%; transform:translateY(-50%); display:none; gap:4px; z-index:2; }
+.conv-tool { width:32px; height:32px; border-radius:10px; display:inline-flex; align-items:center; justify-content:center; background:var(--surface-2); color:var(--muted); }
+.conv-tool svg { width:16px; height:16px; }
+.conv-tool.danger { color:var(--danger); }
+.conv-rename { position:absolute; inset:6px 8px; z-index:4; border:1px solid var(--accent); border-radius:12px; padding:0 12px; font:inherit; font-weight:600; background:var(--surface); }
+html.fine .conv:hover .conv-tools { display:flex; }
+html.fine .conv-del { display:none; }
+html.fine .conv-main { padding-right:92px; }
+#micBtn { width:40px; height:40px; border-radius:50%; color:var(--muted); display:inline-flex; align-items:center; justify-content:center; flex:none; }
+#micBtn.rec { color:#fff; background:var(--danger); animation:micpulse 1.2s ease-in-out infinite; }
+@keyframes micpulse { 50% { box-shadow:0 0 0 6px var(--danger-soft); } }
 .conv.empty-row { height:auto; padding:18px; color:var(--muted); font-size:14px; }
 #convMsg { padding:6px 18px; min-height:20px; color:var(--danger); }
 #drawerSpend { margin:4px 14px 0; padding:10px 12px; border-radius:14px; background:var(--surface-2); color:var(--muted); font-size:13px; text-align:left; }
@@ -455,6 +466,7 @@ nav button svg { width:24px; height:24px; }
   <form id="composer">
     <button type="button" class="attach" id="attachBtn" data-al="attach" data-i="clip"></button>
     <input id="text" autocomplete="off" data-ph="placeholder" aria-label="Message">
+    <button type="button" class="mic" id="micBtn" data-al="voiceInput" data-i="mic"></button>
     <button class="send" data-al="send" data-i="send"></button>
   </form>
   <input type="file" id="filePick" multiple hidden accept=".txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.log,.xml,.html,.htm,.yaml,.yml,.ini,.sql,text/*">
@@ -508,7 +520,7 @@ const I18N = {
   clerkTitle:['文员','Clerk'], settingsTitle:['设置','Settings'],
   stateNap:['休息中','Napping'], stateThink:['思考中…','Thinking…'], stateSpeak:['回复中','Replying'],
   menu:['历史对话','History'], history:['历史对话','History'], newChat:['新对话','New chat'], noChats:['还没有对话','No chats yet'],
-  delChat:['删除对话','Delete chat'], cantDelete:['Bob 正在这个对话里工作，暂时不能删除','Bob is working in this chat, so it can\'t be deleted yet'],
+  delChat:['删除对话','Delete chat'], renameChat:['重命名','Rename'], voiceInput:['语音输入','Voice input'], micDenied:['无法使用麦克风，请检查权限','Cannot use the microphone; check permissions'], cantDelete:['Bob 正在这个对话里工作，暂时不能删除','Bob is working in this chat, so it can\'t be deleted yet'],
   busyOther:['Bob 正在另一个对话里工作，请稍后再试','Bob is busy in another chat. Try again in a moment'], spendLabel:['本月花费','This month'],
   needsYouIn:['Bob 在「{n}」里需要你','Bob needs you in "{n}"'],
   browser:['浏览器','Browser'], send:['发送','Send'], placeholder:['发送消息给 Bob…','Message Bob…'], close:['关闭','Close'],
@@ -616,6 +628,8 @@ const t = (k, n) => (I18N[k]?.[langIndex] ?? I18N[k]?.[1] ?? k).replace('{n}', n
 const $ = id => document.getElementById(id)
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e }
 document.documentElement.lang = zh ? 'zh-CN' : lang === 'en' ? 'en' : lang
+// Hover buttons only on devices with a real pointer; touch keeps the swipe.
+document.documentElement.classList.toggle('fine', window.matchMedia('(hover: hover) and (pointer: fine)').matches)
 
 const ICONS = {
   globe:'<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/>',
@@ -636,6 +650,9 @@ const ICONS = {
   monitor:'<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>', phone:'<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/>',
   fit:'<path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/>',
   bell:'<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+  pencil:'<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  trash:'<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>',
+  mic:'<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4M8 21h8"/>',
   calendar:'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
 }
 const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`
@@ -689,8 +706,10 @@ addEventListener('keydown', e => {
 // ---- views ----
 const VIEWS = ['chat', 'clerk', 'settings']
 let currentView = 'chat'
+let persistView = false
 function show(view) {
   currentView = view
+  if (persistView && (view === 'chat' || view === 'clerk')) localStorage.setItem('bobbot.lastView', view)
   VIEWS.forEach(v => { $('view' + v[0].toUpperCase() + v.slice(1)).hidden = v !== view })
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.view === view))
   $('composer').hidden = view !== 'chat'
@@ -1052,13 +1071,29 @@ async function loadHistory(cid) {
   refreshOrb(); updateWelcome(); atEnd()
   return true
 }
+const STALE_SESSION_MS = 3 * 60 * 60 * 1000
+let restoredOnce = false
+// A chat that has been quiet for three hours starts a new session; otherwise come back to where you were.
+async function restoreLastPage() {
+  let lastCid = ''
+  let savedView = 'chat'
+  try { lastCid = localStorage.getItem('bobbot.lastCid') || ''; savedView = localStorage.getItem('bobbot.lastView') || 'chat' } catch { /* private mode */ }
+  const target = convs.find(c => c.id === lastCid)
+  const stale = !target || Date.now() - (target.updatedAt ?? 0) > STALE_SESSION_MS
+  if (stale) newChat()
+  else await selectConv(target.id)
+  if (savedView === 'clerk') show('clerk')
+  persistView = true
+}
 async function selectConv(cid) {
+  try { localStorage.setItem('bobbot.lastCid', cid); localStorage.setItem('bobbot.lastAt', String(Date.now())) } catch { /* private mode */ }
   activeCid = cid
   closeDrawer(); show('chat'); clearFeed(); drawConvs(); refreshOrb()
   if (!await loadHistory(cid) && activeCid === cid) { activeCid = null; drawConvs(); refreshOrb() }
   refreshBanner()
 }
 function newChat() {
+  try { localStorage.removeItem('bobbot.lastCid') } catch { /* private mode */ }
   activeCid = null
   closeDrawer(); show('chat'); clearFeed(); drawConvs(); refreshOrb(); refreshBanner()
   $('text').focus()
@@ -1087,10 +1122,57 @@ function convRow(c) {
   title.append(el('span', '', c.title || t('newChat')))
   main.append(title, el('span', 'cs', fmtTime(c.updatedAt) + (c.id === runningCid ? ' · ' + t('stateThink') : '')))
   del.onclick = () => deleteConv(c.id, li)
+
+  // desktop: hover shows rename and delete on the right
+  const tools = el('div', 'conv-tools')
+  const edit = el('button', 'conv-tool'); edit.type = 'button'; edit.innerHTML = icon('pencil')
+  edit.title = t('renameChat'); edit.setAttribute('aria-label', t('renameChat'))
+  edit.onclick = event => { event.stopPropagation(); startRename(c, li) }
+  const remove = el('button', 'conv-tool danger'); remove.type = 'button'; remove.innerHTML = icon('trash')
+  remove.title = t('delChat'); remove.setAttribute('aria-label', t('delChat'))
+  remove.onclick = event => { event.stopPropagation(); deleteConv(c.id, li) }
+  tools.append(edit, remove)
+
+  // touch: long press the row to rename it, swipe left still deletes
+  let press = null
+  const cancel = () => { clearTimeout(press); press = null }
+  main.addEventListener('pointerdown', () => { cancel(); press = setTimeout(() => { press = null; startRename(c, li) }, 650) })
+  main.addEventListener('pointermove', cancel)
+  main.addEventListener('pointerup', cancel)
+  main.addEventListener('pointercancel', cancel)
+  main.addEventListener('dblclick', event => { event.preventDefault(); startRename(c, li) })
+
   swipe(li, main, () => selectConv(c.id))
-  li.append(del, main)
+  li.append(del, main, tools)
   return li
 }
+
+function startRename(c, li) {
+  if (li.querySelector('.conv-rename')) return
+  const input = el('input', 'conv-rename')
+  input.value = c.title || ''
+  input.maxLength = 60
+  input.setAttribute('aria-label', t('renameChat'))
+  li.append(input)
+  input.focus(); input.select()
+  let done = false
+  const finish = async save => {
+    if (done) return
+    done = true
+    const title = input.value.replace(/\s+/g, ' ').trim()
+    input.remove()
+    if (!save || !title || title === c.title) return
+    const result = await post('/api/conversations/rename', { id: c.id, title })
+    if (result.status === 200) { c.title = title; convs = convs.map(x => (x.id === c.id ? { ...x, title } : x)); drawConvs() }
+  }
+  input.addEventListener('keydown', event => {
+    if (event.key === 'Enter') finish(true)
+    else if (event.key === 'Escape') { event.stopPropagation(); finish(false) }
+  })
+  input.addEventListener('blur', () => finish(true))
+  input.addEventListener('click', event => event.stopPropagation())
+}
+
 // Swipe a row left to reveal the red cross. Works with touch and mouse; the delete button is also reachable with the keyboard.
 function swipe(li, main, onTap) {
   let startX = 0, startY = 0, base = 0, id = null, dragging = false, moved = false
@@ -1121,6 +1203,7 @@ function swipe(li, main, onTap) {
   main.addEventListener('pointercancel', finish)
   main.addEventListener('click', () => {
     if (moved) { moved = false; return }
+    if (li.querySelector('.conv-rename')) return
     if (li.classList.contains('open')) { li.classList.remove('open'); return }
     onTap()
   })
@@ -1166,7 +1249,7 @@ function connect() {
       $('handBack').hidden = !activeTakeover
       showBudget(e.budget); runningCid = e.running; setBadge(e.unread)
       await loadConvs()
-      if (activeCid === undefined) { if (convs.length) await selectConv(convs[0].id); else newChat() }
+      if (activeCid === undefined && !restoredOnce) { restoredOnce = true; await restoreLastPage() }
       else if (activeCid) await loadHistory(activeCid) // catch up after a dropped connection
       refreshBanner()
     }
@@ -1468,6 +1551,35 @@ async function readText(file) {
   return /\u0000/.test(text) ? null : text.replace(/^﻿/, '')
 }
 $('attachBtn').onclick = () => $('filePick').click()
+
+// ---- voice input: the browser's own dictation, no audio leaves the device for Safari ----
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+let speech = null
+let speechOn = false
+let speechBase = ''
+if (!SpeechRecognition) $('micBtn').hidden = true
+else {
+  speech = new SpeechRecognition()
+  speech.lang = zh ? 'zh-CN' : 'en-US'
+  speech.interimResults = true
+  speech.continuous = false
+  speech.onresult = event => {
+    let said = ''
+    for (let i = 0; i < event.results.length; i++) said += event.results[i][0].transcript
+    $('text').value = (speechBase + said).slice(0, 4000)
+  }
+  speech.onend = () => { speechOn = false; $('micBtn').classList.remove('rec') }
+  speech.onerror = event => {
+    speechOn = false
+    $('micBtn').classList.remove('rec')
+    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') notice(t('micDenied'), true)
+  }
+  $('micBtn').onclick = () => {
+    if (speechOn) { speech.stop(); return }
+    speechBase = $('text').value ? $('text').value.replace(/\s+$/, '') + ' ' : ''
+    try { speech.start(); speechOn = true; $('micBtn').classList.add('rec') } catch { speechOn = false; $('micBtn').classList.remove('rec') }
+  }
+}
 $('filePick').onchange = async () => {
   const picked = [...$('filePick').files]
   $('filePick').value = ''

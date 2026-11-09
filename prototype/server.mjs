@@ -1038,6 +1038,17 @@ async function route(req, res) {
       broadcast({ type: 'conversations' })
       return send(res, 200, { id: conv.id })
     }
+    case '/api/conversations/rename': {
+      const id = String(body.id ?? '')
+      const conv = convOf(id)
+      if (!conv) return send(res, 404, { error: 'NO_CONVERSATION' })
+      const title = String(body.title ?? '').replace(/\s+/g, ' ').trim().slice(0, 60)
+      if (!title) return send(res, 400, { error: 'EMPTY_TITLE' })
+      conv.title = title
+      saveConvs()
+      broadcast({ type: 'conversations' })
+      return send(res, 200, { ok: true, title })
+    }
     case '/api/conversations/delete': {
       const id = String(body.id ?? '')
       if (!convOf(id)) return send(res, 404, { error: 'NO_CONVERSATION' })
