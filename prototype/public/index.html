@@ -305,7 +305,6 @@ nav button svg { width:24px; height:24px; }
       <div id="feed" aria-live="polite"></div>
     </div>
     <div class="view" id="viewClerk" hidden>
-      <div class="chips" id="clerkChips"></div>
       <div class="sect-head" id="todosHead"><h3 data-t="todosTitle"></h3></div>
       <div id="todoList"></div>
       <div class="sect-head" id="jobsHead"><h3 data-t="jobsTitle"></h3></div>
@@ -431,13 +430,10 @@ const I18N = {
   chip2:['查最新资讯','Look up news'], chip2q:['帮我查一下今天的科技新闻要点','Find today\'s top tech news for me'],
   chip3:['设一个提醒','Set a reminder'], chip3q:['今天下午 3 点提醒我给客户回电话','Remind me at 3pm today to call the client'],
   // clerk
-  ex1:['每天早上 8 点查上海天气，告诉我穿什么、要不要带伞','Every morning at 8, check the weather in Shanghai and tell me what to wear and whether to bring an umbrella'],
-  ex2:['今天下午 3 点提醒我给客户回电话','Remind me at 3pm today to call the client'],
-  ex3:['每周一早上 9 点提醒我写周报','Every Monday at 9am remind me to write the weekly report'],
   jobsTitle:['定时任务','Scheduled'], todosTitle:['待办','To-dos'], markDone:['标为完成','Mark done'], undo:['撤销完成','Undo'], jobsEmpty:['还没有。对 Bob 说一句试试。','None yet. Try saying one to Bob.'],
   tagSaved:['已添加','Added'], kindTodo:['待办','To-do'],
   today:['今天','Today'], tomorrow:['明天','Tomorrow'], dayAfter:['后天','In two days'],
-  confirm:['确认','Confirm'], confirmAdd:['确认添加','Add it'], confirmDeleteBtn:['确认删除','Delete'], askDelete:['删除','Delete'], askPause:['暂停','Pause'], askResume:['恢复','Resume'],
+  cancel:['取消','Cancel'], confirm:['确认','Confirm'], confirmAdd:['确认添加','Add it'], confirmDeleteBtn:['确认删除','Delete'], askDelete:['删除','Delete'], askPause:['暂停','Pause'], askResume:['恢复','Resume'],
   firstAt:['首次 {n}','First {n}'], alsoTo:['同时发到 {n}','Also to {n}'],
   inboxTitle:['收件箱','Inbox'], inboxEmpty:['提醒和任务结果会出现在这里。','Reminders and task results show up here.'], markRead:['全部已读','Mark all read'],
   channelsTitle:['消息渠道','Channels'], channelsHint:['提醒和结果除了应用内，还可以发到这些渠道。密钥只保存在服务器上。','Reminders and results can also go to these channels. Secrets stay on the server.'],
@@ -802,7 +798,7 @@ function buildCard(e, kind) {
   const top = el('div', 'card-top')
   const ic = el('span', 'chipicon'); ic.innerHTML = icon(kind === 'takeover' ? 'hand' : e.kind === 'command' ? 'terminal' : e.kind === 'clerk' ? 'clock' : /install|mcp|skill/.test(e.kind ?? '') ? 'box' : 'shield')
   top.append(ic, el('span', 'tag', t(kind === 'approval' ? 'tagApprove' : 'tagHelp')),
-    el('span', 'time', new Date(e.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })))
+    el('span', 'time', new Date(e.at).toLocaleTimeString(zh ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })))
   c.append(top)
   if (kind === 'takeover') c.append(el('div', 'lead', t('needsYou')))
   if (kind === 'takeover') c.append(el('div', 'what', e.reason))
@@ -1075,11 +1071,6 @@ function prefill(text) { show('chat'); $('text').value = text; $('text').focus()
   const b = el('button', 'chip-btn', t(label)); b.type = 'button'
   b.onclick = () => prefill(t(prompt))
   $('chips').append(b)
-})
-;['ex1', 'ex2', 'ex3'].forEach(k => {
-  const b = el('button', 'chip-btn', t(k)); b.type = 'button'
-  b.onclick = () => prefill(t(k))
-  $('clerkChips').append(b)
 })
 
 // ---- the clerk: scheduled tasks, reminders, inbox and channels ----
