@@ -43,7 +43,7 @@ export function startCompatApi({ host = '127.0.0.1', port = 3721, ask, conversat
         })
         if (!message) { writeEvent(res, 'error', { error: 'message is required' }); return res.end() }
         try {
-          const { reply, cid } = await ask({ from: String(body.from_user ?? 'compat').slice(0, 200), name: 'WeChat', text: message })
+          const { reply, cid } = await ask({ from: String(body.from_user ?? 'compat').slice(0, 200), name: String(body.from_name ?? body.from_user ?? 'WeChat').slice(0, 40), text: message })
           if (reply) writeEvent(res, 'text', { content: reply })
           writeEvent(res, 'done', { conversation_id: cid, full_text: reply ?? '' })
         } catch (error) {

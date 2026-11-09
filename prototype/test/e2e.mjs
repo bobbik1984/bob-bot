@@ -57,7 +57,7 @@ const fake = http.createServer((req, res) => {
 await new Promise(r => fake.listen(0, '127.0.0.1', r))
 
 // ---- server under test ----
-const env = { ...process.env, BOBBOT_DATA: data, PORT: String(PORT), HOST: '127.0.0.1', DEEPSEEK_API_KEY: 'test-key', BOBBOT_TICK_MS: '1000', DEEPSEEK_BASE_URL: `http://127.0.0.1:${fake.address().port}` }
+const env = { ...process.env, BOBBOT_DATA: data, PORT: String(PORT), HOST: '127.0.0.1', DEEPSEEK_API_KEY: 'test-key', BOBBOT_TICK_MS: '1000', BOB_COMPAT_PORT: '3731', DEEPSEEK_BASE_URL: `http://127.0.0.1:${fake.address().port}` }
 const setPin = pin => spawnSync(process.execPath, ['set-pin.mjs', pin], { cwd: root, env, encoding: 'utf8' })
 const server = spawn(process.execPath, ['server.mjs'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] })
 let log = ''
@@ -750,16 +750,21 @@ try {
     assert.equal((await getJson('/api/extensions')).body.mcp.some(m => m.name === 'ghost'), false)
   })
 
-  await check('a WeChat message becomes its own conversation and the reply is sent back', async () => {
-    const secret = JSON.parse(fs.readFileSync(path.join(data, 'wechat.json'), 'utf8')).secret
-    const call = body => fetch(`${base}/api/wechat/in`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    assert.equal((await call({ secret: 'wrong', from: 'wxid_ann', name: 'Ann', text: 'hi' })).status, 403)
-    script.push(say('微信里也能聊'))
-    const response = await call({ secret, from: 'wxid_ann', name: 'Ann', text: '你好' })
-    assert.equal(response.status, 200)
-    assert.equal((await response.json()).reply, '微信里也能聊')
+  await check('the bob-agent bridge endpoint answers with SSE text and done events', async () => {
+    const health = await (await fetch('http://127.0.0.1:3731/v1/health')).json()
+    assert.equal(health.status, 'ok')
+    script.push(say('来自 bridge 的回复'))
+    const res = await fetch('http://127.0.0.1:3731/v1/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: '你好', from_user: 'wxid_ann', from_channel: 'wechat' }),
+    })
+    assert.equal(res.status, 200)
+    const body = await res.text()
+    assert.ok(body.includes('event: text') && body.includes('来自 bridge 的回复'), 'no text event')
+    assert.ok(body.includes('event: done') && body.includes('full_text'), 'no done event')
     const convs = (await getJson('/api/conversations')).body.items
-    assert.ok(convs.some(c => c.title === 'WeChat · Ann'), 'no conversation was created for the WeChat contact')
+    assert.ok(convs.some(c => c.title === 'WeChat · wxid_ann'), 'no conversation for the WeChat contact')
   })
 
   console.log('Spending limit')

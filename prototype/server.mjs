@@ -15,8 +15,6 @@ import { Clerk, describeSchedule, formatLocal, nextRun, normalizeSchedule } from
 import { createHostTools, MAX_COMMAND_SECONDS } from './host-tools.mjs'
 import { Extensions, checkMcp, checkPackages, checkSkill, installSteps, parseSkillFile, runSteps, showSteps } from './extensions.mjs'
 import { webFetch } from './web-fetch.mjs'
-import QRCode from 'qrcode'
-import { WeChat } from './wechat.mjs'
 import { startCompatApi } from './compat-api.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -36,7 +34,6 @@ const APPROVAL_TIMEOUT_MS = 10 * 60 * 1000
 const RISKY = /支付|付款|购买|下单|结算|删除|发送|发布|提交|转账|\b(pay|buy|purchase|checkout|order|delete|remove|send|post|publish|submit|transfer|tweet)\b/i
 
 const browser = new CloudBrowser(DATA_DIR)
-const wechat = new WeChat(DATA_DIR, PORT)
 const agent = new Agent(DATA_DIR)
 const budget = new Budget(DATA_DIR)
 const host = createHostTools(DATA_DIR)
@@ -379,59 +376,59 @@ function todoTool(name, args) {
 const pushJobCard = (job, created = false) => push({ type: 'card', card: { kind: 'job', job: jobView(job), timezone: clerk.timezone, created } })
 
 // ---- WeChat: one conversation per contact, so contexts stay separate ----
-const wechatContactsFile = path.join(DATA_DIR, 'wechat-contacts.json')
-let wechatContacts = readJson(wechatContactsFile, {})
-const wechatWaiters = new Map()
+const bridgeContactsFile = path.join(DATA_DIR, 'bridge-contacts.json')
+let bridgeContacts = readJson(bridgeContactsFile, {})
+const bridgeWaiters = new Map()
 
-function wechatConversation(from, name) {
+function bridgeConversation(from, name) {
   const key = String(from).slice(0, 200)
-  let cid = wechatContacts[key]
+  let cid = bridgeContacts[key]
   if (!cid || !convOf(cid)) {
     const conv = createConversation(name ? `WeChat · ${name}`.slice(0, 40) : 'WeChat')
     cid = conv.id
-    wechatContacts[key] = cid
-    fs.writeFileSync(wechatContactsFile, JSON.stringify(wechatContacts))
+    bridgeContacts[key] = cid
+    fs.writeFileSync(bridgeContactsFile, JSON.stringify(bridgeContacts))
     broadcast({ type: 'conversations' })
   }
   return cid
 }
 
 /** Collects the texts Bob writes in this conversation until the turn ends. */
-function waitWechatReply(cid, ms = 180_000) {
+function waitBridgeReply(cid, ms = 180_000) {
   return new Promise(resolve => {
     const entry = { texts: [], done: false }
-    const timer = setTimeout(() => { entry.done = true; wechatWaiters.delete(cid); resolve(entry.texts.join('\n\n').trim()) }, ms)
+    const timer = setTimeout(() => { entry.done = true; bridgeWaiters.delete(cid); resolve(entry.texts.join('\n\n').trim()) }, ms)
     entry.finish = () => {
       if (entry.done) return
       entry.done = true
       clearTimeout(timer)
-      wechatWaiters.delete(cid)
+      bridgeWaiters.delete(cid)
       resolve(entry.texts.join('\n\n').trim())
     }
-    wechatWaiters.set(cid, entry)
+    bridgeWaiters.set(cid, entry)
   })
 }
 
-async function wechatAsk({ from, name, text }) {
+async function askFromBridge({ from, name, text }) {
   const cfg = modelConfig()
   const apiKey = loadKey(cfg.kind)
   if (!apiKey) return { reply: 'Bob 还没有设置模型的 API Key，请先在网页版 bob-bot 里配置。', cid: '' }
   if (!priceOf(cfg)) return { reply: '这个模型没有设置价格，无法统计花费。', cid: '' }
   if (budget.status().exceeded) return { reply: '本月的花费额度已经用完，暂时不能回复。', cid: '' }
-  const cid = wechatConversation(from, name)
+  const cid = bridgeConversation(from, name)
   if (runningCid && runningCid !== cid) return { reply: 'Bob 正在处理另一个对话，请稍后再发一次。', cid }
   const conv = convOf(cid)
   if (!conv.title) { conv.title = name ? `WeChat · ${name}`.slice(0, 40) : 'WeChat'; saveConvs() }
   runningCid = cid
   lastPromptCid = cid
   push({ type: 'message', role: 'user', text }, true, cid)
-  const reply = waitWechatReply(cid)
+  const reply = waitBridgeReply(cid)
   try {
     await ensureAgent(cfg, apiKey)
     await agent.prompt(cid, `${nowHeader()}\n${text}`)
   } catch (error) {
-    const waiter = wechatWaiters.get(cid)
-    if (waiter) { wechatWaiters.delete(cid); waiter.done = true }
+    const waiter = bridgeWaiters.get(cid)
+    if (waiter) { bridgeWaiters.delete(cid); waiter.done = true }
     if (runningCid === cid) runningCid = null
     return { reply: `出错了：${error.message}`, cid }
   }
@@ -716,7 +713,7 @@ async function ensureAgent(cfg, apiKey) {
 // ---- agent wiring ----
 agent.on('text', (cid, text) => {
   if (!convOf(cid)) return
-  wechatWaiters.get(cid)?.texts.push(text)
+  bridgeWaiters.get(cid)?.texts.push(text)
   if (activeRun?.cid === cid) activeRun.texts.push(text)
   push({ type: 'message', role: 'assistant', text }, true, cid)
 })
@@ -727,7 +724,7 @@ agent.on('status', (cid, status) => {
     if (activeRun?.cid === cid) activeRun.started = true
   } else {
     if (runningCid === cid) runningCid = null
-    wechatWaiters.get(cid)?.finish()
+    bridgeWaiters.get(cid)?.finish()
     if (activeRun?.cid === cid && activeRun.started) finishRun('ok')
     if (extensionsDirty && !runningCid && !activeRun) { extensionsDirty = false; agent.stop() }
   }
@@ -896,19 +893,7 @@ async function route(req, res) {
   }
   if (req.method === 'GET' && pathname === '/api/version') {
     return send(res, 200, { name: 'bobbot', ...readBuild() })
-  }
-  // The WeChat bridge is a local child process, so it has no browser Origin and uses a shared secret instead.
-  if (req.method === 'POST' && pathname === '/api/wechat/in') {
-    const remote = req.socket.remoteAddress ?? ''
-    if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(remote)) return send(res, 403, { error: 'LOOPBACK_ONLY' })
-    const body = JSON.parse(await readBody(req) || '{}')
-    if (!body.secret || String(body.secret) !== wechat.secret) return send(res, 403, { error: 'BAD_SECRET' })
-    const text = String(body.text ?? '').trim().slice(0, 4000)
-    if (!text) return send(res, 400, { error: 'EMPTY' })
-    const result = await wechatAsk({ from: String(body.from ?? 'unknown').slice(0, 200), name: String(body.name ?? 'WeChat').slice(0, 40), text })
-    return send(res, 200, { reply: result.reply })
-  }
-  if (req.method === 'POST' && !sameOrigin(req)) return send(res, 403, { error: 'BAD_ORIGIN' })
+  }  if (req.method === 'POST' && !sameOrigin(req)) return send(res, 403, { error: 'BAD_ORIGIN' })
   if (req.method === 'POST' && pathname === '/api/login') {
     const result = await login(JSON.parse(await readBody(req)).pin ?? '')
     if (!result.ok) return send(res, result.status, result)
@@ -928,12 +913,6 @@ async function route(req, res) {
   }
   if (req.method === 'GET' && pathname === '/api/clerk') return send(res, 200, clerkView())
   if (req.method === 'GET' && pathname === '/api/extensions') return send(res, 200, extensionsView())
-  if (req.method === 'GET' && pathname === '/api/wechat') {
-    if (wechat.state === 'qr' && wechat.qr && !wechat.qrImage) {
-      wechat.qrImage = await QRCode.toDataURL(wechat.qr, { margin: 1, width: 260, errorCorrectionLevel: 'M' }).catch(() => '')
-    }
-    return send(res, 200, wechat.status())
-  }
   if (req.method === 'GET' && pathname === '/api/conversations') {
     return send(res, 200, { items: listConversations(), running: runningCid })
   }
@@ -1042,13 +1021,6 @@ async function route(req, res) {
     case '/api/takeover/done':
       takeover?.finish()
       return send(res, 200, { ok: true })
-    case '/api/wechat/start': {
-      if (!wechat.installed) return send(res, 400, { error: 'WECHAT_NOT_INSTALLED' })
-      try { wechat.start() } catch (error) { return send(res, 500, { error: error.message }) }
-      return send(res, 200, { ok: true })
-    }
-    case '/api/wechat/stop': { wechat.stop(); return send(res, 200, { ok: true }) }
-    case '/api/wechat/install': { wechat.install(); return send(res, 200, { ok: true }) }
     case '/api/clerk/timezone': {
       try { clerk.setTimezone(String(body.timezone ?? '')) } catch { return send(res, 400, { error: 'BAD_TIMEZONE' }) }
       broadcast({ type: 'clerk' })
@@ -1197,7 +1169,7 @@ server.listen(PORT, HOST, () => {
   startCompatApi({
     host: process.env.BOB_COMPAT_HOST || '127.0.0.1',
     port: Number(process.env.BOB_COMPAT_PORT || 3721),
-    ask: wechatAsk,
+    ask: askFromBridge,
     conversations: listConversations,
   })
   console.log(`BobBot prototype: http://${HOST}:${PORT}`)

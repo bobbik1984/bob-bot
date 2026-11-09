@@ -8,21 +8,18 @@ The interface follows the browser language, and Settings → Language lets you p
 
 The orb draws its own mood: sleeping bubbles while idle, a thought cloud while working, and little dots from its mouth while answering. No status words are shown.
 
-## WeChat
+## WeChat (official bridge only)
 
-Settings → WeChat installs a separate bridge (wechaty with the wechat4u puppet) with its own `node_modules` under `data/wechat`, shows a QR code, and after scanning turns each WeChat contact into its own conversation. The bridge is a child process, so a WeChat problem can never take Bob down.
+There is no unofficial WeChat client built into BobBot. WeChat is reached through the official iLink bot (the same one bob-agent uses: `ilinkai.weixin.qq.com` plus a `liteapp.weixin.qq.com` login QR) with your own `wechat_bot` and `wechat-bot-bridge` processes.
 
-This uses the unofficial personal-WeChat web protocol. WeChat may restrict or block such logins, so try a spare account first.
+BobBot exposes the same local API that bob-agent did, so the bridge only needs its base URL changed:
 
-### bob-agent bridge compatibility
+- `POST /v1/chat` — SSE with `text`, `thinking`, `tool_start`, `tool_end` and `done` (carrying `conversation_id` and `full_text`)
+- `GET /v1/conversations`, `GET /v1/health`
+- request: `{ message, conversation_id, from_channel, from_user, from_name? }`
+- each `from_user` becomes its own conversation, titled `WeChat · <name or wxid>`
 
-bob-agent exposes `POST /v1/chat` (SSE), `GET /v1/conversations` and `GET /v1/health` on `127.0.0.1:3721` for its `wechat-bot-bridge`. The prototype serves the same contract, so that bridge can talk to BobBot after changing only its base URL:
-
-- events: `text`, `thinking`, `tool_start`, `tool_end`, `done` (with `conversation_id` and `full_text`)
-- request: `{ message, conversation_id, from_channel, from_user }`
-- each `from_user` becomes its own conversation, titled `WeChat · <name>`
-
-By default it listens on loopback. Set `BOB_COMPAT_HOST=100.64.0.3` (a Tailscale address) or `0.0.0.0` to let a bridge on another machine reach it; there is no extra authentication, so keep it on the tailnet.
+Default: `127.0.0.1:3721`. Set `BOB_COMPAT_HOST=100.64.0.3` (a Tailscale address) to let a bridge on another machine reach it; keep it off the public internet, since this endpoint is trusted like a local process.
 
 ## Run it
 
