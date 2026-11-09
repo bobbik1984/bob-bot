@@ -373,7 +373,7 @@ try {
     assert.equal((await post('/api/chat', { text: 'remind me every day to call mom' })).status, 200)
     const ask = await decide(true, e => e.kind === 'clerk')
     assert.equal(ask.action, 'create'); assert.equal(ask.jobKind, 'reminder'); assert.deepEqual(ask.schedule, { type: 'daily', time: '23:59' })
-    assert.match(ask.detail, /Every day at 23:59/); assert.match(ask.detail, /Call mom now/); assert.ok(ask.firstRun > Date.now())
+    assert.equal(ask.detail, 'Call mom now'); assert.deepEqual(ask.channels, []); assert.ok(ask.firstRun > Date.now())
     await waitAfter(t0, e => e.type === 'message' && e.text === 'Reminder set.')
     const view = await clerkView()
     assert.equal(view.jobs.length, 1); reminderId = view.jobs[0].id
@@ -538,7 +538,7 @@ try {
     script.push(use('clerk_create', { title: 'Team ping', kind: 'reminder', text: 'Stand-up time', schedule: { type: 'daily', time: '23:57' }, channels: ['team lark'] }), say('Ping set.'))
     assert.equal((await post('/api/chat', { text: 'ping the team' })).status, 200)
     const ask = await decide(true, e => e.kind === 'clerk')
-    assert.match(ask.detail, /Send to: in-app inbox, Team Lark/)
+    assert.deepEqual(ask.channels, ['Team Lark']); assert.equal(ask.detail, 'Stand-up time')
     await waitAfter(t0, e => e.type === 'message' && e.text === 'Ping set.')
     await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
     const ping = (await clerkView()).jobs.find(j => j.title === 'Team ping')

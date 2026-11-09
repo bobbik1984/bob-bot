@@ -341,7 +341,7 @@ const jobView = j => ({
   lastStatus: j.lastStatus, lastResult: j.lastResult, cid: j.cid, running: activeRun?.jobId === j.id,
   channels: j.channels.map(id => clerk.channel(id)?.name).filter(Boolean),
 })
-const pushTodoCard = todo => push({ type: 'card', card: { kind: 'todo', todo, timezone: clerk.timezone } })
+const pushTodoCard = (todo, created = false) => push({ type: 'card', card: { kind: 'todo', todo, timezone: clerk.timezone, created } })
 
 function todoTool(name, args) {
   if (name === 'todo_list') return clerk.todos.map(t => `[${t.id}] ${t.done ? '(done) ' : ''}${t.title}${t.due ? ` - due ${t.due.replace('T', ' ')}` : ''}`).join('\n') || 'No to-dos.'
@@ -360,9 +360,9 @@ function todoTool(name, args) {
     }
     const todo = clerk.addTodo({ title, note: args.note, due, jobId: job?.id ?? null })
     if (job) clerk.update(job, { todoId: todo.id })
-    pushTodoCard(todo)
+    pushTodoCard(todo, true)
     broadcast({ type: 'clerk' })
-    return `Added ${todo.id}${job ? ', with a reminder at the due time' : ''}. The user sees it as a card; do not repeat its details.`
+    return 'Saved and shown to the user as a card. Reply with at most one short, friendly sentence; do not repeat the title, the date or the id.'
   }
   const todo = clerk.todo(String(args.id ?? ''))
   if (!todo) throw new Error(`No to-do with id "${args.id}". Call todo_list.`)
@@ -371,7 +371,7 @@ function todoTool(name, args) {
   throw new Error(`Unknown tool: ${name}`)
 }
 
-const pushJobCard = job => push({ type: 'card', card: { kind: 'job', job: jobView(job), timezone: clerk.timezone } })
+const pushJobCard = (job, created = false) => push({ type: 'card', card: { kind: 'job', job: jobView(job), timezone: clerk.timezone, created } })
 
 /** A card Bob asks for. During a scheduled run it is kept with the result as well. */
 function showCard(args) {
@@ -514,28 +514,28 @@ async function clerkTool(name, args) {
       if (error.message !== 'UNKNOWN_CHANNEL') throw error
       throw new Error(`Unknown channel. Available: ${error.available.join(', ') || 'none, only the in-app inbox'}.`)
     }
-    const where = ['in-app inbox', ...channelIds.map(id => clerk.channel(id).name)].join(', ')
+    const channels = channelIds.map(id => clerk.channel(id).name)
     await requireApproval({
       kind: 'clerk', summary: `Add a ${input.kind}: ${input.title}`, target: input.title,
-      detail: `${describeSchedule(input.schedule)} (${clerk.timezone})\nFirst run: ${humanTime(input.first)}\nSend to: ${where}\n\n${input.text}`,
-      extra: { action: 'create', jobKind: input.kind, schedule: input.schedule, firstRun: input.first, timezone: clerk.timezone, to: where },
+      detail: input.text,
+      extra: { action: 'create', jobKind: input.kind, schedule: input.schedule, firstRun: input.first, timezone: clerk.timezone, channels },
     })
     const job = clerk.addJob({ title: input.title, kind: input.kind, text: input.text, schedule: input.schedule, channels: channelIds })
-    pushJobCard(job)
+    pushJobCard(job, true)
     broadcast({ type: 'clerk' })
-    return `Created ${job.id}: ${describeSchedule(job.schedule)} (${clerk.timezone}). Next run: ${humanTime(job.nextRun)}.`
+    return 'Saved and shown to the user as a card. Reply with at most one short, friendly sentence; do not repeat the schedule, the id or the time zone.'
   }
   const job = clerk.job(String(args.id ?? ''))
   if (!job) throw new Error(`No job with id "${args.id}". Call clerk_list to see the ids.`)
   if (name === 'clerk_delete') {
-    await requireApproval({ kind: 'clerk', summary: `Delete: ${job.title}`, target: job.title, detail: jobLine(job), extra: { action: 'delete', jobKind: job.kind, schedule: job.schedule } })
+    await requireApproval({ kind: 'clerk', summary: `Delete: ${job.title}`, target: job.title, detail: job.text, extra: { action: 'delete', jobKind: job.kind, schedule: job.schedule } })
     clerk.removeJob(job.id)
     broadcast({ type: 'clerk' })
-    return `Deleted ${job.id}.`
+    return 'Deleted.'
   }
   if (name === 'clerk_update') {
     const enabled = args.enabled === true
-    await requireApproval({ kind: 'clerk', summary: `${enabled ? 'Resume' : 'Pause'}: ${job.title}`, target: job.title, detail: jobLine(job), extra: { action: enabled ? 'resume' : 'pause', jobKind: job.kind, schedule: job.schedule } })
+    await requireApproval({ kind: 'clerk', summary: `${enabled ? 'Resume' : 'Pause'}: ${job.title}`, target: job.title, detail: job.text, extra: { action: enabled ? 'resume' : 'pause', jobKind: job.kind, schedule: job.schedule } })
     clerk.setEnabled(job.id, enabled)
     broadcast({ type: 'clerk' })
     return jobLine(job)

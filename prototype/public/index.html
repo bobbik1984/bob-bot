@@ -154,6 +154,17 @@ main { flex:1; min-height:0; position:relative; }
 .info-items { margin:0; padding-left:20px; font-size:14px; display:flex; flex-direction:column; gap:4px; }
 .inbox-item .card { box-shadow:none; margin-top:6px; background:var(--surface-2); border-color:transparent; }
 
+/* friendly cards: a saved schedule, a to-do, and the card that asks to confirm one */
+.card.saved { border-color:var(--ok); box-shadow:0 8px 26px rgba(31,157,107,.14); }
+.card.saved .chipicon, .card.saved .tag { background:var(--ok-soft); color:var(--ok); }
+.card .what.big { font-size:18px; line-height:1.35; }
+.card .when { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted); margin-top:-4px; }
+.card .when svg { width:1em; height:1em; }
+.card .quote { margin:0; padding:10px 12px; border-radius:14px; background:var(--surface-2); font-size:14px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; max-height:150px; overflow:auto; }
+.card .quote.said { font-size:15px; }
+.card .chiplist .mini { background:var(--accent-soft); color:var(--accent-ink); }
+.card .today { background:var(--ok-soft); color:var(--ok); }
+
 /* clerk */
 .sect-head { display:flex; align-items:center; justify-content:space-between; margin:18px 2px 8px; }
 .sect-head h3 { margin:0; font-size:15px; }
@@ -420,11 +431,14 @@ const I18N = {
   chip2:['查最新资讯','Look up news'], chip2q:['帮我查一下今天的科技新闻要点','Find today\'s top tech news for me'],
   chip3:['设一个提醒','Set a reminder'], chip3q:['今天下午 3 点提醒我给客户回电话','Remind me at 3pm today to call the client'],
   // clerk
-  clerkIntro:['直接对 Bob 说就行，他会设好定时任务和提醒，并把结果发回应用，也可以发到飞书、企业微信等渠道。','Just tell Bob. He sets up scheduled tasks and reminders and sends the results to this app, and to Lark, WeCom and other channels if you add them.'],
   ex1:['每天早上 8 点查上海天气，告诉我穿什么、要不要带伞','Every morning at 8, check the weather in Shanghai and tell me what to wear and whether to bring an umbrella'],
   ex2:['今天下午 3 点提醒我给客户回电话','Remind me at 3pm today to call the client'],
   ex3:['每周一早上 9 点提醒我写周报','Every Monday at 9am remind me to write the weekly report'],
   jobsTitle:['定时任务','Scheduled'], todosTitle:['待办','To-dos'], markDone:['标为完成','Mark done'], undo:['撤销完成','Undo'], jobsEmpty:['还没有。对 Bob 说一句试试。','None yet. Try saying one to Bob.'],
+  tagSaved:['已添加','Added'], kindTodo:['待办','To-do'],
+  today:['今天','Today'], tomorrow:['明天','Tomorrow'], dayAfter:['后天','In two days'],
+  confirm:['确认','Confirm'], confirmAdd:['确认添加','Add it'], confirmDeleteBtn:['确认删除','Delete'], askDelete:['删除','Delete'], askPause:['暂停','Pause'], askResume:['恢复','Resume'],
+  firstAt:['首次 {n}','First {n}'], alsoTo:['同时发到 {n}','Also to {n}'],
   inboxTitle:['收件箱','Inbox'], inboxEmpty:['提醒和任务结果会出现在这里。','Reminders and task results show up here.'], markRead:['全部已读','Mark all read'],
   channelsTitle:['消息渠道','Channels'], channelsHint:['提醒和结果除了应用内，还可以发到这些渠道。密钥只保存在服务器上。','Reminders and results can also go to these channels. Secrets stay on the server.'],
   addChannel:['添加渠道','Add a channel'], zoneTitle:['时区','Time zone'],
@@ -519,6 +533,8 @@ const ICONS = {
   list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>', plus:'<path d="M12 5v14M5 12h14"/>', tick:'<path d="M20 6 9 17l-5-5"/>', cross:'<path d="M18 6 6 18M6 6l12 12"/>',
   monitor:'<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>', phone:'<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/>',
   fit:'<path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/>',
+  bell:'<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+  calendar:'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
 }
 const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`
 const ORB = '<i class="core"></i><i class="ring"></i><i class="wave"></i><i class="wave w2"></i>'
@@ -699,21 +715,45 @@ function describeSchedule(s) {
 }
 const fmtWhen = (ms, tz) => new Intl.DateTimeFormat(zh ? 'zh-CN' : 'en-US', { timeZone: tz, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(ms)
 
+// Friendly times: "today 15:00", "tomorrow 09:00", otherwise a short date, always in the owner's zone.
+const dayKey = (ms, tz) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(ms)
+const hmText = (ms, tz) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(ms)
+const dateText = (ms, tz) => new Intl.DateTimeFormat(zh ? 'zh-CN' : 'en-US', { timeZone: tz, month: 'short', day: 'numeric' }).format(ms)
+function whenText(ms, tz) {
+  const shift = Math.round((Date.parse(dayKey(ms, tz)) - Date.parse(dayKey(Date.now(), tz))) / 86400000)
+  const hm = hmText(ms, tz)
+  if (shift === 0) return `${t('today')} ${hm}`
+  if (shift === 1) return `${t('tomorrow')} ${hm}`
+  if (shift === 2) return `${t('dayAfter')} ${hm}`
+  return `${dateText(ms, tz)} ${hm}`
+}
+function dueText(due, tz) {
+  const [day, hm] = due.split('T')
+  const shift = Math.round((Date.parse(day) - Date.parse(dayKey(Date.now(), tz))) / 86400000)
+  if (shift === 0) return `${t('today')} ${hm}`
+  if (shift === 1) return `${t('tomorrow')} ${hm}`
+  if (shift === 2) return `${t('dayAfter')} ${hm}`
+  return `${dateText(Date.parse(day + 'T12:00:00Z'), tz)} ${hm}`
+}
+
 // ---- cards Bob shows: schedules and organized information ----
-function todoCard(todo, tz) {
-  const c = el('div', 'card todo' + (todo.done ? ' finished' : ''))
+function todoCard(todo, tz, created = false) {
+  const c = el('div', 'card todo' + (todo.done ? ' finished' : '') + (created ? ' saved' : ''))
+  const top = el('div', 'card-top')
+  const ic = el('span', 'chipicon'); ic.innerHTML = icon('check')
+  top.append(ic, el('span', 'tag', created ? t('tagSaved') : t('kindTodo')))
   const row = el('div', 'todo-row')
   const box = el('button', 'check' + (todo.done ? ' on' : '')); box.type = 'button'; box.innerHTML = icon('tick')
   box.setAttribute('aria-label', t(todo.done ? 'undo' : 'markDone')); box.title = t(todo.done ? 'undo' : 'markDone')
   box.onclick = () => post('/api/clerk/todo/toggle', { id: todo.id, done: !todo.done })
   const body = el('div', 'todo-body')
   body.append(el('div', 'what', todo.title))
-  if (todo.due) body.append(el('div', 'meta', todo.due.replace('T', ' ')))
+  if (todo.due) { const w = el('div', 'when'); w.innerHTML = icon('calendar'); w.append(el('span', '', dueText(todo.due, tz))); body.append(w) }
   if (todo.note) body.append(el('div', 'meta', todo.note))
   const rm = el('button', 'icon-btn rm'); rm.type = 'button'; rm.innerHTML = icon('cross'); rm.title = t('remove'); rm.setAttribute('aria-label', t('remove'))
   rm.onclick = () => post('/api/clerk/todo/delete', { id: todo.id })
   row.append(box, body, rm)
-  c.append(row)
+  c.append(top, row)
   return c
 }
 function infoCard(card) {
@@ -766,11 +806,25 @@ function buildCard(e, kind) {
   c.append(top)
   if (kind === 'takeover') c.append(el('div', 'lead', t('needsYou')))
   if (kind === 'takeover') c.append(el('div', 'what', e.reason))
+  else if (e.kind === 'clerk') {
+    // A reminder or a scheduled task: the words, and when it happens in plain language. No ids, no zone names.
+    const verb = e.action === 'create' ? '' : t({ delete: 'askDelete', pause: 'askPause', resume: 'askResume' }[e.action])
+    c.append(el('div', 'what big', verb ? `${verb}「${e.target}」` : e.target))
+    const when = el('div', 'when'); when.innerHTML = icon('calendar')
+    when.append(el('span', '', describeSchedule(e.schedule)))
+    if (e.firstRun) when.append(el('span', '', '·'), el('span', '', t('firstAt', whenText(e.firstRun, e.timezone))))
+    c.append(when)
+    if (e.detail) c.append(el('div', 'quote' + (e.action === 'create' ? ' said' : ''), e.detail))
+    if (e.channels?.length) {
+      const chips = el('div', 'chiplist')
+      for (const n of e.channels) chips.append(el('span', 'mini', t('alsoTo', n)))
+      c.append(chips)
+    }
+  }
   else { const [first, ...rest] = cardTitle(e); c.append(el('div', 'what', first)); for (const line of rest) if (line) c.append(el('div', 'where', line)) }
-  // for a schedule the lines above already say when and where, so only the text itself is shown below
   // Show what matters to the owner: the words to be saved, or the command itself. Paths, sizes and package commands stay out of sight.
   let detail = e.detail
-  if (e.kind === 'clerk' && e.action === 'create') detail = (e.detail ?? '').split('\n\n').slice(1).join('\n\n')
+  if (e.kind === 'clerk') detail = '' // already shown as a quote above
   else if (e.kind === 'write') detail = (e.detail ?? '').split('\n').slice(1).join('\n').replace(/^#+\s*/gm, '').replace(/\*\*/g, '')
   else if (e.kind === 'mcp' && e.action === 'add') detail = (e.detail ?? '').split('\n').slice(1).join('\n')
   else if (e.kind === 'install' || e.kind === 'read' || e.kind === 'list') detail = ''
@@ -782,8 +836,9 @@ function buildCard(e, kind) {
       const { status } = await post('/api/approve', { id: e.id, allow })
       if (status === 404) closeCard(e.id, t('expired'), false)
     }
-    const no = el('button', 'btn', t('reject')); no.onclick = () => go(false)
-    const yes = el('button', 'btn primary', t('allow')); yes.onclick = () => go(true)
+    const no = el('button', 'btn', t('cancel')); no.onclick = () => go(false)
+    const yesLabel = e.kind === 'clerk' ? (e.action === 'create' ? t('confirmAdd') : e.action === 'delete' ? t('confirmDeleteBtn') : t('confirm')) : t('allow')
+    const yes = el('button', 'btn primary', yesLabel); yes.onclick = () => go(true)
     row.append(no, yes)
   } else {
     const openBtn = el('button', 'btn primary', t('openWindow')); openBtn.onclick = openBrowser
@@ -836,7 +891,7 @@ function render(e) {
   else if (e.type === 'step') step(e.name)
   else if (e.type === 'error') notice(e.text, true)
   else if (e.type === 'notice') notice(t(e.code === 'BUDGET_NEAR' ? 'budgetNear' : 'budgetExceeded'), true)
-  else if (e.type === 'card') add(e.card.kind === 'job' ? jobCard(e.card.job, e.card.timezone, true) : e.card.kind === 'todo' ? todoCard(e.card.todo, e.card.timezone) : infoCard(e.card), 'card')
+  else if (e.type === 'card') add(e.card.kind === 'job' ? jobCard(e.card.job, e.card.timezone, true, e.card.created) : e.card.kind === 'todo' ? todoCard(e.card.todo, e.card.timezone, e.card.created) : infoCard(e.card), 'card')
   else if (e.type === 'approval' || e.type === 'takeover') {
     add(buildCard(e, e.type), 'card')
     if (!open.has(e.id)) closeCard(e.id, t('expired'), false) // an old request nobody can answer any more
@@ -1038,21 +1093,24 @@ async function loadClerk() {
   if (!data.timezoneChosen) post('/api/clerk/timezone', { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }) // the first visit sets it from this device
   if (currentView === 'clerk') drawClerk()
 }
-function jobCard(job, tz = clerkData?.timezone, compact = false) {
-  const c = el('div', 'card job' + (job.enabled ? '' : ' paused'))
+function jobCard(job, tz = clerkData?.timezone, compact = false, created = false) {
+  const c = el('div', 'card job' + (job.enabled ? '' : ' paused') + (created ? ' saved' : ''))
   const top = el('div', 'card-top')
-  const ic = el('span', 'chipicon'); ic.innerHTML = icon(job.kind === 'task' ? 'clock' : 'check')
-  top.append(ic, el('span', 'tag', t(job.kind === 'task' ? 'kindTask' : 'kindReminder')))
+  const ic = el('span', 'chipicon'); ic.innerHTML = icon(job.kind === 'task' ? 'clock' : 'bell')
+  top.append(ic, el('span', 'tag', created ? t('tagSaved') : t(job.kind === 'task' ? 'kindTask' : 'kindReminder')))
   if (job.running) top.append(el('span', 'mini good', t('running')))
-  c.append(top, el('div', 'what', job.title))
-  const meta = el('div', 'meta')
-  meta.append(el('b', '', describeSchedule(job.schedule)), document.createTextNode(' · '),
-    document.createTextNode(job.enabled && job.nextRun ? t('nextRun', fmtWhen(job.nextRun, tz)) : t('paused')))
-  c.append(meta)
-  const chips = el('div', 'chiplist')
-  chips.append(el('span', 'mini', t('toApp')))
-  for (const n of job.channels) chips.append(el('span', 'mini', n))
-  c.append(chips)
+  c.append(top, el('div', 'what big', job.title))
+  const when = el('div', 'when'); when.innerHTML = icon('calendar')
+  when.append(el('span', '', describeSchedule(job.schedule)))
+  if (job.enabled && job.nextRun) when.append(el('span', '', '·'), el('span', '', t('nextRun', whenText(job.nextRun, tz))))
+  else when.append(el('span', '', '·'), el('span', '', t('paused')))
+  c.append(when)
+  if (job.kind === 'reminder' && job.text && job.text !== job.title) c.append(el('div', 'quote said', job.text))
+  if (job.channels?.length) {
+    const chips = el('div', 'chiplist')
+    for (const n of job.channels) chips.append(el('span', 'mini', t('alsoTo', n)))
+    c.append(chips)
+  }
   if (job.lastStatus) {
     const prefix = t(job.lastStatus === 'ok' ? 'lastOk' : job.lastStatus === 'missed' ? 'lastMissed' : 'lastFailed')
     c.append(el('div', 'last' + (job.lastStatus === 'ok' ? '' : ' failed'), `${prefix}${fmtWhen(job.lastRun, tz)} · ${job.lastResult ?? ''}`))
@@ -1109,10 +1167,14 @@ function channelRow(ch) {
 }
 function drawClerk() {
   const d = clerkData
-  $('todoList').replaceChildren(...d.todos.map(todo => todoCard(todo, d.timezone)))
+  // Two different things live here: to-dos (things to do, open ones first) and scheduled jobs (recurring or timed work).
+  const todos = [...d.todos].sort((a, b) => Number(a.done) - Number(b.done))
+  $('todoList').replaceChildren(...todos.map(todo => todoCard(todo, d.timezone)))
   $('todosHead').hidden = d.todos.length === 0
+  if (d.todos.length) $('todosHead').querySelector('h3').textContent = `${t('todosTitle')} · ${d.todos.length}`
   $('jobList').replaceChildren(...d.jobs.map(j => jobCard(j)))
   $('jobsHead').hidden = d.jobs.length === 0
+  if (d.jobs.length) $('jobsHead').querySelector('h3').textContent = `${t('jobsTitle')} · ${d.jobs.length}`
   $('inboxList').replaceChildren(...d.inbox.slice(0, 30).map(inboxItem))
   $('inboxHead').hidden = d.inbox.length === 0
   $('markRead').hidden = d.unread === 0
