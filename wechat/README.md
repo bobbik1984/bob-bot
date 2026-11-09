@@ -17,6 +17,10 @@ node --import tsx/esm src/index.ts
 
 Without a saved token the bridge prints a `liteapp.weixin.qq.com` login link and waits up to eight minutes. After the scan it stores the token under `~/.wechat-bot/` and the account id in `data/account.txt`, so later restarts skip the login.
 
+## Proactive messages (reminders)
+
+Official iLink hands out a per-conversation `context_token` with each inbound message, and proactive pushes are unreliable without a fresh one: the API can accept the call while the user sees nothing. The bridge now stores the latest token per contact in `data/context.json` and passes it on every `/send`. Reminders therefore work best when the owner has written to the bot recently; the app records the delivery result honestly, and the in-app inbox is always authoritative.
+
 ## Service
 
 `bobbot-wechat.service` runs the bridge with `BOB_API_URL=http://127.0.0.1:3721`.

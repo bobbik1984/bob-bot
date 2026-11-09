@@ -9,6 +9,8 @@ export interface SendServerOptions {
   accountId: () => string;
   /** 默认接收人：扫码登录者，或最近一次给机器人发消息的人 */
   owner: () => string;
+  /** 该用户最近一次来信携带的 context_token；主动推送要用它 */
+  context: (to: string) => { token?: string; at?: number };
 }
 
 function readBody(req: http.IncomingMessage): Promise<string> {
@@ -23,7 +25,7 @@ function readBody(req: http.IncomingMessage): Promise<string> {
   });
 }
 
-export function startSendServer({ port, accountId, owner }: SendServerOptions) {
+export function startSendServer({ port, accountId, owner, context }: SendServerOptions) {
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://local');
     const json = (status: number, body: unknown) => {
@@ -47,8 +49,17 @@ export function startSendServer({ port, accountId, owner }: SendServerOptions) {
         const account = resolveWeixinAccount(accountId());
         if (!account.token) return json(409, { ok: false, error: '微信尚未登录' });
         if (!to) return json(409, { ok: false, error: '还没有接收人：请先给机器人发一条消息' });
-        await sendMessageWeixin({ to, text, opts: { baseUrl: account.baseUrl, token: account.token } });
-        return json(200, { ok: true });
+        const ctx = context(to);
+        await sendMessageWeixin({
+          to,
+          text,
+          opts: { baseUrl: account.baseUrl, token: account.token, contextToken: ctx.token },
+        });
+        return json(200, {
+          ok: true,
+          usedContext: Boolean(ctx.token),
+          tokenAgeMs: ctx.at ? Date.now() - ctx.at : null,
+        });
       }
       return json(404, { ok: false, error: 'not found' });
     } catch (error) {

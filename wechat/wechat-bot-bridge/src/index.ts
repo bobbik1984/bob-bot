@@ -65,6 +65,29 @@ function writeOwner(wxid: string | undefined): void {
   }
 }
 
+const CONTEXT_FILE = path.join(DATA_DIR, 'context.json');
+
+/** 每个联系人最近一次来信的 context_token：官方接口的主动推送需要它。 */
+function readContexts(): Record<string, { token?: string; at?: number }> {
+  try {
+    return JSON.parse(fs.readFileSync(CONTEXT_FILE, 'utf-8'));
+  } catch {
+    return {};
+  }
+}
+
+function rememberContext(wxid: string | undefined, token: string | undefined): void {
+  if (!wxid || !token) return;
+  try {
+    const all = readContexts();
+    all[wxid] = { token, at: Date.now() };
+    const ids = Object.keys(all).slice(-200);
+    fs.writeFileSync(CONTEXT_FILE, JSON.stringify(Object.fromEntries(ids.map((id) => [id, all[id]]))));
+  } catch (error) {
+    console.error('[main] 写入 context.json 失败:', error);
+  }
+}
+
 function activeAccountId(): string {
   return readFileSafe(ACCOUNT_FILE) || config.weixin.accountId;
 }
@@ -230,6 +253,7 @@ async function main() {
     port: Number(process.env.WECHAT_SEND_PORT || 3722),
     accountId: activeAccountId,
     owner: readOwner,
+    context: (to: string) => readContexts()[to] ?? {},
   });
 
   // 3. 启动长轮询监听
@@ -243,6 +267,7 @@ async function main() {
       const wxid = msg.from_user_id;
       if (!wxid) return;
       writeOwner(wxid);
+      rememberContext(wxid, msg.context_token);
 
       // 过滤非文字消息
       const textItem = msg.item_list?.find((i: { type?: number }) => i.type === 1);
