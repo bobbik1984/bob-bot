@@ -226,11 +226,12 @@ main { flex:1; min-height:0; position:relative; }
 .inbox-item .top time { margin-left:auto; font-weight:400; font-size:12px; color:var(--muted); }
 .inbox-item .body { white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; }
 .inbox-item.open .body { display:block; }
-.channel { display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:10px 12px; }
+.channel { display:flex; flex-direction:column; gap:6px; background:var(--surface-2); border:1px solid transparent; border-radius:16px; padding:12px 14px; }
+.channel .ch-top { display:flex; align-items:center; gap:10px; }
 .channel .badge-t { width:36px; height:36px; border-radius:12px; background:var(--accent-soft); color:var(--accent-ink); display:inline-flex; align-items:center; justify-content:center; font-weight:700; flex:none; }
-.channel .info { flex:1; min-width:0; }
-.channel .info b { display:block; }
-.channel .info small { color:var(--muted); }
+.channel .ch-top b { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.channel .ch-meta { font-size:12px; color:var(--muted); overflow-wrap:anywhere; }
+.channel .ch-actions { display:flex; align-items:center; gap:8px; }
 .channel .res { display:block; font-size:12px; }
 .channel .res.bad { color:var(--danger); } .channel .res.good { color:var(--ok); }
 details.add { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:0 14px; margin-top:10px; }
@@ -349,25 +350,6 @@ nav button svg { width:24px; height:24px; }
       <div id="jobList"></div>
       <div class="sect-head" id="inboxHead"><h3 data-t="inboxTitle"></h3><button class="link" id="markRead" data-t="markRead"></button></div>
       <div id="inboxList"></div>
-      <div class="sect-head"><h3 data-t="channelsTitle"></h3></div>
-      <div id="channelList"></div>
-      <details class="add" id="addChannel">
-        <summary data-t="addChannel"></summary>
-        <div class="stack">
-          <select class="field" id="chType" data-al="chType"></select>
-          <p class="hint" id="chHelp"></p>
-          <input class="field" id="chName" autocomplete="off" data-ph="chName" data-al="chName">
-          <input class="field" id="chWebhook" inputmode="url" autocapitalize="off" autocomplete="off" data-ph="chWebhook" data-al="chWebhook">
-          <input class="field" id="chSecret" type="password" autocomplete="off" data-ph="chSecret" data-al="chSecret">
-          <input class="field" id="chToken" type="password" autocomplete="off" data-ph="chToken" data-al="chToken" hidden>
-          <input class="field" id="chChat" autocapitalize="off" autocomplete="off" data-ph="chChat" data-al="chChat" hidden>
-          <button class="btn primary block" id="saveChannel" data-t="save"></button>
-          <p class="hint" id="chMsg" role="status"></p>
-        </div>
-      </details>
-
-      <div class="sect-head"><h3 data-t="zoneTitle"></h3></div>
-      <div class="section"><div class="row"><input class="field" id="zone" autocapitalize="off" autocomplete="off" aria-label="Time zone"><button class="btn" id="saveZone" data-t="save"></button></div><p class="hint" id="zoneMsg" role="status"></p></div>
     </div>
     <div class="view" id="viewSettings" hidden>
       <div class="section">
@@ -383,6 +365,29 @@ nav button svg { width:24px; height:24px; }
           <button class="btn primary" id="wxStart" data-t="wxConnect"></button>
           <button class="btn" id="wxStop" data-t="wxDisconnect"></button>
         </div>
+      </div>
+      <div class="section">
+        <h3 data-t="channelsTitle"></h3>
+        <div id="channelList" class="stack"></div>
+        <details class="add" id="addChannel">
+          <summary data-t="addChannel"></summary>
+          <div class="stack">
+            <select class="field" id="chType" data-al="chType"></select>
+            <p class="hint" id="chHelp"></p>
+            <input class="field" id="chName" autocomplete="off" data-ph="chName" data-al="chName">
+            <input class="field" id="chWebhook" inputmode="url" autocapitalize="off" autocomplete="off" data-ph="chWebhook" data-al="chWebhook">
+            <input class="field" id="chSecret" type="password" autocomplete="off" data-ph="chSecret" data-al="chSecret">
+            <input class="field" id="chToken" type="password" autocomplete="off" data-ph="chToken" data-al="chToken" hidden>
+            <input class="field" id="chChat" autocapitalize="off" autocomplete="off" data-ph="chChat" data-al="chChat" hidden>
+            <button class="btn primary block" id="saveChannel" data-t="save"></button>
+            <p class="hint" id="chMsg" role="status"></p>
+          </div>
+        </details>
+      </div>
+      <div class="section">
+        <h3 data-t="zoneTitle"></h3>
+        <div class="row"><input class="field" id="zone" autocapitalize="off" autocomplete="off" aria-label="Time zone"><button class="btn" id="saveZone" data-t="save"></button></div>
+        <p class="hint" id="zoneMsg" role="status"></p>
       </div>
       <div class="section">
         <h3 data-t="modelTitle"></h3>
@@ -659,7 +664,7 @@ function show(view) {
   else drawAttachments()
   if (view === 'chat') atEnd()
   if (view === 'clerk') loadClerk()
-  if (view === 'settings') { loadModelCard().catch(() => {}); loadExtensions(); loadWechat() }
+  if (view === 'settings') { loadModelCard().catch(() => {}); loadExtensions(); loadWechat(); loadClerk() }
   refreshOrb(); refreshBanner(); setHero()
 }
 document.querySelectorAll('nav button').forEach(b => { b.onclick = () => show(b.dataset.view) })
@@ -1161,7 +1166,7 @@ async function loadClerk() {
   clerkData = data
   setBadge(data.unread)
   if (!data.timezoneChosen) post('/api/clerk/timezone', { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }) // the first visit sets it from this device
-  if (currentView === 'clerk') drawClerk()
+  if (currentView === 'clerk' || currentView === 'settings') drawClerk()
 }
 function jobCard(job, tz = clerkData?.timezone, compact = false, created = false) {
   const c = el('div', 'card job' + (job.enabled ? '' : ' paused') + (created ? ' saved' : ''))
@@ -1219,10 +1224,13 @@ function inboxItem(n) {
 const CHANNEL_TYPES = ['lark', 'wecom', 'telegram', 'discord']
 function channelRow(ch) {
   const row = el('div', 'channel')
-  row.append(el('span', 'badge-t', { lark: 'L', wecom: 'W', telegram: 'T', discord: 'D' }[ch.type]))
-  const info = el('div', 'info')
-  info.append(el('b', '', ch.name), el('small', '', `${t('ch_' + ch.type)} · ${ch.hint}${ch.signed ? ' · ' + t('signed') : ''}`))
-  const res = el('span', 'res'); info.append(res)
+  const top = el('div', 'ch-top')
+  top.append(el('span', 'badge-t', { lark: 'L', wecom: 'W', telegram: 'T', discord: 'D' }[ch.type]), el('b', '', ch.name))
+  const del = el('button', 'icon-btn'); del.innerHTML = icon('cross'); del.title = t('remove'); del.setAttribute('aria-label', t('remove'))
+  del.onclick = () => { if (confirm(t('confirmDelete', ch.name))) post('/api/channels/delete', { id: ch.id }) }
+  top.append(del)
+  const res = el('span', 'res')
+  const actions = el('div', 'ch-actions')
   const test = el('button', 'btn small', t('test'))
   test.onclick = async () => {
     res.className = 'res'; res.textContent = '…'
@@ -1230,9 +1238,8 @@ function channelRow(ch) {
     res.className = 'res ' + (r.data.ok ? 'good' : 'bad')
     res.textContent = r.data.ok ? t('testOk') : t('testFail', r.data.error ?? r.status)
   }
-  const del = el('button', 'icon-btn'); del.innerHTML = icon('cross'); del.title = t('remove'); del.setAttribute('aria-label', t('remove'))
-  del.onclick = () => { if (confirm(t('confirmDelete', ch.name))) post('/api/channels/delete', { id: ch.id }) }
-  row.append(info, test, del)
+  actions.append(test, res)
+  row.append(top, el('div', 'ch-meta', `${t('ch_' + ch.type)} · ${ch.hint}${ch.signed ? ' · ' + t('signed') : ''}`), actions)
   return row
 }
 function drawClerk() {
