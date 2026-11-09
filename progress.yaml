@@ -14,6 +14,16 @@ project:
   current_task: 完成面向普通办公室白领的轻量助理立项与五大核心缺失技术细节架构设计（BYOK 开箱、手机网页内嵌 CDP 虚拟浏览器窗口、DOM AXTree 操控、内置 Router-Worker、示教转 Routine），下一步在所在地区 VPS 上进行自测 POC。
   development_plan: docs/CURRENT_STAGE.md
 
+prototype:
+  status: live
+  url: https://ry.bobbik.org
+  repo: https://github.com/bobbik1984/bob-bot
+  runtime: Node 24.22.2 / Chrome 157 / Ubuntu 24.04
+  services:
+    - bobbot.service (8787, compat api 3721)
+    - bobbot-wechat.service (official iLink bridge)
+  updates: docs/UPDATES.md
+
 phases:
   - name: 📋 立项与架构定案 (Project Initialization)
     tasks:
@@ -77,3 +87,22 @@ phases:
         status: todo
       - text: "[BB4-02] 完成 2C/4G VPS 真机部署验证与 24 小时内存/CPU 压力巡检"
         status: todo
+
+  - name: 🟢 原型上线与能力扩展（2026-11）
+    tasks:
+      - text: 一键部署脚本与构建戳（deploy-ry.sh + /api/version）
+        status: done
+      - text: 卡片化对话（图标/标签/对齐信息行/双按钮）与 Orb 状态动效
+        status: done
+      - text: 多语言切换、语音输入、会话重命名、恢复上次页面、3 小时新会话
+        status: done
+      - text: 文员页只保留待办/定时任务/收件箱，渠道与时区移入设置
+        status: done
+      - text: 官方微信 iLink 桥（扫码登录、私聊会话、提醒推送、兼容 /v1 API）
+        status: done
+      - text: PWA + APNs 手机主屏幕推送（Android 独立 APK 规划）
+        status: done
+      - text: 长期记忆、夜间做梦整合、主动关心 0–1 主动性档位
+        status: done
+      - text: 受控功能包（工具/路由/面板，审批与失败隔离）
+        status: done

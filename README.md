@@ -2,7 +2,7 @@
 
 **住在你个人 VPS 里的 7×24 小时云端数字分身：打开网页填个 API Key 就能聊，内置持久化云端浏览器，遇到登录或验证码直接在手机网页弹出虚拟窗口点一下接力，手把手教一次就能变成每日自动运行的 Routine。**
 
-> **状态：`0.1.0` 独立立项与架构设计阶段（BB0 → BB1）。** 基于 `bob-agent` (`v1.0.1`) 验证成熟的单一 Rust 内核（`bob-kernel` / `bob-runtime` / `bob-node`）孵化，剥离面向极客的多节点 CLI 舰队管理复杂性，专注于**普通办公室白领的轻量助理体验**，当前先由项目所有者在所在地区的 VPS 上自测，核心对标 Grok Bot。
+> **状态：`0.1.0` 原型已上线（https://ry.bobbik.org），进入 BB1 自测阶段。** 基于 `bob-agent` (`v1.0.1`) 验证成熟的单一 Rust 内核（`bob-kernel` / `bob-runtime` / `bob-node`）孵化，剥离面向极客的多节点 CLI 舰队管理复杂性，专注于**普通办公室白领的轻量助理体验**，当前先由项目所有者在所在地区的 VPS 上自测，核心对标 Grok Bot。
 
 ## 核心文档导航
 
@@ -12,11 +12,29 @@
 - **分阶段开发路线与退出门**：[docs/DEVELOPMENT_ROUTE.md](docs/DEVELOPMENT_ROUTE.md)
 - **当前施工合同（What Now）**：[docs/CURRENT_STAGE.md](docs/CURRENT_STAGE.md)
 - **测试原型（Node.js + DSH）**：[prototype/README.md](prototype/README.md)
+- **本轮更新与功能优势**：[docs/UPDATES.md](docs/UPDATES.md)
 - **部署到 RY 测试机**：[scripts/deploy-ry.sh](scripts/deploy-ry.sh)（见下文「部署到 RY」）
 - **Super-agent 研究笔记**：[docs/SUPER_AGENT_NOTES.md](docs/SUPER_AGENT_NOTES.md)
 - **需求与待办池**：[todo.md](todo.md)
 - **机器可读进度投影**：[progress.yaml](progress.yaml)
 - **Agent 工作准则**：[AGENTS.md](AGENTS.md)
+
+## 当前能力与主要优势（2026-11-10）
+
+| 能力 | 说明 |
+|---|---|
+| 一条命令发布 | x1t 改 → push → `deploy-ry.sh` → 自动同步/安装/重启/健康检查，设置页显示构建号 |
+| 官方微信 | 腾讯官方 iLink（OpenClaw 核心）扫码登录、私聊对话、提醒推送，不走第三方协议 |
+| 三层提醒 | 应用内收件箱 + 手机主屏幕推送（iOS APNs/PWA）+ 微信（最近活跃时），失败如实记录 |
+| 卡片化表达 | 图标 + 标签 + 对齐信息行 + 双按钮，只展示有效信息 |
+| 文员独立 | 待办 / 定时任务 / 收件箱；渠道、微信、时区在设置 |
+| 主动性 0–1 | 高冷 / 得体 / 积极 / 粘人；安静时段与配额为硬规则 |
+| 记忆 + 做梦 | 夜间整合对话为长期记忆与观察，主动关心使用 |
+| 受控自扩展 | 功能包（工具 + 路由 + 面板），审批 + 失败隔离，不能改主代码 |
+| 手机体验 | PWA 安装、语音输入、会话重命名、回到上次页面、3 小时新会话、中英双语 |
+| 安全 | 危险动作审批、扩展启动兜底、推送失败不伪造 |
+
+完整明细见 [docs/UPDATES.md](docs/UPDATES.md)。
 
 ## 目录结构
 
