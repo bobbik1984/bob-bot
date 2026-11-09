@@ -501,6 +501,8 @@ const I18N = {
   openRun:['查看过程','See the run'], openClerk:['去文员查看','Open in Clerk'], running:['运行中…','Running…'], inboxTo:['发送到：','Sent to: '],
   confirmDelete:['确定删除「{n}」？','Delete "{n}"?'], toApp:['应用内','This app'],
   lastOk:['上次：','Last: '], lastFailed:['上次失败：','Last failed: '], lastMissed:['上次错过：','Last missed: '],
+  ch_wechat:['微信（官方 iLink）','WeChat (official iLink)'],
+  help_wechat:['通过已登录的官方微信桥发送，默认发给扫码登录的人。先在设置里完成微信登录。','Sends through the signed-in official WeChat bridge, to the person who scanned the code. Log in from Settings first.'],
   ch_lark:['飞书 / Lark 群机器人','Lark / Feishu group bot'], ch_wecom:['企业微信群机器人','WeCom group bot'], ch_telegram:['Telegram 机器人','Telegram bot'], ch_discord:['Discord Webhook','Discord webhook'],
   help_lark:['群设置 → 机器人 → 添加自定义机器人，复制 Webhook 地址；如开启了签名校验，再填签名密钥。','In the group: Settings → Bots → Add custom bot. Copy its webhook; add the signing secret if you turned signing on.'],
   help_wecom:['在群里添加群机器人，复制 Webhook 地址。个人微信没有官方机器人接口，暂不支持。','Add a group bot in the group and copy its webhook. Personal WeChat has no official bot API, so it is not supported.'],
@@ -1209,7 +1211,7 @@ function inboxItem(n) {
   item.onclick = () => item.classList.toggle('open')
   return item
 }
-const CHANNEL_TYPES = ['lark', 'wecom', 'telegram', 'discord']
+const CHANNEL_TYPES = ['wechat', 'lark', 'wecom', 'telegram', 'discord']
 function channelRow(ch) {
   const row = el('div', 'channel')
   const top = el('div', 'ch-top')
@@ -1257,7 +1259,8 @@ CHANNEL_TYPES.forEach(k => $('chType').append(new Option(t('ch_' + k), k)))
 function showChannelFields() {
   const type = $('chType').value
   $('chHelp').textContent = t('help_' + type)
-  $('chWebhook').hidden = type === 'telegram'
+  const wechatType = type === 'wechat'
+  $('chWebhook').hidden = type === 'telegram' || wechatType
   $('chSecret').hidden = type !== 'lark'
   $('chToken').hidden = type !== 'telegram'
   $('chChat').hidden = type !== 'telegram'

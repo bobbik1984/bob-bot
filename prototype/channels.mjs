@@ -2,7 +2,7 @@
 // Secrets stay on the server and are never shown to the page or to the model.
 import crypto from 'node:crypto'
 
-export const CHANNEL_TYPES = ['lark', 'wecom', 'telegram', 'discord']
+export const CHANNEL_TYPES = ['lark', 'wecom', 'telegram', 'discord', 'wechat']
 const MAX_TEXT = 3500
 
 const HOSTS = {
@@ -21,6 +21,10 @@ export function validateChannel(input) {
   if (!CHANNEL_TYPES.includes(type)) throw fail('BAD_TYPE')
   const name = String(input?.name ?? '').trim()
   if (!name || name.length > 40) throw fail('BAD_NAME')
+  if (type === 'wechat') {
+    // Official WeChat: the bridge keeps the login, and the owner is the person who scanned.
+    return { type, name, config: {} }
+  }
   if (type === 'telegram') {
     const token = String(input.token ?? '').trim()
     const chatId = String(input.chatId ?? '').trim()
@@ -41,7 +45,9 @@ export function validateChannel(input) {
 /** What the page may see: never the webhook, token or secret. */
 export function publicChannel(channel) {
   const c = channel.config
-  const hint = channel.type === 'telegram'
+  const hint = channel.type === 'wechat'
+    ? '通过官方微信桥发送'
+    : channel.type === 'telegram'
     ? `${c.token.split(':')[0]}:••••${c.token.slice(-4)}`
     : `••••${c.webhook.slice(-6)}`
   return { id: channel.id, type: channel.type, name: channel.name, hint, ready: channel.type !== 'telegram' || Boolean(c.chatId), signed: Boolean(c.secret) }
@@ -67,6 +73,7 @@ export function buildRequest(channel, text, nowMs = Date.now()) {
     case 'wecom': return post(c.webhook, { msgtype: 'text', text: { content: body } })
     case 'discord': return post(c.webhook, { content: body.slice(0, 2000) })
     case 'telegram': return post(`https://api.telegram.org/bot${c.token}/sendMessage`, { chat_id: c.chatId, text: body.slice(0, 4096) })
+    case 'wechat': return post(`${process.env.WECHAT_BRIDGE_URL || 'http://127.0.0.1:3722'}/send`, { text: body })
     default: throw fail('BAD_TYPE')
   }
 }

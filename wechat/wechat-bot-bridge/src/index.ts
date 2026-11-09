@@ -19,6 +19,7 @@ import { sessionMgr } from './session-mgr.js';
 import { msgQueue } from './message-queue.js';
 import { chatWithBob, getRecentConversations, checkBobHealth } from './bob-client.js';
 import { startTypingHeartbeat } from './typing-manager.js';
+import { startSendServer } from './send-server.js';
 
 // ── 指令帮助文本 ──────────────────────────────────────────
 const HELP_TEXT = `可用指令：
@@ -36,6 +37,37 @@ const MSG_TYPE_NAMES: Record<number, string> = {
   43: '视频',
   49: '文件',
 };
+
+const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
+const OWNER_FILE = path.join(DATA_DIR, 'owner.txt');
+const ACCOUNT_FILE = path.join(DATA_DIR, 'account.txt');
+
+function readFileSafe(file: string): string {
+  try {
+    return fs.readFileSync(file, 'utf-8').trim();
+  } catch {
+    return '';
+  }
+}
+
+/** 提醒的默认接收人：扫码登录的人，或最近给机器人发消息的人。 */
+function readOwner(): string {
+  return readFileSafe(OWNER_FILE);
+}
+
+function writeOwner(wxid: string | undefined): void {
+  if (!wxid) return;
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(OWNER_FILE, wxid);
+  } catch (error) {
+    console.error('[main] 写入 owner.txt 失败:', error);
+  }
+}
+
+function activeAccountId(): string {
+  return readFileSafe(ACCOUNT_FILE) || config.weixin.accountId;
+}
 
 // ── 主消息处理逻辑 ────────────────────────────────────────
 async function handleMessage(
@@ -163,14 +195,13 @@ async function main() {
 
   if (!account.token) {
     console.log('[main] 未找到已保存的 token，开始 QR 登录…');
-    const dataDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
-    fs.mkdirSync(dataDir, { recursive: true });
+    fs.mkdirSync(DATA_DIR, { recursive: true });
     const qrResult = await startLoginWithQr({ apiBaseUrl: account.baseUrl, accountId: config.weixin.accountId });
     if (!qrResult?.qrcodeUrl) {
       console.error('[main] ❌ 无法获取二维码:', qrResult?.message ?? 'unknown error');
       process.exit(1);
     }
-    fs.writeFileSync(path.join(dataDir, 'qr.txt'), qrResult.qrcodeUrl);
+    fs.writeFileSync(path.join(DATA_DIR, 'qr.txt'), qrResult.qrcodeUrl);
     console.log(`[main] 📱 请用手机微信扫码登录（8 分钟内有效）：${qrResult.qrcodeUrl}`);
     const login = await waitForLogin({
       sessionKey: qrResult.sessionKey,
@@ -184,7 +215,8 @@ async function main() {
     }
     saveWeixinAccount(login.accountId, { token: login.botToken, baseUrl: login.baseUrl, userId: login.userId });
     registerWeixinAccountId(login.accountId);
-    fs.writeFileSync(path.join(dataDir, 'account.txt'), login.accountId);
+    fs.writeFileSync(path.join(DATA_DIR, 'account.txt'), login.accountId);
+    writeOwner(login.userId);
     console.log(`[main] ✅ 登录成功，账号 ${login.accountId}`);
     account = resolveWeixinAccount(login.accountId);
   }
@@ -192,6 +224,13 @@ async function main() {
   console.log(`[main] 微信账号 ${account.accountId} 已就绪，开始监听消息…`);
 
   const typingCtx = { baseUrl: account.baseUrl, token: account.token! };
+
+  // BobBot 用这个本地接口主动发提醒和任务结果
+  startSendServer({
+    port: Number(process.env.WECHAT_SEND_PORT || 3722),
+    accountId: activeAccountId,
+    owner: readOwner,
+  });
 
   // 3. 启动长轮询监听
   await startMonitor({
@@ -203,6 +242,7 @@ async function main() {
     onMessage: async (msg: WeixinMessage) => {
       const wxid = msg.from_user_id;
       if (!wxid) return;
+      writeOwner(wxid);
 
       // 过滤非文字消息
       const textItem = msg.item_list?.find((i: { type?: number }) => i.type === 1);
