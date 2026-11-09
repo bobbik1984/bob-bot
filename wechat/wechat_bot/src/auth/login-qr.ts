@@ -140,6 +140,14 @@ async function pollQRStatus(apiBaseUrl: string, qrcode: string, verifyCode?: str
  * 供 CLI 登录流程和 MCP Tool 登录流程共同复用。
  */
 export async function displayQRCode(qrcodeUrl: string): Promise<void> {
+  // A headless service cannot show a terminal QR, so the newest link is kept in a file the owner can read.
+  const qrFile = process.env.WECHAT_QR_FILE;
+  if (qrFile) {
+    try {
+      const fs = await import("node:fs");
+      fs.writeFileSync(qrFile, qrcodeUrl);
+    } catch { /* best effort */ }
+  }
   try {
     const qrterm = await import("qrcode-terminal");
     qrterm.default.generate(qrcodeUrl, { small: true });
