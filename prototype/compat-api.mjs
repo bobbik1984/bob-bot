@@ -31,7 +31,8 @@ export function startCompatApi({ host = '127.0.0.1', port = 3721, ask, conversat
         return json(200, { status: 'ok', service: 'bobbot-compat', version: '0.1.0' })
       }
       if (req.method === 'GET' && url.pathname === '/v1/conversations') {
-        return json(200, { items: conversations().map(({ id, title, updatedAt }) => ({ id, title, updated_at: updatedAt })) })
+        // bob-agent returns a bare array here, and the bridge calls .slice on it.
+        return json(200, conversations().map(({ id, title, updatedAt }) => ({ id, title, updated_at: updatedAt })))
       }
       if (req.method === 'POST' && url.pathname === '/v1/chat') {
         const body = JSON.parse(await readBody(req) || '{}')
@@ -43,7 +44,12 @@ export function startCompatApi({ host = '127.0.0.1', port = 3721, ask, conversat
         })
         if (!message) { writeEvent(res, 'error', { error: 'message is required' }); return res.end() }
         try {
-          const { reply, cid } = await ask({ from: String(body.from_user ?? 'compat').slice(0, 200), name: String(body.from_name ?? body.from_user ?? 'WeChat').slice(0, 40), text: message })
+          const { reply, cid } = await ask({
+            from: String(body.from_user ?? 'compat').slice(0, 200),
+            name: String(body.from_name ?? body.from_user ?? 'WeChat').slice(0, 40),
+            text: message,
+            conversationId: body.conversation_id === null || body.conversation_id === undefined ? null : String(body.conversation_id),
+          })
           if (reply) writeEvent(res, 'text', { content: reply })
           writeEvent(res, 'done', { conversation_id: cid, full_text: reply ?? '' })
         } catch (error) {

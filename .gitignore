@@ -3,3 +3,8 @@ prototype/data/
 *.log
 .env
 debug/ui-shots/
+wechat/wechat_bot/node_modules/
+wechat/wechat-bot-bridge/node_modules/
+wechat/wechat-bot-bridge/data/sessions.json
+wechat/wechat-bot-bridge/data/qr.txt
+wechat/wechat-bot-bridge/data/account.txt

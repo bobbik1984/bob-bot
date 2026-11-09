@@ -1,0 +1,18 @@
+[Unit]
+Description=BobBot WeChat bridge (official iLink)
+After=network-online.target bobbot.service
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/bob-bot/wechat/wechat-bot-bridge
+Environment=BOB_API_URL=http://127.0.0.1:3721
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node --import tsx/esm src/index.ts
+Restart=on-failure
+RestartSec=10
+KillMode=mixed
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

@@ -380,17 +380,15 @@ const bridgeContactsFile = path.join(DATA_DIR, 'bridge-contacts.json')
 let bridgeContacts = readJson(bridgeContactsFile, {})
 const bridgeWaiters = new Map()
 
-function bridgeConversation(from, name) {
+function bridgeConversation(from, name, { fresh = false } = {}) {
   const key = String(from).slice(0, 200)
-  let cid = bridgeContacts[key]
-  if (!cid || !convOf(cid)) {
-    const conv = createConversation(name ? `WeChat · ${name}`.slice(0, 40) : 'WeChat')
-    cid = conv.id
-    bridgeContacts[key] = cid
-    fs.writeFileSync(bridgeContactsFile, JSON.stringify(bridgeContacts))
-    broadcast({ type: 'conversations' })
-  }
-  return cid
+  const existing = bridgeContacts[key]
+  if (!fresh && existing && convOf(existing)) return existing
+  const conv = createConversation(name ? `WeChat · ${name}`.slice(0, 40) : 'WeChat')
+  bridgeContacts[key] = conv.id
+  fs.writeFileSync(bridgeContactsFile, JSON.stringify(bridgeContacts))
+  broadcast({ type: 'conversations' })
+  return conv.id
 }
 
 /** Collects the texts Bob writes in this conversation until the turn ends. */
@@ -409,13 +407,15 @@ function waitBridgeReply(cid, ms = 180_000) {
   })
 }
 
-async function askFromBridge({ from, name, text }) {
+async function askFromBridge({ from, name, text, conversationId }) {
   const cfg = modelConfig()
   const apiKey = loadKey(cfg.kind)
   if (!apiKey) return { reply: 'Bob 还没有设置模型的 API Key，请先在网页版 bob-bot 里配置。', cid: '' }
   if (!priceOf(cfg)) return { reply: '这个模型没有设置价格，无法统计花费。', cid: '' }
   if (budget.status().exceeded) return { reply: '本月的花费额度已经用完，暂时不能回复。', cid: '' }
-  const cid = bridgeConversation(from, name)
+  // null means the bridge asked for a fresh chat (/new); an id we know means continue it.
+  const known = conversationId && convOf(conversationId) ? conversationId : null
+  const cid = known ?? bridgeConversation(from, name, { fresh: conversationId === null })
   if (runningCid && runningCid !== cid) return { reply: 'Bob 正在处理另一个对话，请稍后再发一次。', cid }
   const conv = convOf(cid)
   if (!conv.title) { conv.title = name ? `WeChat · ${name}`.slice(0, 40) : 'WeChat'; saveConvs() }

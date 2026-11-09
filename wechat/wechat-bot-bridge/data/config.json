@@ -1,0 +1,8 @@
+{
+  "weixin": {
+    "accountId": "YOUR_WECHAT_ACCOUNT_ID"
+  },
+  "bob": {
+    "baseUrl": "http://127.0.0.1:3721"
+  }
+}
