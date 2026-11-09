@@ -17,6 +17,7 @@ import { Extensions, checkMcp, checkPackages, checkSkill, installSteps, parseSki
 import { webFetch } from './web-fetch.mjs'
 import QRCode from 'qrcode'
 import { WeChat } from './wechat.mjs'
+import { startCompatApi } from './compat-api.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const HOST = process.env.HOST || '127.0.0.1'
@@ -414,11 +415,11 @@ function waitWechatReply(cid, ms = 180_000) {
 async function wechatAsk({ from, name, text }) {
   const cfg = modelConfig()
   const apiKey = loadKey(cfg.kind)
-  if (!apiKey) return 'Bob 还没有设置模型的 API Key，请先在网页版 bob-bot 里配置。'
-  if (!priceOf(cfg)) return '这个模型没有设置价格，无法统计花费。'
-  if (budget.status().exceeded) return '本月的花费额度已经用完，暂时不能回复。'
+  if (!apiKey) return { reply: 'Bob 还没有设置模型的 API Key，请先在网页版 bob-bot 里配置。', cid: '' }
+  if (!priceOf(cfg)) return { reply: '这个模型没有设置价格，无法统计花费。', cid: '' }
+  if (budget.status().exceeded) return { reply: '本月的花费额度已经用完，暂时不能回复。', cid: '' }
   const cid = wechatConversation(from, name)
-  if (runningCid && runningCid !== cid) return 'Bob 正在处理另一个对话，请稍后再发一次。'
+  if (runningCid && runningCid !== cid) return { reply: 'Bob 正在处理另一个对话，请稍后再发一次。', cid }
   const conv = convOf(cid)
   if (!conv.title) { conv.title = name ? `WeChat · ${name}`.slice(0, 40) : 'WeChat'; saveConvs() }
   runningCid = cid
@@ -432,10 +433,10 @@ async function wechatAsk({ from, name, text }) {
     const waiter = wechatWaiters.get(cid)
     if (waiter) { wechatWaiters.delete(cid); waiter.done = true }
     if (runningCid === cid) runningCid = null
-    return `出错了：${error.message}`
+    return { reply: `出错了：${error.message}`, cid }
   }
   const answer = await reply
-  return answer || '这件事还在处理，稍后可以在网页版里看到结果。'
+  return { reply: answer || '这件事还在处理，稍后可以在网页版里看到结果。', cid }
 }
 
 /** A card Bob asks for. During a scheduled run it is kept with the result as well. */
@@ -904,8 +905,8 @@ async function route(req, res) {
     if (!body.secret || String(body.secret) !== wechat.secret) return send(res, 403, { error: 'BAD_SECRET' })
     const text = String(body.text ?? '').trim().slice(0, 4000)
     if (!text) return send(res, 400, { error: 'EMPTY' })
-    const reply = await wechatAsk({ from: String(body.from ?? 'unknown').slice(0, 200), name: String(body.name ?? 'WeChat').slice(0, 40), text })
-    return send(res, 200, { reply })
+    const result = await wechatAsk({ from: String(body.from ?? 'unknown').slice(0, 200), name: String(body.name ?? 'WeChat').slice(0, 40), text })
+    return send(res, 200, { reply: result.reply })
   }
   if (req.method === 'POST' && !sameOrigin(req)) return send(res, 403, { error: 'BAD_ORIGIN' })
   if (req.method === 'POST' && pathname === '/api/login') {
@@ -1192,6 +1193,13 @@ await new Promise(resolve => mcpServer.listen(0, '127.0.0.1', resolve))
 mcpUrl = `http://127.0.0.1:${mcpServer.address().port}/mcp`
 
 server.listen(PORT, HOST, () => {
+  // bob-agent's wechat-bot-bridge speaks this contract, so it can talk to BobBot without changes.
+  startCompatApi({
+    host: process.env.BOB_COMPAT_HOST || '127.0.0.1',
+    port: Number(process.env.BOB_COMPAT_PORT || 3721),
+    ask: wechatAsk,
+    conversations: listConversations,
+  })
   console.log(`BobBot prototype: http://${HOST}:${PORT}`)
   if (!hasPin()) console.log('No PIN set yet. Run: npm run set-pin -- 1234')
 })
