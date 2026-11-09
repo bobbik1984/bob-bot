@@ -17,6 +17,7 @@ import { Extensions, checkMcp, checkPackages, checkSkill, installSteps, parseSki
 import { webFetch } from './web-fetch.mjs'
 import { startCompatApi } from './compat-api.mjs'
 import { Features } from './features.mjs'
+import { Memory } from './memory.mjs'
 import QRCode from 'qrcode'
 import * as webpush from 'web-push'
 
@@ -43,6 +44,7 @@ const host = createHostTools(DATA_DIR)
 const clerk = new Clerk(DATA_DIR)
 const extensions = new Extensions(DATA_DIR)
 const features = new Features(path.join(DATA_DIR, 'features'))
+const memory = new Memory(path.join(DATA_DIR, 'memory.json'))
 let extensionsDirty = false // MCP changes load when DSH next starts
 const mcpToken = crypto.randomBytes(32).toString('hex')
 let mcpUrl = ''
@@ -188,6 +190,9 @@ const TOOLS = [
   ['todo_list', 'List the to-dos.', {}, []],
   ['todo_done', 'Mark a to-do done (or not done) by its id.', { id: { type: 'string' }, done: { type: 'boolean' } }, ['id']],
   ['todo_remove', 'Remove a to-do by its id.', { id: { type: 'string' } }, ['id']],
+  ['memory_list', 'List what you remember about the user.', {}, []],
+  ['memory_add', 'Remember one durable fact or preference about the user.', { text: { type: 'string' }, kind: { type: 'string', enum: ['fact', 'preference', 'pattern', 'open_loop'] } }, ['text']],
+  ['memory_forget', 'Forget one memory by its id.', { id: { type: 'string' } }, ['id']],
   ['feature_list', 'List the feature packages installed on this BobBot.', {}, []],
   ['feature_create', 'Create or update a small feature package that adds server tools, an HTTP route and an optional settings panel. The user reads the code and confirms first.', {
     name: { type: 'string', description: 'lowercase-with-dashes, stable id' },
@@ -270,6 +275,17 @@ async function callTool(name, args) {
   if (name.startsWith('todo_')) return todoTool(name, args)
   if (['ext_list', 'install_package', 'mcp_add', 'mcp_remove', 'skill_create', 'skill_install', 'skill_remove'].includes(name)) return extTool(name, args)
   if (name.startsWith('feature_')) return featureTool(name, args)
+  if (name === 'memory_list') return memory.state.items.map(i => `${i.id} [${i.kind}] ${i.text}`).join('\n') || 'No memories yet.'
+  if (name === 'memory_add') {
+    const item = memory.add({ text: args.text, kind: args.kind })
+    broadcast({ type: 'memory' })
+    return item ? `Remembered as ${item.id}.` : 'Already remembered.'
+  }
+  if (name === 'memory_forget') {
+    const removed = memory.remove(String(args.id ?? ''))
+    broadcast({ type: 'memory' })
+    return removed ? 'Forgotten.' : 'No memory with that id.'
+  }
   await waitForHuman()
   switch (name) {
     case 'browser_navigate':
@@ -393,6 +409,224 @@ function todoTool(name, args) {
 }
 
 const pushJobCard = (job, created = false) => push({ type: 'card', card: { kind: 'job', job: jobView(job), timezone: clerk.timezone, created } })
+
+// ---- the nightly dream: fold recent chats into durable memory ----
+let dreamPending = null
+const DREAM_PROMPT = `You are consolidating the user's memory. Read the current memory, the recent conversations, the to-dos and the scheduled jobs.
+Return ONLY a JSON object, no prose and no code fences:
+{"add":[{"kind":"fact|preference|pattern|open_loop","text":"..."}],"update":[{"id":"m...","text":"..."}],"remove":["m..."],"insights":["one short observation worth a later check-in"]}
+Rules: only durable things the user would expect you to remember (who they are, how they work, standing preferences, repeating patterns, promises made); never secrets, passwords or one-off details; at most 6 adds; do not duplicate existing memory; insights are short and useful for starting a conversation later.`
+
+const extractJson = text => {
+  const match = /\{[\s\S]*\}/.exec(String(text ?? ''))
+  if (!match) return null
+  try { return JSON.parse(match[0]) } catch { return null }
+}
+
+async function waitDream(cid, ms = 180_000) {
+  return new Promise(resolve => {
+    const entry = { cid, chunks: [], done: false }
+    const timer = setTimeout(() => { entry.done = true; resolve('') }, ms)
+    entry.finish = () => {
+      if (entry.done) return
+      entry.done = true
+      clearTimeout(timer)
+      resolve(entry.chunks.join('\n').trim())
+    }
+    dreamPending = entry
+  })
+}
+
+async function dream({ test = false } = {}) {
+  if (!test && (runningCid || activeRun)) return { ok: false, reason: 'busy' }
+  const cfg = modelConfig()
+  const apiKey = loadKey(cfg.kind)
+  if (!apiKey) return { ok: false, reason: 'no key' }
+  const since = memory.state.lastDreamAt || Date.now() - 24 * 3600 * 1000
+  const sources = convs.filter(c => c.title && c.updatedAt > since && !c.job).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 8)
+  const notes = []
+  for (const conv of sources) {
+    for (const event of historyOf(conv.id).filter(e => e.type === 'message').slice(-20)) {
+      notes.push(`${event.role === 'user' ? 'User' : 'Bob'}: ${String(event.text ?? '').slice(0, 300)}`)
+    }
+    if (notes.join('\n').length > 6000) break
+  }
+  if (!notes.length && !test) return { ok: false, reason: 'nothing new' }
+  const current = memory.state.items.slice(0, 40).map(i => `[${i.id}] ${i.kind}: ${i.text}`).join('\n') || '(empty)'
+  const todos = clerk.todos.filter(t => !t.done).slice(0, 10).map(t => `- ${t.title}${t.due ? ` (due ${t.due.replace('T', ' ')})` : ''}`).join('\n') || '(none)'
+  const jobs = clerk.jobs.filter(j => !j.todoId).slice(0, 8).map(j => `- ${j.title} (${describeSchedule(j.schedule)})`).join('\n') || '(none)'
+  const conv = createConversation('记忆整理')
+  const cid = conv.id
+  runningCid = cid
+  const reply = waitDream(cid)
+  try {
+    await ensureAgent(cfg, apiKey)
+    await agent.prompt(cid, `[Current memory]\n${current}\n\n[To-dos]\n${todos}\n\n[Scheduled jobs]\n${jobs}\n\n[Recent conversations]\n${notes.join('\n').slice(0, 6000)}\n\n${DREAM_PROMPT}`)
+    await sleep(400)
+    dreamPending?.finish?.()
+  } catch (error) {
+    dreamPending = null
+    if (runningCid === cid) runningCid = null
+    deleteConversation(cid)
+    return { ok: false, reason: error.message }
+  }
+  const text = await reply
+  dreamPending = null
+  if (runningCid === cid) runningCid = null
+  const parsed = extractJson(text)
+  if (!parsed) console.error(`[bobbot] dream produced no usable JSON: ${text.slice(0, 300)}`)
+  const result = parsed ? memory.applyDream(parsed) : { added: 0, updated: 0, removed: 0 }
+  deleteConversation(cid)
+  broadcast({ type: 'memory' })
+  return { ok: true, ...result, parsed: Boolean(parsed) }
+}
+
+async function maybeDream() {
+  const now = Date.now()
+  if (now - (memory.state.lastDreamAt || 0) < 20 * 3600 * 1000) return
+  const { hour, hhmm } = clockIn(clerk.timezone)
+  if (hour !== 3 || !hhmm.endsWith(':30')) return
+  await dream()
+}
+
+// ---- proactive check-ins: Bob may speak first, but only with a budget and quiet hours ----
+const PROACTIVE_FILE = path.join(DATA_DIR, 'proactive.json')
+const proactive = Object.assign(
+  { enabled: false, times: ['09:00', '18:30'], level: 0.35, cid: null, fired: {}, lastAt: 0 },
+  readJson(PROACTIVE_FILE, {}),
+)
+const saveProactive = () => fs.writeFileSync(PROACTIVE_FILE, JSON.stringify(proactive), { mode: 0o600 })
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
+const QUIET_FROM = 22
+const QUIET_TO = 8
+// 0 = reserved, 1 = clingy: the slider changes cadence and tone, never the safety rules.
+const proactivePlan = () => {
+  const level = Math.min(1, Math.max(0, Number(proactive.level ?? 0.35)))
+  if (level < 0.25) return { level, minGap: 8 * 3600e3, maxPerDay: 1, tone: 'reserved' }
+  if (level < 0.5) return { level, minGap: 4 * 3600e3, maxPerDay: 2, tone: 'balanced' }
+  if (level < 0.75) return { level, minGap: 3 * 3600e3, maxPerDay: 3, tone: 'active' }
+  return { level, minGap: 90 * 60e3, maxPerDay: 4, tone: 'chatty' }
+}
+
+const clockIn = tz => {
+  const p = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date())
+  return { hhmm: `${p.find(x => x.type === 'hour').value}:${p.find(x => x.type === 'minute').value}`, hour: Number(p.find(x => x.type === 'hour').value) }
+}
+const dayIn = tz => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+
+let proactivePending = null // { cid, chunks }
+
+function proactiveContext() {
+  const now = Date.now()
+  const lines = [`[Current time: ${humanTime(now)}, ${dayIn(clerk.timezone)}. Time zone: ${clerk.timezone}.]`]
+  const open = clerk.todos.filter(t => !t.done)
+  if (open.length) {
+    lines.push('Open to-dos:')
+    for (const t of open.slice(0, 6)) lines.push(`- ${t.title}${t.due ? ` (due ${t.due.replace('T', ' ')})` : ''}${t.note ? ` — ${t.note}` : ''}`)
+  }
+  const jobs = clerk.jobs.filter(j => j.enabled && !j.todoId).slice(0, 5)
+  if (jobs.length) {
+    lines.push('Scheduled jobs:')
+    for (const j of jobs) lines.push(`- ${j.title} (${describeSchedule(j.schedule)}), next ${humanTime(j.nextRun)}${j.lastStatus ? `, last ${j.lastStatus}` : ''}`)
+  }
+  const recent = convs.filter(c => c.title).sort((a, b) => b.updatedAt - a.updatedAt)[0]
+  if (recent) lines.push(`Last conversation activity: ${Math.round((now - recent.updatedAt) / 60000)} minutes ago ("${recent.title}").`)
+  return lines.join('\n')
+}
+
+const PROACTIVE_TONE = {
+  reserved: 'Stay reserved: speak only when something is clearly important, one short sentence.',
+  balanced: 'Be measured: one or two short sentences, and a light question only when it truly fits.',
+  active: 'You may also share one useful observation or ask a light follow-up question.',
+  chatty: 'Feel free to check in warmly, ask how things are going, and offer small useful suggestions.',
+}
+
+const PROACTIVE_PROMPT = `You may start this conversation yourself. Decide whether the user needs a short, useful message right now.
+Rules:
+- Only speak if something concrete needs their attention: a to-do due soon or overdue, a failed or missed task, something they asked to follow up on, or a pattern worth one light question.
+- If you speak, write one or two short sentences in the user's language. No lists, no report, no invented facts. A gentle question at the end is welcome.
+- Do not repeat a nudge you already sent today.
+- If nothing is worth their attention, reply with exactly [SILENT] and nothing else.`
+
+async function waitProactive(cid, ms = 180_000) {
+  return new Promise(resolve => {
+    const entry = { cid, chunks: [], done: false }
+    const timer = setTimeout(() => { entry.done = true; resolve('') }, ms)
+    entry.finish = () => {
+      if (entry.done) return
+      entry.done = true
+      clearTimeout(timer)
+      resolve(entry.chunks.join('\n').trim())
+    }
+    proactivePending = entry
+    entry.cleanup = () => { if (proactivePending === entry) proactivePending = null }
+  })
+}
+
+async function runProactive({ test = false } = {}) {
+  if (!proactive.enabled && !test) return { ok: false, reason: 'disabled' }
+  if (runningCid || activeRun) return { ok: false, reason: 'busy' }
+  const cfg = modelConfig()
+  const apiKey = loadKey(cfg.kind)
+  if (!apiKey) return { ok: false, reason: 'no key' }
+  const now = Date.now()
+  if (!test) {
+    const { hour } = clockIn(clerk.timezone)
+    if (hour >= QUIET_FROM || hour < QUIET_TO) return { ok: false, reason: 'quiet hours' }
+    const plan = proactivePlan()
+    if (now - (proactive.lastAt || 0) < plan.minGap) return { ok: false, reason: 'too soon' }
+    const today = dayIn(clerk.timezone)
+    const count = Object.keys(proactive.fired ?? {}).filter(k => k.startsWith(today)).length
+    if (count >= plan.maxPerDay) return { ok: false, reason: 'daily limit' }
+  }
+  let cid = proactive.cid && convOf(proactive.cid) ? proactive.cid : null
+  if (!cid) {
+    const conv = createConversation('主动关心')
+    cid = conv.id
+    proactive.cid = cid
+    saveProactive()
+    broadcast({ type: 'conversations' })
+  }
+  runningCid = cid
+  lastPromptCid = cid
+  const reply = waitProactive(cid)
+  try {
+    await ensureAgent(cfg, apiKey)
+    await agent.prompt(cid, `${proactiveContext()}\n\n${memory.context()}\n\nTone for this check-in: ${PROACTIVE_TONE[proactivePlan().tone]}\n\n${PROACTIVE_PROMPT}`)
+    await sleep(400)
+    proactivePending?.finish?.()
+  } catch (error) {
+    proactivePending?.cleanup?.()
+    proactivePending = null
+    if (runningCid === cid) runningCid = null
+    return { ok: false, reason: error.message }
+  }
+  const text = await reply
+  proactivePending?.cleanup?.()
+  proactivePending = null
+  if (runningCid === cid) runningCid = null
+  const silent = !text || text.includes('[SILENT]')
+  const stamp = `${dayIn(clerk.timezone)} ${clockIn(clerk.timezone).hhmm}`
+  proactive.lastAt = now
+  proactive.fired = { ...Object.fromEntries(Object.entries(proactive.fired ?? {}).filter(([k]) => k >= stamp.slice(0, 10))), [stamp]: silent ? 'silent' : 'sent' }
+  saveProactive()
+  if (silent) return { ok: true, sent: false }
+  push({ type: 'message', role: 'assistant', text }, true, cid)
+  clerk.addInbox({ title: '主动关心', text })
+  broadcast({ type: 'clerk' })
+  sendPush({ title: '主动关心', body: text.slice(0, 300) }).catch(() => {})
+  return { ok: true, sent: true, text, cid }
+}
+
+/** Fires a check-in when a configured time arrives, at most twice a day. */
+async function maybeProactive() {
+  if (!proactive.enabled || runningCid || activeRun) return
+  const { hhmm } = clockIn(clerk.timezone)
+  if (!proactive.times.includes(hhmm)) return
+  const key = `${dayIn(clerk.timezone)} ${hhmm}`
+  if (proactive.fired?.[key]) return
+  await runProactive()
+}
 
 // ---- WeChat: one conversation per contact, so contexts stay separate ----
 const bridgeContactsFile = path.join(DATA_DIR, 'bridge-contacts.json')
@@ -643,6 +877,8 @@ async function tick() {
   ticking = true
   try {
     await offerWechatChannel()
+    await maybeProactive()
+    await maybeDream()
     const now = Date.now()
     const { run, missed } = clerk.due(now)
     for (const job of missed) {
@@ -874,6 +1110,8 @@ async function ensureAgent(cfg, apiKey) {
 // ---- agent wiring ----
 agent.on('text', (cid, text) => {
   if (!convOf(cid)) return
+  if (proactivePending?.cid === cid) { proactivePending.chunks.push(text); return }
+  if (dreamPending?.cid === cid) { dreamPending.chunks.push(text); return }
   bridgeWaiters.get(cid)?.texts.push(text)
   if (activeRun?.cid === cid) activeRun.texts.push(text)
   push({ type: 'message', role: 'assistant', text }, true, cid)
@@ -1097,6 +1335,8 @@ async function route(req, res) {
   if (req.method === 'GET' && pathname === '/api/clerk') return send(res, 200, clerkView())
   if (req.method === 'GET' && pathname === '/api/extensions') return send(res, 200, extensionsView())
   if (req.method === 'GET' && pathname === '/api/features') return send(res, 200, { items: features.list() })
+  if (req.method === 'GET' && pathname === '/api/memory') return send(res, 200, memory.list())
+  if (req.method === 'GET' && pathname === '/api/proactive') return send(res, 200, { enabled: proactive.enabled, times: proactive.times, level: proactive.level })
   if (req.method === 'GET' && pathname === '/api/wechat/status') return send(res, 200, await wechatBridgeStatus())
   if (req.method === 'GET' && pathname === '/api/push/config') {
     return send(res, 200, { publicKey: vapid.publicKey, subscriptions: pushSubs.length })
@@ -1220,6 +1460,39 @@ async function route(req, res) {
     case '/api/takeover/done':
       takeover?.finish()
       return send(res, 200, { ok: true })
+    case '/api/memory/add': {
+      const item = memory.add({ text: body.text, kind: body.kind })
+      broadcast({ type: 'memory' })
+      return send(res, item ? 200 : 400, item ? { ok: true, item } : { error: 'EMPTY_OR_DUPLICATE' })
+    }
+    case '/api/memory/delete': {
+      const removed = memory.remove(String(body.id ?? ''))
+      broadcast({ type: 'memory' })
+      return send(res, removed ? 200 : 404, { ok: removed })
+    }
+    case '/api/memory/dream': {
+      const result = await dream({ test: true })
+      return send(res, 200, result)
+    }
+    case '/api/proactive': {
+      if (typeof body.enabled === 'boolean') proactive.enabled = body.enabled
+      if (body.level !== undefined) {
+        const level = Number(body.level)
+        if (!Number.isFinite(level) || level < 0 || level > 1) return send(res, 400, { error: 'BAD_LEVEL' })
+        proactive.level = Math.round(level * 100) / 100
+      }
+      if (Array.isArray(body.times)) {
+        const times = body.times.map(t => String(t).trim()).filter(t => TIME_RE.test(t))
+        if (!times.length || times.length > 4) return send(res, 400, { error: 'BAD_TIMES' })
+        proactive.times = [...new Set(times)].sort()
+      }
+      saveProactive()
+      return send(res, 200, { enabled: proactive.enabled, times: proactive.times, level: proactive.level })
+    }
+    case '/api/proactive/run': {
+      const result = await runProactive({ test: true })
+      return send(res, 200, result)
+    }
     case '/api/features/install': {
       try {
         const item = await features.install(body)

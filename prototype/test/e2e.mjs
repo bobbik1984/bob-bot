@@ -805,6 +805,31 @@ try {
     assert.ok(!(await getJson('/api/features')).body.items.some(f => f.name === 'demo'))
   })
 
+  await check('the nightly dream folds chats into memory, and a check-in can speak or stay silent', async () => {
+    script.push(say('{"add":[{"kind":"fact","text":"用户在上海工作"}],"insights":["最近常问天气"]}'))
+    const dreamed = await post('/api/memory/dream', {})
+    assert.equal(dreamed.status, 200)
+    assert.equal(dreamed.data.ok, true)
+    const saved = (await getJson('/api/memory')).body
+    const item = saved.items.find(i => i.text === '用户在上海工作')
+    assert.ok(item, 'the dream did not save the memory')
+    assert.ok(saved.insights.some(i => i.text === '最近常问天气'), 'the dream did not keep the insight')
+    assert.equal((await post('/api/memory/delete', { id: item.id })).status, 200)
+
+    assert.equal((await post('/api/proactive', { enabled: true, times: ['09:00'] })).status, 200)
+    assert.equal((await post('/api/proactive', { level: 2 })).status, 400)
+    const leveled = await post('/api/proactive', { level: 0.8 })
+    assert.equal(leveled.status, 200); assert.equal(leveled.data.level, 0.8)
+    script.push(say('你今天有两个待办，要我帮你排一下吗？'))
+    const sent = await post('/api/proactive/run', {})
+    assert.equal(sent.data.sent, true)
+    assert.ok((await clerkView()).inbox.some(n => n.title === '主动关心'), 'the check-in did not reach the inbox')
+    script.push(say('[SILENT]'))
+    const quiet = await post('/api/proactive/run', {})
+    assert.equal(quiet.data.sent, false)
+    await post('/api/proactive', { enabled: false })
+  })
+
   console.log('Spending limit')
   await check('at the cap, new chat is refused with no model call', async () => {
     assert.equal((await post('/api/budget', { capUsd: 0.000001 })).status, 200)

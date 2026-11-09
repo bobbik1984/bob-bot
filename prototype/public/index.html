@@ -427,6 +427,26 @@ html.fine .conv-main { padding-right:92px; }
         <div id="featureList" class="stack"></div>
       </div>
       <div class="section">
+        <h3 data-t="memoryTitle"></h3>
+        <p class="hint" data-t="memoryHint"></p>
+        <div id="memoryList" class="stack"></div>
+        <p class="hint" id="memoryInsights" hidden></p>
+        <div class="row"><button class="btn" id="memoryDream" data-t="memoryDreamNow"></button><span class="hint" id="memoryLastDream"></span></div>
+        <p class="hint" id="memoryMsg" role="status"></p>
+      </div>
+      <div class="section">
+        <h3 data-t="proactiveTitle"></h3>
+        <div class="keystate none" id="proactiveState"></div>
+        <p class="hint" data-t="proactiveHint"></p>
+        <label class="hint" for="proactiveLevel" data-t="proactiveLevel"></label>
+        <input type="range" id="proactiveLevel" min="0" max="1" step="0.05" style="width:100%;accent-color:var(--accent)">
+        <div class="row" style="justify-content:space-between"><span class="mini" data-t="levelReserved"></span><span class="mini" data-t="levelBalanced"></span><span class="mini" data-t="levelActive"></span><span class="mini" data-t="levelClingy"></span></div>
+        <p class="hint" id="proactiveLevelText"></p>
+        <div class="row"><input class="field" id="proactiveTimes" placeholder="09:00, 18:30" autocapitalize="off" autocomplete="off"><button class="btn" id="saveProactive" data-t="save"></button></div>
+        <div class="row"><button class="btn primary" id="toggleProactive"></button><button class="btn" id="proactiveNow" data-t="proactiveNow"></button></div>
+        <p class="hint" id="proactiveMsg" role="status"></p>
+      </div>
+      <div class="section">
         <h3 data-t="pushTitle"></h3>
         <div class="keystate none" id="pushState"></div>
         <p class="hint" id="pushHint" data-t="pushHint"></p>
@@ -572,6 +592,17 @@ const I18N = {
   ch_wechat:['微信（官方 iLink）','WeChat (official iLink)'],
   featuresTitle:['功能扩展','Features'], featuresHint:['Bob 可以在对话里给自己安装小型功能包（工具 + 设置面板），安装前会把代码给你确认。','Bob can install small feature packages (tools plus a settings panel) through chat; you review the code before it lands.'],
   featuresEmpty:['还没有安装功能包。','No feature packages installed yet.'], featuresOpen:['打开','Open'], featuresFailed:['加载失败','failed to load'],
+  memoryTitle:['记忆','Memory'], memoryHint:['Bob 在夜里会把最近的对话整理成对你的长期记忆；你可以在谈话里让他记住或忘掉事情。','At night Bob folds recent chats into durable memory. You can ask him to remember or forget things in chat.'],
+  memoryEmpty:['还没有记忆。','Nothing remembered yet.'], memoryDreamNow:['现在整理想一次','Dream now'],
+  memoryLastDream:['上次整理：{n}','Last dream: {n}'], memoryDreamed:['整理完成：新增 {n} 条','Done: {n} new memories'],
+  memoryDreamFailed:['整理失败：{n}','Dream failed: {n}'], memoryInsights:['最近观察','Recent observations'],
+  proactiveTitle:['主动关心','Check-ins'],
+  proactiveHint:['在设定的时间，Bob 会看一眼你的待办和任务，只有确实值得提醒时才开口；每天最多两次，22:00–08:00 不打扰。','At the times you set, Bob looks at your to-dos and jobs and speaks only when something is worth it; at most twice a day, never between 22:00 and 08:00.'],
+  proactiveOff:['已关闭','Off'], proactiveOn:['已开启','On'], proactiveNow:['现在试一次','Try now'],
+  proactiveLevel:['主动性','Proactivity'], levelReserved:['高冷','Reserved'], levelBalanced:['得体','Balanced'], levelActive:['积极','Active'], levelClingy:['粘人','Clingy'],
+  proactiveSent:['已经发了一条主动消息，去对话或收件箱看看。','Sent a check-in; see the chat or inbox.'],
+  proactiveSilent:['这次没有值得打扰你的内容。','Nothing worth interrupting you this time.'],
+  proactiveSkip:['暂时跳过：{n}','Skipped: {n}'],
   pushTitle:['手机通知','Phone notifications'],
   pushHint:['把本站添加到主屏幕后，可以从桌面像 App 一样打开；提醒由系统推送，Safari 关掉也能收到。','Add this site to the Home Screen and open it from there; reminders arrive as system notifications even when Safari is closed.'],
   pushIosHint:['iPhone（iOS 16.4+）：用 Safari 打开 → 分享 → 添加到主屏幕 → 从桌面图标打开，再点“启用通知”。','iPhone (iOS 16.4+): open in Safari → Share → Add to Home Screen → open from the icon → tap Enable.'],
@@ -742,7 +773,7 @@ function show(view) {
   else drawAttachments()
   if (view === 'chat') atEnd()
   if (view === 'clerk') loadClerk()
-  if (view === 'settings') { loadModelCard().catch(() => {}); loadExtensions(); loadClerk(); loadPushState(); loadFeatures() }
+  if (view === 'settings') { loadModelCard().catch(() => {}); loadExtensions(); loadClerk(); loadPushState(); loadFeatures(); loadProactive(); loadMemory() }
   refreshOrb(); refreshBanner(); setHero()
 }
 document.querySelectorAll('nav button').forEach(b => { b.onclick = () => show(b.dataset.view) })
@@ -1282,6 +1313,7 @@ function connect() {
     else if (e.type === 'clerk') loadClerk()
     else if (e.type === 'extensions') { if (currentView === 'settings') loadExtensions() }
     else if (e.type === 'features') { if (currentView === 'settings') loadFeatures() }
+    else if (e.type === 'memory') { if (currentView === 'settings') loadMemory() }
     else if (e.type === 'budget') showBudget(e)
     else if (e.type === 'status') {
       if (e.status === 'running') runningCid = e.cid
@@ -1404,6 +1436,73 @@ $('langSel').onchange = () => {
   location.reload()
 }
 CHANNEL_TYPES.forEach(k => $('chType').append(new Option(t('ch_' + k), k)))
+async function loadMemory() {
+  const data = await getJson('/api/memory')
+  if (!data) return
+  const list = $('memoryList')
+  list.replaceChildren()
+  if (!data.items.length) { list.append(el('p', 'hint', t('memoryEmpty'))) }
+  for (const item of data.items) {
+    const row = el('div', 'feature-row')
+    const info = el('div', 'feature-info')
+    info.append(el('b', '', item.text), el('small', '', item.kind))
+    const remove = el('button', 'btn small danger', t('remove'))
+    remove.onclick = async () => { await post('/api/memory/delete', { id: item.id }); loadMemory() }
+    row.append(info, remove)
+    list.append(row)
+  }
+  const insights = $('memoryInsights')
+  insights.hidden = !data.insights.length
+  insights.textContent = data.insights.length ? `${t('memoryInsights')}: ` + data.insights.map(i => i.text).join(' · ') : ''
+  $('memoryLastDream').textContent = data.lastDreamAt ? t('memoryLastDream', whenText(data.lastDreamAt, clerkData?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone)) : ''
+}
+$('memoryDream').onclick = async () => {
+  $('memoryMsg').textContent = '…'
+  const result = await post('/api/memory/dream', {})
+  const data = result.data ?? {}
+  $('memoryMsg').textContent = result.status === 200 && data.ok ? t('memoryDreamed', data.added ?? 0) : t('memoryDreamFailed', data.reason ?? result.status)
+  loadMemory()
+}
+let proactiveState = { enabled: false, times: [] }
+async function loadProactive() {
+  const data = await getJson('/api/proactive')
+  if (!data) return
+  proactiveState = data
+  const box = $('proactiveState')
+  box.className = 'keystate ' + (data.enabled ? '' : 'none')
+  box.textContent = data.enabled ? t('proactiveOn') : t('proactiveOff')
+  $('toggleProactive').textContent = data.enabled ? t('proactiveOff') : t('proactiveOn')
+  if (document.activeElement !== $('proactiveTimes')) $('proactiveTimes').value = data.times.join(', ')
+  const level = Number(data.level ?? 0.35)
+  if (document.activeElement !== $('proactiveLevel')) $('proactiveLevel').value = String(level)
+  $('proactiveLevelText').textContent = `${levelName(level)} · ${Math.round(level * 100)}%`
+}
+const levelName = level => t(level < 0.25 ? 'levelReserved' : level < 0.5 ? 'levelBalanced' : level < 0.75 ? 'levelActive' : 'levelClingy')
+$('proactiveLevel').oninput = () => {
+  const level = Number($('proactiveLevel').value)
+  $('proactiveLevelText').textContent = `${levelName(level)} · ${Math.round(level * 100)}%`
+}
+$('proactiveLevel').onchange = async () => {
+  await post('/api/proactive', { level: Number($('proactiveLevel').value) })
+  loadProactive()
+}
+$('saveProactive').onclick = async () => {
+  const times = $('proactiveTimes').value.split(/[,，\s]+/).filter(Boolean)
+  const result = await post('/api/proactive', { times })
+  $('proactiveMsg').textContent = result.status === 200 ? t('saved') : (result.data.error ?? t('failed'))
+  loadProactive()
+}
+$('toggleProactive').onclick = async () => {
+  await post('/api/proactive', { enabled: !proactiveState.enabled })
+  loadProactive()
+}
+$('proactiveNow').onclick = async () => {
+  $('proactiveMsg').textContent = '…'
+  const result = await post('/api/proactive/run', {})
+  const data = result.data ?? {}
+  $('proactiveMsg').textContent = data.sent ? t('proactiveSent') : data.ok ? t('proactiveSilent') : t('proactiveSkip', data.reason ?? result.status)
+  loadProactive()
+}
 async function loadFeatures() {
   const data = await getJson('/api/features')
   if (!data) return
