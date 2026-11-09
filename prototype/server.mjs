@@ -17,6 +17,7 @@ import { Extensions, checkMcp, checkPackages, checkSkill, installSteps, parseSki
 import { webFetch } from './web-fetch.mjs'
 import { startCompatApi } from './compat-api.mjs'
 import QRCode from 'qrcode'
+import * as webpush from 'web-push'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const HOST = process.env.HOST || '127.0.0.1'
@@ -464,7 +465,9 @@ async function deliver(job, text, cards = []) {
   for (const id of job.channels) {
     const channel = clerk.channel(id)
     if (!channel) continue
-    const sent = await sendToChannel(channel, body)
+    const sent = channel.type === 'webpush'
+      ? await sendPush({ title: job.title, body: body.slice(0, 3500) })
+      : await sendToChannel(channel, body)
     delivery.push({ channel: channel.name, ok: sent.ok, ...(sent.ok ? {} : { error: sent.error }) })
   }
   clerk.setDelivery(entry.id, delivery)
@@ -566,6 +569,40 @@ async function wechatLogin() {
     if (status.qrFresh && status.qrAt && status.qrAt > before) return status
   }
   throw new Error('the bridge did not produce a QR code in time')
+}
+
+// ---- home-screen notifications (PWA web push, works on iPhone 16.4+) ----
+const PUSH_FILE = path.join(DATA_DIR, 'push-subscriptions.json')
+const VAPID_FILE = path.join(DATA_DIR, 'vapid.json')
+let pushSubs = readJson(PUSH_FILE, [])
+let vapid = readJson(VAPID_FILE, null)
+if (!vapid?.publicKey || !vapid?.privateKey) {
+  vapid = webpush.generateVAPIDKeys()
+  fs.writeFileSync(VAPID_FILE, JSON.stringify(vapid), { mode: 0o600 })
+}
+try { webpush.setVapidDetails('mailto:bob@localhost', vapid.publicKey, vapid.privateKey) } catch (error) { console.error('[bobbot] web push is unavailable:', error.message) }
+
+const savePushSubs = () => fs.writeFileSync(PUSH_FILE, JSON.stringify(pushSubs), { mode: 0o600 })
+
+/** Sends a notification to every subscribed home-screen app. Dead subscriptions are dropped. */
+async function sendPush({ title, body, url = '/' }) {
+  if (!pushSubs.length) return { ok: false, error: 'No device is subscribed yet' }
+  let sent = 0
+  let lastError = ''
+  const alive = []
+  for (const sub of pushSubs) {
+    try {
+      await webpush.sendNotification(sub, JSON.stringify({ title, body, url }))
+      sent += 1
+      alive.push(sub)
+    } catch (error) {
+      if (error.statusCode === 404 || error.statusCode === 410) continue // gone: keep it out
+      lastError = error.message
+      alive.push(sub)
+    }
+  }
+  if (alive.length !== pushSubs.length) { pushSubs = alive; savePushSubs() }
+  return sent > 0 ? { ok: true } : { ok: false, error: lastError || 'Delivery failed' }
 }
 
 // After the official WeChat bridge logs in, offer a reminder channel once, so jobs can send there by name.
@@ -945,6 +982,12 @@ async function route(req, res) {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Frame-Options': 'DENY' })
     return res.end(fs.readFileSync(path.join(here, 'public/index.html')))
   }
+  if (req.method === 'GET' && ['/manifest.webmanifest', '/sw.js', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-180.png'].includes(pathname)) {
+    const type = pathname.endsWith('.webmanifest') ? 'application/manifest+json; charset=utf-8'
+      : pathname.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'image/png'
+    res.writeHead(200, { 'Content-Type': type, 'Cache-Control': pathname === '/sw.js' ? 'no-store' : 'public, max-age=86400' })
+    return res.end(fs.readFileSync(path.join(here, 'public', pathname)))
+  }
   if (req.method === 'GET' && pathname === '/api/state') {
     const ok = authed(req)
     const cfg = modelConfig()
@@ -976,6 +1019,9 @@ async function route(req, res) {
   if (req.method === 'GET' && pathname === '/api/clerk') return send(res, 200, clerkView())
   if (req.method === 'GET' && pathname === '/api/extensions') return send(res, 200, extensionsView())
   if (req.method === 'GET' && pathname === '/api/wechat/status') return send(res, 200, await wechatBridgeStatus())
+  if (req.method === 'GET' && pathname === '/api/push/config') {
+    return send(res, 200, { publicKey: vapid.publicKey, subscriptions: pushSubs.length })
+  }
   if (req.method === 'GET' && pathname === '/api/conversations') {
     return send(res, 200, { items: listConversations(), running: runningCid })
   }
@@ -1084,6 +1130,27 @@ async function route(req, res) {
     case '/api/takeover/done':
       takeover?.finish()
       return send(res, 200, { ok: true })
+    case '/api/push/subscribe': {
+      const sub = body.subscription
+      if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth) return send(res, 400, { error: 'BAD_SUBSCRIPTION' })
+      pushSubs = [...pushSubs.filter(s => s.endpoint !== sub.endpoint), { endpoint: sub.endpoint, keys: sub.keys, at: Date.now() }]
+      savePushSubs()
+      if (!clerk.channels.some(c => c.type === 'webpush')) {
+        clerk.addChannel({ type: 'webpush', name: '手机通知', config: {} })
+        broadcast({ type: 'clerk' })
+      }
+      return send(res, 200, { ok: true, subscriptions: pushSubs.length })
+    }
+    case '/api/push/unsubscribe': {
+      const endpoint = String(body.endpoint ?? '')
+      pushSubs = pushSubs.filter(s => s.endpoint !== endpoint)
+      savePushSubs()
+      return send(res, 200, { ok: true, subscriptions: pushSubs.length })
+    }
+    case '/api/push/test': {
+      const sent = await sendPush({ title: 'Bob', body: '通知已连通，之后提醒会出现在这里。' })
+      return send(res, sent.ok ? 200 : 500, sent)
+    }
     case '/api/wechat/login': {
       try {
         const status = await wechatLogin()

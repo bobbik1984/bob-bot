@@ -767,6 +767,16 @@ try {
     assert.ok(convs.some(c => c.title === 'WeChat · wxid_ann'), 'no conversation for the WeChat contact')
   })
 
+  await check('a home-screen device can subscribe and gets a notification channel', async () => {
+    const before = (await getJson('/api/push/config')).body.subscriptions
+    const endpoint = 'https://example.invalid/push/1'
+    const saved = await post('/api/push/subscribe', { subscription: { endpoint, keys: { p256dh: 'x', auth: 'y' } } })
+    assert.equal(saved.status, 200)
+    assert.equal(saved.data.subscriptions, before + 1)
+    assert.ok((await clerkView()).channels.some(c => c.name === '手机通知'), 'no notification channel was created')
+    assert.equal((await post('/api/push/unsubscribe', { endpoint })).status, 200)
+  })
+
   console.log('Spending limit')
   await check('at the cap, new chat is refused with no model call', async () => {
     assert.equal((await post('/api/budget', { capUsd: 0.000001 })).status, 200)

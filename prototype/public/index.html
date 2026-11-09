@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#f4f6fb">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Bob">
 <title>Bob</title>
 <style>
 :root {
@@ -394,6 +399,15 @@ nav button svg { width:24px; height:24px; }
         </details>
       </div>
       <div class="section">
+        <h3 data-t="pushTitle"></h3>
+        <div class="keystate none" id="pushState"></div>
+        <p class="hint" id="pushHint" data-t="pushHint"></p>
+        <div class="row">
+          <button class="btn primary" id="pushEnable" data-t="pushEnable"></button>
+          <button class="btn" id="pushTest" data-t="pushTest" hidden></button>
+        </div>
+      </div>
+      <div class="section">
         <h3 data-t="zoneTitle"></h3>
         <div class="row"><input class="field" id="zone" autocapitalize="off" autocomplete="off" aria-label="Time zone"><button class="btn" id="saveZone" data-t="save"></button></div>
         <p class="hint" id="zoneMsg" role="status"></p>
@@ -521,6 +535,13 @@ const I18N = {
   confirmDelete:['确定删除「{n}」？','Delete "{n}"?'], toApp:['应用内','This app'],
   lastOk:['上次：','Last: '], lastFailed:['上次失败：','Last failed: '], lastMissed:['上次错过：','Last missed: '],
   ch_wechat:['微信（官方 iLink）','WeChat (official iLink)'],
+  pushTitle:['手机通知','Phone notifications'],
+  pushHint:['把本站添加到主屏幕后，可以从桌面像 App 一样打开；提醒由系统推送，Safari 关掉也能收到。','Add this site to the Home Screen and open it from there; reminders arrive as system notifications even when Safari is closed.'],
+  pushIosHint:['iPhone（iOS 16.4+）：用 Safari 打开 → 分享 → 添加到主屏幕 → 从桌面图标打开，再点“启用通知”。','iPhone (iOS 16.4+): open in Safari → Share → Add to Home Screen → open from the icon → tap Enable.'],
+  pushEnable:['启用通知','Enable notifications'], pushTest:['发送测试通知','Send a test'],
+  pushOn:['已开启，{n} 台设备已订阅','On, {n} device(s) subscribed'], pushOff:['尚未开启','Not enabled yet'],
+  pushDenied:['通知权限被拒绝，请在系统设置 → 通知 → Bob 中允许','Notifications are blocked; allow them in Settings → Notifications → Bob'],
+  pushUnsupported:['这个浏览器不能发通知，或需要先从主屏幕图标打开','This browser cannot show notifications, or the app must be opened from the Home Screen'],
   wxLoginBtn:['生成登录二维码','Generate login code'], wxRefresh:['重新生成二维码','New code'], wxWorking:['正在生成…','Generating…'],
   wxNotLogged:['微信桥还没有登录。','The WeChat bridge is not signed in yet.'],
   wxScanHint:['用手机微信扫码并确认授权，成功后这里会自动变成已登录。','Scan with WeChat and confirm; this switches to signed in automatically.'],
@@ -677,7 +698,7 @@ function show(view) {
   else drawAttachments()
   if (view === 'chat') atEnd()
   if (view === 'clerk') loadClerk()
-  if (view === 'settings') { loadModelCard().catch(() => {}); loadExtensions(); loadClerk() }
+  if (view === 'settings') { loadModelCard().catch(() => {}); loadExtensions(); loadClerk(); loadPushState() }
   refreshOrb(); refreshBanner(); setHero()
 }
 document.querySelectorAll('nav button').forEach(b => { b.onclick = () => show(b.dataset.view) })
@@ -1274,6 +1295,51 @@ $('langSel').onchange = () => {
   location.reload()
 }
 CHANNEL_TYPES.forEach(k => $('chType').append(new Option(t('ch_' + k), k)))
+let pushConfig = null
+const isInstalled = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
+const urlB64ToBytes = base64 => {
+  const padded = (base64 + '='.repeat((4 - (base64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/')
+  const raw = atob(padded)
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)))
+}
+async function loadPushState() {
+  const can = 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window
+  pushConfig = pushConfig ?? await getJson('/api/push/config')
+  const count = pushConfig?.subscriptions ?? 0
+  const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+  const box = $('pushState'), enable = $('pushEnable'), test = $('pushTest')
+  enable.disabled = false
+  box.className = 'keystate ' + (count > 0 ? '' : 'none')
+  box.textContent = count > 0 ? t('pushOn', count) : t('pushOff')
+  test.hidden = count === 0
+  if (iOS && !isInstalled()) { $('pushHint').textContent = t('pushIosHint'); enable.disabled = true }
+  else if (!can) { $('pushHint').textContent = t('pushUnsupported'); enable.disabled = true }
+  else if (Notification.permission === 'denied') { $('pushHint').textContent = t('pushDenied'); enable.disabled = true }
+  else $('pushHint').textContent = t('pushHint')
+}
+$('pushEnable').onclick = async () => {
+  try {
+    if (!pushConfig) await loadPushState()
+    const reg = await navigator.serviceWorker.register('/sw.js')
+    await navigator.serviceWorker.ready
+    const permission = await Notification.requestPermission()
+    if (permission !== 'granted') return loadPushState()
+    let sub = await reg.pushManager.getSubscription()
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToBytes(pushConfig.publicKey) })
+    }
+    const saved = await post('/api/push/subscribe', { subscription: sub.toJSON() })
+    if (saved.status !== 200) throw new Error(saved.data.error ?? 'subscribe failed')
+    await post('/api/push/test')
+    loadPushState()
+  } catch (error) {
+    $('pushHint').textContent = String(error?.message ?? error)
+  }
+}
+$('pushTest').onclick = async () => {
+  const r = await post('/api/push/test')
+  $('pushHint').textContent = r.status === 200 ? t('pushTest') : (r.data.error ?? t('failed'))
+}
 let wxLoginTimer = null
 async function loadWechatLogin() {
   clearTimeout(wxLoginTimer)

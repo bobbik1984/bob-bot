@@ -2,7 +2,7 @@
 // Secrets stay on the server and are never shown to the page or to the model.
 import crypto from 'node:crypto'
 
-export const CHANNEL_TYPES = ['lark', 'wecom', 'telegram', 'discord', 'wechat']
+export const CHANNEL_TYPES = ['lark', 'wecom', 'telegram', 'discord', 'wechat', 'webpush']
 const MAX_TEXT = 3500
 
 const HOSTS = {
@@ -21,6 +21,10 @@ export function validateChannel(input) {
   if (!CHANNEL_TYPES.includes(type)) throw fail('BAD_TYPE')
   const name = String(input?.name ?? '').trim()
   if (!name || name.length > 40) throw fail('BAD_NAME')
+  if (type === 'webpush') {
+    // Home-screen notifications; devices subscribe from the page, so there is nothing to type here.
+    return { type, name, config: {} }
+  }
   if (type === 'wechat') {
     // Official WeChat: the bridge keeps the login, and the owner is the person who scanned.
     return { type, name, config: {} }
@@ -45,7 +49,9 @@ export function validateChannel(input) {
 /** What the page may see: never the webhook, token or secret. */
 export function publicChannel(channel) {
   const c = channel.config
-  const hint = channel.type === 'wechat'
+  const hint = channel.type === 'webpush'
+    ? '推送到已添加主屏幕的设备'
+    : channel.type === 'wechat'
     ? '通过官方微信桥发送'
     : channel.type === 'telegram'
     ? `${c.token.split(':')[0]}:••••${c.token.slice(-4)}`

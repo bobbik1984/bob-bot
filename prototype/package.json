@@ -16,6 +16,7 @@
   "dependencies": {
     "@deepseek-ai/dsh": "0.2.2-rc.1",
     "ws": "8.22.1",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "web-push": "^4.0.0"
   }
 }
