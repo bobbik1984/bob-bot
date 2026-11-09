@@ -110,12 +110,13 @@ export class Clerk {
     this.timezone = validTimezone(saved.timezone) ? saved.timezone : serverTimezone
     this.timezoneChosen = Boolean(saved.timezoneChosen)
     this.jobs = saved.jobs ?? []
+    this.todos = saved.todos ?? []
     this.channels = saved.channels ?? []
     try { this.inbox = JSON.parse(fs.readFileSync(this.inboxFile, 'utf8')) } catch { this.inbox = [] }
   }
 
   #save() {
-    fs.writeFileSync(this.file, JSON.stringify({ timezone: this.timezone, timezoneChosen: this.timezoneChosen, jobs: this.jobs, channels: this.channels }), { mode: 0o600 })
+    fs.writeFileSync(this.file, JSON.stringify({ timezone: this.timezone, timezoneChosen: this.timezoneChosen, jobs: this.jobs, todos: this.todos, channels: this.channels }), { mode: 0o600 })
   }
 
   #saveInbox() { fs.writeFileSync(this.inboxFile, JSON.stringify(this.inbox.slice(0, MAX_INBOX)), { mode: 0o600 }) }
@@ -154,7 +155,7 @@ export class Clerk {
   }
 
   // ---- jobs ----
-  addJob({ title, kind, text, schedule, channels = [] }, now = Date.now()) {
+  addJob({ title, kind, text, schedule, channels = [], todoId = null }, now = Date.now()) {
     if (this.jobs.length >= MAX_JOBS) throw fail('TOO_MANY_JOBS')
     if (kind !== 'task' && kind !== 'reminder') throw fail('BAD_KIND')
     const cleanTitle = String(title ?? '').trim().slice(0, 60)
@@ -163,7 +164,7 @@ export class Clerk {
     const normalized = normalizeSchedule(schedule)
     const next = nextRun(normalized, this.timezone, now)
     if (next === null) throw fail('IN_THE_PAST')
-    const job = { id: `j${crypto.randomBytes(4).toString('hex')}`, title: cleanTitle, kind, text: cleanText, schedule: normalized, channels, enabled: true, cid: null, createdAt: now, nextRun: next, lastRun: null, lastStatus: null, lastResult: null }
+    const job = { id: `j${crypto.randomBytes(4).toString('hex')}`, title: cleanTitle, kind, text: cleanText, schedule: normalized, channels, todoId, enabled: true, cid: null, createdAt: now, nextRun: next, lastRun: null, lastStatus: null, lastResult: null }
     this.jobs.push(job)
     this.#save()
     return job
@@ -193,6 +194,33 @@ export class Clerk {
   advance(job, now = Date.now()) {
     job.nextRun = job.schedule.type === 'once' ? null : nextRun(job.schedule, this.timezone, now)
     if (job.nextRun === null) job.enabled = false
+    this.#save()
+  }
+
+  // ---- to-dos: things to remember or do, with an optional due time ----
+  addTodo({ title, note = '', due = null, jobId = null }, now = Date.now()) {
+    const clean = String(title ?? '').trim().slice(0, 100)
+    if (!clean) throw fail('EMPTY')
+    if (due !== null && !AT.test(due)) throw fail('BAD_AT')
+    if (this.todos.length >= 200) throw fail('TOO_MANY_TODOS')
+    const todo = { id: `t${crypto.randomBytes(4).toString('hex')}`, title: clean, note: String(note ?? '').trim().slice(0, 300), due, done: false, createdAt: now, jobId }
+    this.todos.unshift(todo)
+    this.#save()
+    return todo
+  }
+  todo(id) { return this.todos.find(t => t.id === id) }
+  setTodoDone(id, done) {
+    const todo = this.todo(id)
+    todo.done = Boolean(done)
+    const job = todo.jobId ? this.job(todo.jobId) : null
+    if (job && todo.done) { job.enabled = false; job.nextRun = null } // finished, so no reminder
+    this.#save()
+    return todo
+  }
+  removeTodo(id) {
+    const todo = this.todo(id)
+    if (todo?.jobId) this.jobs = this.jobs.filter(j => j.id !== todo.jobId)
+    this.todos = this.todos.filter(t => t.id !== id)
     this.#save()
   }
 

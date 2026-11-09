@@ -174,6 +174,10 @@ const TOOLS = [
     schedule: { type: 'object', description: 'type once (at "YYYY-MM-DDTHH:MM"), daily (time "HH:MM"), weekly (days [0-6], 0 = Sunday, and time) or monthly (day 1-31 and time). Times are in the user\'s time zone.', properties: { type: { type: 'string', enum: ['once', 'daily', 'weekly', 'monthly'] }, at: { type: 'string' }, time: { type: 'string' }, days: { type: 'array', items: { type: 'integer' } }, day: { type: 'integer' } }, required: ['type'] },
     channels: { type: 'array', items: { type: 'string' }, description: 'Channel names from clerk_list_channels. Leave empty for the in-app inbox only.' },
   }, ['title', 'kind', 'text', 'schedule']],
+  ['todo_add', 'Add a to-do or a meeting to the user\'s list. With a due time (in the user\'s time zone) the user is also reminded then. Use this, never a file, for things to remember.', { title: { type: 'string' }, due: { type: 'string', description: 'Optional, "YYYY-MM-DDTHH:MM"' }, note: { type: 'string' } }, ['title']],
+  ['todo_list', 'List the to-dos.', {}, []],
+  ['todo_done', 'Mark a to-do done (or not done) by its id.', { id: { type: 'string' }, done: { type: 'boolean' } }, ['id']],
+  ['todo_remove', 'Remove a to-do by its id.', { id: { type: 'string' } }, ['id']],
   ['show_card', 'Show organized information to the user as a card in the chat: weather advice, a comparison, a list of results. Use it instead of a long text block.', {
     title: { type: 'string' }, subtitle: { type: 'string' }, tag: { type: 'string', description: 'A short label such as Weather or Result' },
     fields: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, value: { type: 'string' } }, required: ['label', 'value'] }, description: 'Up to 12 label and value pairs' },
@@ -239,6 +243,7 @@ async function callTool(name, args) {
   if (name === 'web_fetch') return webFetch(String(args.url ?? ''))
   if (name === 'show_card') return showCard(args)
   if (name.startsWith('clerk_')) return clerkTool(name, args)
+  if (name.startsWith('todo_')) return todoTool(name, args)
   if (['ext_list', 'install_package', 'mcp_add', 'mcp_remove', 'skill_create', 'skill_install', 'skill_remove'].includes(name)) return extTool(name, args)
   await waitForHuman()
   switch (name) {
@@ -332,6 +337,36 @@ const jobView = j => ({
   lastStatus: j.lastStatus, lastResult: j.lastResult, cid: j.cid, running: activeRun?.jobId === j.id,
   channels: j.channels.map(id => clerk.channel(id)?.name).filter(Boolean),
 })
+const pushTodoCard = todo => push({ type: 'card', card: { kind: 'todo', todo, timezone: clerk.timezone } })
+
+function todoTool(name, args) {
+  if (name === 'todo_list') return clerk.todos.map(t => `[${t.id}] ${t.done ? '(done) ' : ''}${t.title}${t.due ? ` - due ${t.due.replace('T', ' ')}` : ''}`).join('\n') || 'No to-dos.'
+  if (activeRun) throw new Error('A scheduled run cannot change the to-do list.')
+  if (name === 'todo_add') {
+    let due = null
+    if (args.due) {
+      due = String(args.due).trim()
+      try { normalizeSchedule({ type: 'once', at: due }) } catch { throw new Error('due must look like 2026-11-09T09:30.') }
+    }
+    const title = String(args.title ?? '').trim()
+    if (!title) throw new Error('A title is required.')
+    let job = null
+    if (due && nextRun({ type: 'once', at: due }, clerk.timezone, Date.now()) !== null) {
+      job = clerk.addJob({ title, kind: 'reminder', text: title, schedule: { type: 'once', at: due }, channels: [] })
+    }
+    const todo = clerk.addTodo({ title, note: args.note, due, jobId: job?.id ?? null })
+    if (job) clerk.update(job, { todoId: todo.id })
+    pushTodoCard(todo)
+    broadcast({ type: 'clerk' })
+    return `Added ${todo.id}${job ? ', with a reminder at the due time' : ''}. The user sees it as a card; do not repeat its details.`
+  }
+  const todo = clerk.todo(String(args.id ?? ''))
+  if (!todo) throw new Error(`No to-do with id "${args.id}". Call todo_list.`)
+  if (name === 'todo_done') { clerk.setTodoDone(todo.id, args.done !== false); broadcast({ type: 'clerk' }); return 'Updated.' }
+  if (name === 'todo_remove') { clerk.removeTodo(todo.id); broadcast({ type: 'clerk' }); return 'Removed.' }
+  throw new Error(`Unknown tool: ${name}`)
+}
+
 const pushJobCard = job => push({ type: 'card', card: { kind: 'job', job: jobView(job), timezone: clerk.timezone } })
 
 /** A card Bob asks for. During a scheduled run it is kept with the result as well. */
@@ -346,7 +381,7 @@ function showCard(args) {
 function clerkView() {
   return {
     timezone: clerk.timezone, timezoneChosen: clerk.timezoneChosen, busy: Boolean(runningCid),
-    jobs: clerk.jobs.map(jobView),
+    jobs: clerk.jobs.filter(j => !j.todoId).map(jobView), todos: clerk.todos,
     inbox: clerk.inbox, channels: clerk.channels.map(publicChannel), unread: clerk.unread(),
   }
 }
@@ -908,6 +943,18 @@ async function route(req, res) {
       try { clerk.setTimezone(String(body.timezone ?? '')) } catch { return send(res, 400, { error: 'BAD_TIMEZONE' }) }
       broadcast({ type: 'clerk' })
       return send(res, 200, { ok: true, timezone: clerk.timezone })
+    }
+    case '/api/clerk/todo/toggle': {
+      if (!clerk.todo(body.id)) return send(res, 404, { error: 'NO_TODO' })
+      clerk.setTodoDone(body.id, body.done === true)
+      broadcast({ type: 'clerk' })
+      return send(res, 200, { ok: true })
+    }
+    case '/api/clerk/todo/delete': {
+      if (!clerk.todo(body.id)) return send(res, 404, { error: 'NO_TODO' })
+      clerk.removeTodo(body.id)
+      broadcast({ type: 'clerk' })
+      return send(res, 200, { ok: true })
     }
     case '/api/clerk/job/toggle': {
       if (!clerk.job(body.id)) return send(res, 404, { error: 'NO_JOB' })

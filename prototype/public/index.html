@@ -129,6 +129,22 @@ main { flex:1; min-height:0; position:relative; }
 .card .done { display:flex; align-items:center; gap:6px; color:var(--ok); font-weight:600; font-size:14px; }
 .card .done.no { color:var(--muted); }
 
+/* to-dos and formatted replies */
+.todo-row { display:flex; gap:12px; align-items:flex-start; }
+.todo-body { flex:1; min-width:0; }
+.todo-body .meta { font-size:13px; color:var(--muted); }
+.check { width:28px; height:28px; border-radius:50%; border:2px solid var(--line); color:transparent; display:inline-flex; align-items:center; justify-content:center; flex:none; margin-top:1px; }
+.check svg { width:16px; height:16px; }
+.check.on { background:var(--ok); border-color:var(--ok); color:#fff; }
+.card.todo.finished .what { text-decoration:line-through; color:var(--muted); }
+.card.todo .rm { color:var(--muted); }
+.msg.md { white-space:normal; }
+.msg.md p { margin:0 0 6px; }
+.msg.md p:last-child { margin:0; }
+.md-list { margin:4px 0 6px; padding-left:20px; }
+.msg.md code { background:var(--surface-2); padding:1px 5px; border-radius:6px; font-size:.9em; }
+.card pre.detail.soft { font:14px/1.5 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+
 /* cards Bob asks for: organized information */
 .card.info .what { font-size:17px; }
 .card.info .where { margin-top:0; font-size:13px; }
@@ -278,19 +294,14 @@ nav button svg { width:24px; height:24px; }
       <div id="feed" aria-live="polite"></div>
     </div>
     <div class="view" id="viewClerk" hidden>
-      <p class="hint" data-t="clerkIntro"></p>
       <div class="chips" id="clerkChips"></div>
-
-      <div class="sect-head"><h3 data-t="jobsTitle"></h3></div>
+      <div class="sect-head" id="todosHead"><h3 data-t="todosTitle"></h3></div>
+      <div id="todoList"></div>
+      <div class="sect-head" id="jobsHead"><h3 data-t="jobsTitle"></h3></div>
       <div id="jobList"></div>
-      <p class="hint empty-note" id="jobsEmpty" data-t="jobsEmpty"></p>
-
-      <div class="sect-head"><h3 data-t="inboxTitle"></h3><button class="link" id="markRead" data-t="markRead"></button></div>
+      <div class="sect-head" id="inboxHead"><h3 data-t="inboxTitle"></h3><button class="link" id="markRead" data-t="markRead"></button></div>
       <div id="inboxList"></div>
-      <p class="hint empty-note" id="inboxEmpty" data-t="inboxEmpty"></p>
-
       <div class="sect-head"><h3 data-t="channelsTitle"></h3></div>
-      <p class="hint empty-note" data-t="channelsHint"></p>
       <div id="channelList"></div>
       <details class="add" id="addChannel">
         <summary data-t="addChannel"></summary>
@@ -412,7 +423,7 @@ const I18N = {
   ex1:['每天早上 8 点查上海天气，告诉我穿什么、要不要带伞','Every morning at 8, check the weather in Shanghai and tell me what to wear and whether to bring an umbrella'],
   ex2:['今天下午 3 点提醒我给客户回电话','Remind me at 3pm today to call the client'],
   ex3:['每周一早上 9 点提醒我写周报','Every Monday at 9am remind me to write the weekly report'],
-  jobsTitle:['定时任务与提醒','Scheduled tasks and reminders'], jobsEmpty:['还没有。对 Bob 说一句试试。','None yet. Try saying one to Bob.'],
+  jobsTitle:['定时任务','Scheduled'], todosTitle:['待办','To-dos'], markDone:['标为完成','Mark done'], undo:['撤销完成','Undo'], jobsEmpty:['还没有。对 Bob 说一句试试。','None yet. Try saying one to Bob.'],
   inboxTitle:['收件箱','Inbox'], inboxEmpty:['提醒和任务结果会出现在这里。','Reminders and task results show up here.'], markRead:['全部已读','Mark all read'],
   channelsTitle:['消息渠道','Channels'], channelsHint:['提醒和结果除了应用内，还可以发到这些渠道。密钥只保存在服务器上。','Reminders and results can also go to these channels. Secrets stay on the server.'],
   addChannel:['添加渠道','Add a channel'], zoneTitle:['时区','Time zone'],
@@ -438,10 +449,10 @@ const I18N = {
   extEmpty:['还没有安装扩展。','Nothing installed yet.'], mcpLabel:['工具服务器','Tool server'], skillLabel:['技能','Skill'],
   secretSet:['已设置','set'], secretNeeded:['需要填写','needed'], secretPh:['{n} 的值','Value for {n}'], setSecret:['保存','Set'], secretSaved:['已保存，Bob 会重启后生效','Saved. Bob restarts to use it'],
   // approvals
-  allow:['确认执行','Allow once'], reject:['拒绝','Reject'], approved:['已允许','Allowed'], rejected:['已拒绝','Rejected'], expired:['已过期','Expired'],
+  allow:['允许','Allow'], reject:['拒绝','Reject'], approved:['已允许','Allowed'], rejected:['已拒绝','Rejected'], expired:['已过期','Expired'],
   tagApprove:['待确认','Needs approval'], tagHelp:['待处理','Needs you'],
   needsApproval:['Bob 想执行这个操作','Bob wants to do this'], needsYou:['Bob 需要你帮忙','Bob needs your help'],
-  actCommand:['在服务器上运行命令','Run a command on the server'], actRead:['读取文件','Read file'], actList:['查看文件夹','List folder'], actWrite:['写入文件','Write file'], inFolder:['运行位置：{n}','Runs in: {n}'],
+  actCommand:['运行命令','Run a command'], actRead:['读取文件','Read file'], actList:['查看文件夹','List folder'], actWrite:['写入文件','Write file'], inFolder:['运行位置：{n}','Runs in: {n}'],
   actInstall:['安装软件包','Install packages'], actMcpAdd:['添加工具服务器','Add a tool server'], actMcpRemove:['移除工具服务器','Remove a tool server'], actSkillAdd:['添加技能','Add a skill'], actSkillRemove:['移除技能','Remove a skill'],
   actTask:['添加定时任务','Add a scheduled task'], actReminder:['添加提醒','Add a reminder'], actClerkDelete:['删除','Delete'], actClerkPause:['暂停','Pause'], actClerkResume:['恢复','Resume'],
   firstRun:['首次运行：{n}','First run: {n}'], sendTo:['发送到：{n}','Send to: {n}'],
@@ -450,6 +461,7 @@ const I18N = {
   step_browser_navigate:['打开网页','Opening page'], step_browser_snapshot:['查看页面','Reading page'], step_browser_click:['点击','Clicking'],
   step_browser_type:['输入文字','Typing'], step_browser_scroll:['滚动页面','Scrolling'], step_browser_request_human:['请你协助','Asking you for help'],
   step_list_files:['查看文件夹','Listing files'], step_read_file:['读取文件','Reading a file'], step_write_file:['写入文件','Writing a file'], step_run_command:['运行命令','Running a command'],
+  step_todo_add:['添加待办','Adding a to-do'], step_todo_list:['查看待办','Checking to-dos'], step_todo_done:['更新待办','Updating a to-do'], step_todo_remove:['删除待办','Removing a to-do'], step_show_card:['整理信息','Preparing a card'],
   step_web_fetch:['读取网页','Reading the web'], step_clerk_create:['设置提醒或任务','Scheduling'], step_clerk_list:['查看日程','Checking the schedule'], step_clerk_list_channels:['查看渠道','Checking channels'],
   step_clerk_delete:['删除日程','Removing a schedule'], step_clerk_update:['修改日程','Changing a schedule'], step_install_package:['安装软件包','Installing packages'],
   step_mcp_add:['添加工具服务器','Adding a tool server'], step_mcp_remove:['移除工具服务器','Removing a tool server'], step_skill_create:['编写技能','Writing a skill'], step_skill_install:['安装技能','Installing a skill'],
@@ -617,13 +629,33 @@ function clearFeed() {
   cards.clear(); lastKind = null; stepsBox = null
   updateWelcome()
 }
+function inlineMd(node, s) {
+  for (const part of s.split(/(\*\*[^*]+\*\*|`[^`]+`)/)) {
+    if (!part) continue
+    if (part.startsWith('**')) node.append(el('strong', '', part.slice(2, -2)))
+    else if (part.startsWith('`')) node.append(el('code', '', part.slice(1, -1)))
+    else node.append(document.createTextNode(part))
+  }
+}
+function renderMd(parent, text) { // bold, code, bullets and headings only, built without innerHTML
+  let list = null
+  for (const line of text.split('\n')) {
+    const bullet = /^\s*[-*]\s+(.*)$/.exec(line)
+    if (bullet) { if (!list) { list = el('ul', 'md-list'); parent.append(list) } const li = el('li'); inlineMd(li, bullet[1]); list.append(li); continue }
+    list = null
+    if (!line.trim()) continue
+    const p = el('p'); inlineMd(p, line.replace(/^#{1,6}\s+/, '')); parent.append(p)
+  }
+}
 function message(role, text, files = []) {
   const row = el('div', 'bubble-row' + (role === 'user' ? ' user' : ''))
   if (role !== 'user') {
     if (lastKind === 'assistant') row.append(el('div', 'spacer'))
     else { const a = el('span', 'orb static'); a.innerHTML = ORB; row.append(a) }
   }
-  const bubble = el('div', 'msg', text)
+  const bubble = el('div', 'msg' + (role === 'user' ? '' : ' md'))
+  if (role === 'user') bubble.textContent = text
+  else renderMd(bubble, text)
   for (const f of files) {
     const line = el('div', 'fileline'); line.insertAdjacentHTML('afterbegin', icon('file')); line.append(el('span', '', f.name))
     bubble.append(line)
@@ -666,6 +698,22 @@ function describeSchedule(s) {
 const fmtWhen = (ms, tz) => new Intl.DateTimeFormat(zh ? 'zh-CN' : 'en-US', { timeZone: tz, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(ms)
 
 // ---- cards Bob shows: schedules and organized information ----
+function todoCard(todo, tz) {
+  const c = el('div', 'card todo' + (todo.done ? ' finished' : ''))
+  const row = el('div', 'todo-row')
+  const box = el('button', 'check' + (todo.done ? ' on' : '')); box.type = 'button'; box.innerHTML = icon('tick')
+  box.setAttribute('aria-label', t(todo.done ? 'undo' : 'markDone')); box.title = t(todo.done ? 'undo' : 'markDone')
+  box.onclick = () => post('/api/clerk/todo/toggle', { id: todo.id, done: !todo.done })
+  const body = el('div', 'todo-body')
+  body.append(el('div', 'what', todo.title))
+  if (todo.due) body.append(el('div', 'meta', todo.due.replace('T', ' ')))
+  if (todo.note) body.append(el('div', 'meta', todo.note))
+  const rm = el('button', 'icon-btn rm'); rm.type = 'button'; rm.innerHTML = icon('cross'); rm.title = t('remove'); rm.setAttribute('aria-label', t('remove'))
+  rm.onclick = () => post('/api/clerk/todo/delete', { id: todo.id })
+  row.append(box, body, rm)
+  c.append(row)
+  return c
+}
 function infoCard(card) {
   const c = el('div', 'card info')
   const top = el('div', 'card-top')
@@ -690,10 +738,11 @@ function infoCard(card) {
 
 // ---- cards ----
 const ACTIONS = { command:'actCommand', read:'actRead', list:'actList', write:'actWrite' }
+const baseName = p => String(p).split('/').filter(Boolean).pop() ?? p
 function cardTitle(e) {
-  if (e.kind === 'command') return [t('actCommand'), t('inFolder', e.target)]
-  if (ACTIONS[e.kind]) return [`${t(ACTIONS[e.kind])}: ${e.target}`]
-  if (e.kind === 'install') return [`${t('actInstall')} (${e.manager})`, e.packages?.join(', ')]
+  if (e.kind === 'command') return [t('actCommand')]
+  if (ACTIONS[e.kind]) return [`${t(ACTIONS[e.kind])}: ${baseName(e.target)}`]
+  if (e.kind === 'install') return [`${t('actInstall')}: ${e.packages?.join(', ')}`]
   if (e.kind === 'mcp') return [`${t(e.action === 'remove' ? 'actMcpRemove' : 'actMcpAdd')}: ${e.target}`]
   if (e.kind === 'skill') return [`${t(e.action === 'remove' ? 'actSkillRemove' : 'actSkillAdd')}: ${e.target}`]
   if (e.kind === 'clerk') {
@@ -712,12 +761,18 @@ function buildCard(e, kind) {
   const ic = el('span', 'chipicon'); ic.innerHTML = icon(kind === 'takeover' ? 'hand' : e.kind === 'command' ? 'terminal' : e.kind === 'clerk' ? 'clock' : /install|mcp|skill/.test(e.kind ?? '') ? 'box' : 'shield')
   top.append(ic, el('span', 'tag', t(kind === 'approval' ? 'tagApprove' : 'tagHelp')),
     el('span', 'time', new Date(e.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })))
-  c.append(top, el('div', 'lead', t(kind === 'approval' ? 'needsApproval' : 'needsYou')))
+  c.append(top)
+  if (kind === 'takeover') c.append(el('div', 'lead', t('needsYou')))
   if (kind === 'takeover') c.append(el('div', 'what', e.reason))
   else { const [first, ...rest] = cardTitle(e); c.append(el('div', 'what', first)); for (const line of rest) if (line) c.append(el('div', 'where', line)) }
   // for a schedule the lines above already say when and where, so only the text itself is shown below
-  const detail = e.kind === 'clerk' && e.action === 'create' ? (e.detail ?? '').split('\n\n').slice(1).join('\n\n') : e.detail
-  if (detail) c.append(el('pre', 'detail', detail))
+  // Show what matters to the owner: the words to be saved, or the command itself. Paths, sizes and package commands stay out of sight.
+  let detail = e.detail
+  if (e.kind === 'clerk' && e.action === 'create') detail = (e.detail ?? '').split('\n\n').slice(1).join('\n\n')
+  else if (e.kind === 'write') detail = (e.detail ?? '').split('\n').slice(1).join('\n').replace(/^#+\s*/gm, '').replace(/\*\*/g, '')
+  else if (e.kind === 'mcp' && e.action === 'add') detail = (e.detail ?? '').split('\n').slice(1).join('\n')
+  else if (e.kind === 'install' || e.kind === 'read' || e.kind === 'list') detail = ''
+  if (detail) c.append(el('pre', 'detail' + (e.kind === 'command' ? '' : ' soft'), detail))
   if (e.screenshot) { const img = new Image(); img.alt = ''; img.src = 'data:image/jpeg;base64,' + e.screenshot; c.append(img) }
   const row = el('div', 'actions')
   if (kind === 'approval') {
@@ -779,7 +834,7 @@ function render(e) {
   else if (e.type === 'step') step(e.name)
   else if (e.type === 'error') notice(e.text, true)
   else if (e.type === 'notice') notice(t(e.code === 'BUDGET_NEAR' ? 'budgetNear' : 'budgetExceeded'), true)
-  else if (e.type === 'card') add(e.card.kind === 'job' ? jobCard(e.card.job, e.card.timezone, true) : infoCard(e.card), 'card')
+  else if (e.type === 'card') add(e.card.kind === 'job' ? jobCard(e.card.job, e.card.timezone, true) : e.card.kind === 'todo' ? todoCard(e.card.todo, e.card.timezone) : infoCard(e.card), 'card')
   else if (e.type === 'approval' || e.type === 'takeover') {
     add(buildCard(e, e.type), 'card')
     if (!open.has(e.id)) closeCard(e.id, t('expired'), false) // an old request nobody can answer any more
@@ -1052,10 +1107,12 @@ function channelRow(ch) {
 }
 function drawClerk() {
   const d = clerkData
-  $('jobList').replaceChildren(...d.jobs.map(jobCard))
-  $('jobsEmpty').hidden = d.jobs.length > 0
+  $('todoList').replaceChildren(...d.todos.map(todo => todoCard(todo, d.timezone)))
+  $('todosHead').hidden = d.todos.length === 0
+  $('jobList').replaceChildren(...d.jobs.map(j => jobCard(j)))
+  $('jobsHead').hidden = d.jobs.length === 0
   $('inboxList').replaceChildren(...d.inbox.slice(0, 30).map(inboxItem))
-  $('inboxEmpty').hidden = d.inbox.length > 0
+  $('inboxHead').hidden = d.inbox.length === 0
   $('markRead').hidden = d.unread === 0
   $('channelList').replaceChildren(...d.channels.map(channelRow))
   if (document.activeElement !== $('zone')) $('zone').value = d.timezone
