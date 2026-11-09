@@ -523,10 +523,27 @@ async function finishRun(status, detail = '', { stop = false } = {}) {
 }
 
 let ticking = false
+// After the official WeChat bridge logs in, offer a reminder channel once, so jobs can send there by name.
+const WECHAT_CHANNEL_MARKER = path.join(DATA_DIR, 'wechat-channel-offered.json')
+async function offerWechatChannel() {
+  if (fs.existsSync(WECHAT_CHANNEL_MARKER)) return
+  if (clerk.channels.some(c => c.type === 'wechat')) { fs.writeFileSync(WECHAT_CHANNEL_MARKER, '{}'); return }
+  try {
+    const response = await fetch(`${process.env.WECHAT_BRIDGE_URL || 'http://127.0.0.1:3722'}/status`, { signal: AbortSignal.timeout(2000) })
+    const status = await response.json()
+    if (!status?.connected) return
+    clerk.addChannel({ type: 'wechat', name: '微信', config: {} })
+    fs.writeFileSync(WECHAT_CHANNEL_MARKER, '{}')
+    broadcast({ type: 'clerk' })
+    console.log('[bobbot] WeChat is logged in, so the "微信" reminder channel was added')
+  } catch { /* bridge not running yet */ }
+}
+
 async function tick() {
   if (ticking) return
   ticking = true
   try {
+    await offerWechatChannel()
     const now = Date.now()
     const { run, missed } = clerk.due(now)
     for (const job of missed) {
