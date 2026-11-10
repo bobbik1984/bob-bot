@@ -13,6 +13,7 @@
 - **当前施工合同（What Now）**：[docs/CURRENT_STAGE.md](docs/CURRENT_STAGE.md)
 - **测试原型（Node.js + DSH）**：[prototype/README.md](prototype/README.md)
 - **本轮更新与功能优势**：[docs/UPDATES.md](docs/UPDATES.md)
+- **交接说明（给下一个 Agent）**：[docs/HANDOFF.md](docs/HANDOFF.md)
 - **部署到 RY 测试机**：[scripts/deploy-ry.sh](scripts/deploy-ry.sh)（见下文「部署到 RY」）
 - **Super-agent 研究笔记**：[docs/SUPER_AGENT_NOTES.md](docs/SUPER_AGENT_NOTES.md)
 - **需求与待办池**：[todo.md](todo.md)

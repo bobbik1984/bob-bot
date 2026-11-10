@@ -8,3 +8,5 @@ wechat/wechat-bot-bridge/node_modules/
 wechat/wechat-bot-bridge/data/sessions.json
 wechat/wechat-bot-bridge/data/qr.txt
 wechat/wechat-bot-bridge/data/account.txt
+wechat/wechat-bot-bridge/data/owner.txt
+wechat/wechat-bot-bridge/data/context.json
