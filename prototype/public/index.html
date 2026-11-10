@@ -244,7 +244,7 @@ html.fine .chip-btn:hover { border-color:var(--accent); box-shadow:var(--shadow)
 .info-items { list-style:none; margin:0; padding:0; font-size:14px; display:flex; flex-direction:column; gap:8px; }
 .info-items li { position:relative; padding-left:16px; }
 .info-items li::before { content:''; position:absolute; left:2px; top:.55em; width:5px; height:5px; border-radius:50%; background:var(--accent); }
-.inbox-item .card { box-shadow:none; margin-top:6px; background:var(--surface-2); border-color:transparent; }
+.inbox-item .card { box-shadow:none; margin-top:10px; background:var(--surface-2); border-color:transparent; }
 
 /* friendly cards: a saved schedule, a to-do, and the card that asks to confirm one */
 .card.saved { border-color:var(--line); }
@@ -283,13 +283,25 @@ html.fine .chip-btn:hover { border-color:var(--accent); box-shadow:var(--shadow)
 .mini.bad { background:var(--danger-soft); color:var(--danger); }
 .mini.good { background:var(--ok-soft); color:var(--ok); }
 .job .actions { display:flex; flex-wrap:wrap; gap:8px; }
-.inbox-item { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:12px 14px; text-align:left; display:flex; flex-direction:column; gap:4px; }
-.inbox-item.unread { border-color:var(--accent); }
-.inbox-item .top { display:flex; align-items:center; gap:8px; font-weight:600; }
-.inbox-item .top .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); }
-.inbox-item .top time { margin-left:auto; font-weight:400; font-size:12px; color:var(--muted); }
-.inbox-item .body { white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; }
+/* the inbox is one list, not a pile of cards: rank comes from the type, and nothing is drawn down the left edge */
+#inboxList { gap:0; background:var(--surface); border:1px solid var(--line); border-radius:20px; box-shadow:var(--shadow-1); overflow:hidden; }
+#inboxList:empty { display:none; }
+.inbox-item { display:block; width:100%; padding:14px 16px; background:none; border:0; border-radius:0; text-align:left; }
+.inbox-item + .inbox-item { border-top:1px solid var(--line); }
+.inbox-item:focus-visible { outline-offset:-3px; }
+.inbox-item .top { display:flex; align-items:baseline; gap:12px; }
+.inbox-item .title { flex:1; min-width:0; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.inbox-item .top time { flex:none; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+.inbox-item .body { margin-top:3px; color:var(--muted); font-size:14px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.inbox-item.unread .title { font-weight:700; }
+.inbox-item.unread .title::after { content:''; display:inline-block; width:6px; height:6px; margin-left:7px; border-radius:50%; background:var(--accent); vertical-align:middle; }
+.inbox-item.unread .body { color:var(--text); }
+.inbox-item.unread time { color:var(--accent-ink); font-weight:600; }
 .inbox-item.open .body { display:block; }
+.inbox-item .sent { display:flex; align-items:center; gap:5px; margin-top:8px; font-size:12px; color:var(--muted); }
+.inbox-item .sent svg { width:13px; height:13px; color:var(--ok); }
+.inbox-item .sent.bad { color:var(--danger); }
+.inbox-item .sent.bad svg { color:var(--danger); }
 .channel { display:flex; flex-direction:column; gap:6px; background:var(--surface-2); border:1px solid transparent; border-radius:16px; padding:12px 14px; }
 .channel .ch-top { display:flex; align-items:center; gap:10px; }
 .channel .badge-t { width:36px; height:36px; border-radius:12px; background:var(--accent-soft); color:var(--accent-ink); display:inline-flex; align-items:center; justify-content:center; font-weight:700; flex:none; }
@@ -424,7 +436,8 @@ html.fine .icon-btn:hover { background:var(--surface-2); color:var(--text); }
 html.fine .link:hover { text-decoration:underline; }
 html.fine .conv-main:hover { background:var(--surface-2); }
 html.fine .conv.active .conv-main:hover { background:var(--accent-soft); }
-html.fine .inbox-item:hover, html.fine .glance-item:hover { box-shadow:var(--shadow); }
+html.fine .glance-item:hover { box-shadow:var(--shadow); }
+html.fine .inbox-item:hover { background:var(--surface-2); }
 html.fine .pad button:hover { border-color:var(--accent); }
 @keyframes rise { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
 @keyframes fadein { from { opacity:0; } to { opacity:1; } }
@@ -456,7 +469,6 @@ html.fine .pad button:hover { border-color:var(--accent); }
 .trow.finished .tt { text-decoration:line-through; color:var(--muted); font-weight:400; }
 .trow .rm { opacity:.6; }
 .job .actions .btn { flex:1; min-height:38px; font-size:14px; padding:0 12px; }
-.inbox-item.unread { border-color:var(--line); box-shadow:inset 3px 0 0 var(--accent); }
 
 /* ---- settings ---- */
 .section h3 { display:flex; align-items:center; gap:8px; }
@@ -769,6 +781,7 @@ const I18N = {
   today:['今天','Today'], tomorrow:['明天','Tomorrow'], dayAfter:['后天','In two days'],
   cancel:['取消','Cancel'], confirm:['确认','Confirm'], confirmAdd:['确认添加','Add it'], confirmDeleteBtn:['确认删除','Delete'], askDelete:['删除','Delete'], askPause:['暂停','Pause'], askResume:['恢复','Resume'],
   firstAt:['首次 {n}','First {n}'], alsoTo:['同时发到 {n}','Also to {n}'],
+  inboxSent:['已发送至 {n}','Sent to {n}'], inboxNotSent:['未送达','not delivered'],
   inboxTitle:['收件箱','Inbox'], inboxEmpty:['提醒和任务结果会出现在这里。','Reminders and task results show up here.'], markRead:['全部已读','Mark all read'],
   channelsTitle:['消息渠道','Channels'], channelsHint:['提醒和结果除了应用内，还可以发到这些渠道。密钥只保存在服务器上。','Reminders and results can also go to these channels. Secrets stay on the server.'],
   addChannel:['添加渠道','Add a channel'], zoneTitle:['时区','Time zone'],
@@ -1790,14 +1803,16 @@ function runHistory(job, tz) {
 function inboxItem(n) {
   const item = el('button', 'inbox-item' + (n.read ? '' : ' unread')); item.type = 'button'
   const top = el('div', 'top')
-  if (!n.read) top.append(el('span', 'dot'))
-  top.append(el('span', '', n.title), el('time', '', fmtWhen(n.at, clerkData.timezone)))
+  top.append(el('span', 'title', n.title), el('time', '', fmtWhen(n.at, clerkData.timezone)))
   item.append(top)
   if (n.text) item.append(el('div', 'body', n.text))
   for (const card of n.cards ?? []) item.append(infoCard(card))
-  const sent = el('div', 'chiplist')
-  for (const d of n.delivery ?? []) sent.append(el('span', 'mini ' + (d.ok ? 'good' : 'bad'), d.ok ? `${d.channel} ✓` : `${d.channel}: ${d.error ?? ''}`))
-  if (sent.children.length) item.append(sent)
+  // Where it went, in one quiet line; only a failure gets its own line and colour.
+  const delivery = n.delivery ?? []
+  const reached = delivery.filter(d => d.ok).map(d => d.channel)
+  const note = (text, bad) => { const line = el('div', 'sent' + (bad ? ' bad' : '')); line.insertAdjacentHTML('afterbegin', icon(bad ? 'cross' : 'tick')); line.append(el('span', '', text)); item.append(line) }
+  if (reached.length) note(t('inboxSent', reached.join('、')), false)
+  for (const d of delivery.filter(x => !x.ok)) note(`${d.channel} ${t('inboxNotSent')}${d.error ? `：${d.error}` : ''}`, true)
   item.onclick = () => item.classList.toggle('open')
   return item
 }
