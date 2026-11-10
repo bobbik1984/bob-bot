@@ -110,6 +110,17 @@ Because nobody reads the code first, the code is boxed in instead:
 
 What this does not cover: a package's server code can reach the internet and services on this machine's loopback address (the WeChat bridge API on 3721 trusts local callers), it can register tools Bob may then call, and its styling can still rearrange the rest of the page. `run_command` is unchanged: an approved command can do anything its user can, including to Bob's files. The boxing is done by Node and the browser, not by a separate system user.
 
+## Being told when Bob is done
+
+Scheduled tasks and reminders send their result to the channels you chose. A task you hand to Bob in a chat now does too: when the turn finishes and you are not looking at Bob, you get a notification with the last thing he said. Settings → Notifications chooses when:
+
+- **Long or multi-step tasks** (default): turns that took 20 seconds or more, or used 3 or more steps.
+- **Every reply**, or **Never**.
+
+"Not looking" means no device has the page visible and focused: each open page reports that every 15 seconds and when it is hidden or loses focus, so a tab left open on another monitor does not hold back the phone. WeChat chats are answered in WeChat, and scheduled runs, check-ins and dreams report themselves, so none of them notify twice. If Bob stops unexpectedly or the monthly limit is reached during a task, you are told that instead.
+
+Settings also shows the result of the last push. A failure now carries the push service's own status and reason (for example `HTTP 403 BadJwtToken`), a temporary failure is retried once, and `GET /api/push/log` lists the last 20 attempts with what was sent.
+
 ## Installing tools by chat
 
 Ask Bob for what you need, for example "install the GitHub tool" or "teach yourself my weekly report format". Every install shows a card with exactly what will happen, and nothing happens until you confirm.

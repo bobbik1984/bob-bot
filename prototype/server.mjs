@@ -1140,25 +1140,64 @@ try { webpush.setVapidDetails(PUSH_SUBJECT, vapid.publicKey, vapid.privateKey) }
 
 const savePushSubs = () => writeAtomic(PUSH_FILE, JSON.stringify(pushSubs))
 
+// The last attempts and what Apple or Google said about them, so a failure is explained instead of guessed at.
+const pushLog = []
+const pushReason = error => {
+  let reason = ''
+  try { reason = JSON.parse(error.body)?.reason ?? '' } catch { reason = String(error.body ?? '').slice(0, 60) }
+  return `${error.statusCode ? `HTTP ${error.statusCode}` : (error.code ?? 'error')}${reason ? ` ${reason}` : ''}`
+}
+
 /** Sends a notification to every subscribed home-screen app. Dead subscriptions are dropped. */
 async function sendPush({ title, body, url = '/' }) {
-  if (!pushSubs.length) return { ok: false, error: 'No device is subscribed yet' }
+  const started = Date.now()
+  const finish = (ok, detail) => {
+    pushLog.unshift({ at: started, title: String(title).slice(0, 40), body: String(body).slice(0, 110), ok, detail, ms: Date.now() - started })
+    pushLog.length = Math.min(pushLog.length, 20)
+    return ok ? { ok: true } : { ok: false, error: detail }
+  }
+  if (!pushSubs.length) return finish(false, 'No device is subscribed yet')
   let sent = 0
   let lastError = ''
+  let status = 0
   const alive = []
   for (const sub of pushSubs) {
-    try {
-      await webpush.sendNotification(sub, JSON.stringify({ title, body, url }))
-      sent += 1
-      alive.push(sub)
-    } catch (error) {
-      if (error.statusCode === 404 || error.statusCode === 410) continue // gone: keep it out
-      lastError = error.message
-      alive.push(sub)
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const response = await webpush.sendNotification(sub, JSON.stringify({ title, body, url }), { TTL: 12 * 3600 })
+        sent += 1; status = response.statusCode; alive.push(sub)
+        break
+      } catch (error) {
+        if (error.statusCode === 404 || error.statusCode === 410) { lastError = `${pushReason(error)} (device removed)`; break } // gone: keep it out
+        const transient = !error.statusCode || error.statusCode === 429 || error.statusCode >= 500
+        if (transient && attempt === 0) { await sleep(1500); continue }
+        lastError = pushReason(error); alive.push(sub)
+        break
+      }
     }
   }
   if (alive.length !== pushSubs.length) { pushSubs = alive; savePushSubs() }
-  return sent > 0 ? { ok: true } : { ok: false, error: lastError || 'Delivery failed' }
+  return sent > 0 ? finish(true, `HTTP ${status}`) : finish(false, lastError || 'Delivery failed')
+}
+
+// ---- telling the owner a chat turn is done, when they are not looking ----
+const NOTIFY_FILE = path.join(DATA_DIR, 'notify.json')
+const notifyPrefs = Object.assign({ chat: 'long' }, readJson(NOTIFY_FILE, {})) // chat: long (slow or many-step turns), always, off
+const LONG_TURN_MS = Number(process.env.BOBBOT_LONG_TURN_MS || 20_000)
+const LONG_TURN_STEPS = 3
+const PRESENCE_FRESH_MS = 35_000
+const presence = new Map() // device id -> { here, at }: a device counts as "here" when its page is visible and has focus
+const ownerIsHere = () => [...presence.values()].some(p => p.here && Date.now() - p.at < PRESENCE_FRESH_MS)
+const turns = new Map() // chat id -> { startedAt, steps, text } for turns a person started in the web app
+
+function finishTurn(cid, failure = '') {
+  const turn = turns.get(cid)
+  turns.delete(cid)
+  if (!turn || notifyPrefs.chat === 'off' || ownerIsHere()) return
+  const long = Date.now() - turn.startedAt >= LONG_TURN_MS || turn.steps >= LONG_TURN_STEPS
+  if (notifyPrefs.chat === 'long' && !long && !failure) return
+  const said = turn.text.replace(/[*`#]/g, '').replace(/\s+/g, ' ').trim()
+  notifyOwner(convOf(cid)?.title || 'Bob', (failure || said || '已完成').slice(0, 110))
 }
 
 // After the official WeChat bridge logs in, offer a reminder channel once, so jobs can send there by name.
@@ -1493,6 +1532,8 @@ agent.on('text', (cid, text) => {
   if (!convOf(cid)) return
   const waiter = turnWaiters.get(cid)
   if (waiter) { waiter.chunks.push(text); return }
+  const turn = turns.get(cid)
+  if (turn) turn.text = text
   bridgeWaiters.get(cid)?.texts.push(text)
   if (activeRun?.cid === cid) activeRun.texts.push(text)
   push({ type: 'message', role: 'assistant', text }, true, cid)
@@ -1504,8 +1545,11 @@ agent.on('status', (cid, status) => {
     runningCid = cid
     if (waiter) waiter.started = true
     if (activeRun?.cid === cid) activeRun.started = true
+    // Only turns a person started here. Scheduled runs, check-ins, dreams and WeChat replies report themselves.
+    if (!waiter && activeRun?.cid !== cid && !bridgeWaiters.has(cid) && !turns.has(cid)) turns.set(cid, { startedAt: Date.now(), steps: 0, text: '' })
   } else {
     if (runningCid === cid) runningCid = null
+    finishTurn(cid)
     if (waiter?.started) waiter.finish()
     bridgeWaiters.get(cid)?.finish()
     if (activeRun?.cid === cid && activeRun.started) finishRun('ok')
@@ -1513,11 +1557,15 @@ agent.on('status', (cid, status) => {
   }
   push({ type: 'status', status }, false, cid)
 })
-agent.on('tool', (cid, name) => { if (convOf(cid) && !name.startsWith('mcp__bobbot__')) push({ type: 'step', name }, true, cid) })
+agent.on('tool', (cid, name) => {
+  if (turns.has(cid)) turns.get(cid).steps += 1
+  if (convOf(cid) && !name.startsWith('mcp__bobbot__')) push({ type: 'step', name }, true, cid)
+})
 agent.on('exit', code => {
   for (const waiter of [...turnWaiters.values()]) waiter.finish()
   const cid = runningCid ?? lastPromptCid
   runningCid = null
+  if (cid && turns.has(cid)) finishTurn(cid, 'Bob 中断了，请回来看看')
   if (cid && convOf(cid)) push({ type: 'error', text: `Agent stopped unexpectedly (${code}). Send a message to restart it.` }, true, cid)
   if (cid) push({ type: 'status', status: 'idle' }, false, cid)
   if (activeRun) finishRun('failed', 'the assistant stopped unexpectedly.')
@@ -1534,6 +1582,7 @@ agent.on('usage', (cid, model, usage) => {
     runningCid = null
     push({ type: 'notice', code: 'BUDGET_EXCEEDED' }, true, cid)
     push({ type: 'status', status: 'idle' }, false, cid)
+    if (turns.has(cid)) finishTurn(cid, '本月花费额度用完了，任务已停止')
     if (activeRun) finishRun('failed', 'the monthly spending limit was reached.')
   }
 })
@@ -1738,8 +1787,9 @@ async function route(req, res) {
   if (req.method === 'GET' && pathname === '/api/proactive') return send(res, 200, { enabled: proactive.enabled, times: proactive.times, level: proactive.level })
   if (req.method === 'GET' && pathname === '/api/wechat/status') return send(res, 200, await wechatBridgeStatus())
   if (req.method === 'GET' && pathname === '/api/push/config') {
-    return send(res, 200, { publicKey: vapid.publicKey, subscriptions: pushSubs.length })
+    return send(res, 200, { publicKey: vapid.publicKey, subscriptions: pushSubs.length, chat: notifyPrefs.chat, last: pushLog[0] ?? null, ownerHere: ownerIsHere() })
   }
+  if (req.method === 'GET' && pathname === '/api/push/log') return send(res, 200, { items: pushLog })
   if (req.method === 'GET' && pathname === '/api/conversations') {
     return send(res, 200, { items: listConversations(), running: runningCid })
   }
@@ -1940,6 +1990,19 @@ async function route(req, res) {
       pushSubs = pushSubs.filter(s => s.endpoint !== endpoint)
       savePushSubs()
       return send(res, 200, { ok: true, subscriptions: pushSubs.length })
+    }
+    case '/api/notify': {
+      if (!['long', 'always', 'off'].includes(body.chat)) return send(res, 400, { error: 'BAD_MODE' })
+      notifyPrefs.chat = body.chat
+      writeAtomic(NOTIFY_FILE, JSON.stringify(notifyPrefs))
+      return send(res, 200, { ok: true, chat: notifyPrefs.chat })
+    }
+    case '/api/presence': {
+      const id = String(body.id ?? '').slice(0, 40)
+      if (!id) return send(res, 400, { error: 'BAD_ID' })
+      presence.set(id, { here: body.here === true, at: Date.now() })
+      for (const [key, value] of presence) if (Date.now() - value.at > 24 * 3600e3) presence.delete(key)
+      return send(res, 200, { ok: true })
     }
     case '/api/push/test': {
       const sent = await sendPush({ title: 'Bob', body: '通知已连通，之后提醒会出现在这里。' })

@@ -615,6 +615,10 @@ nav button.on span:first-child { background:var(--accent-soft); }
         <h3 data-i="phone" data-t="pushTitle"></h3>
         <div class="keystate none" id="pushState"></div>
         <p class="hint" id="pushHint" data-t="pushHint"></p>
+        <label class="hint" for="pushChatMode" data-t="pushChatTitle"></label>
+        <select class="field" id="pushChatMode"></select>
+        <p class="hint" data-t="pushChatHint"></p>
+        <p class="hint" id="pushLast"></p>
         <p class="hint" id="pushDiag" hidden></p>
         <div class="row">
           <button class="btn primary" id="pushEnable" data-t="pushEnable"></button>
@@ -799,6 +803,9 @@ const I18N = {
   pushTitle:['手机通知','Phone notifications'],
   pushHint:['把本站添加到主屏幕后，可以从桌面像 App 一样打开；提醒由系统推送，Safari 关掉也能收到。','Add this site to the Home Screen and open it from there; reminders arrive as system notifications even when Safari is closed.'],
   pushIosHint:['iPhone（iOS 16.4+）：用 Safari 打开 → 分享 → 添加到主屏幕 → 从桌面图标打开，再点“启用通知”。','iPhone (iOS 16.4+): open in Safari → Share → Add to Home Screen → open from the icon → tap Enable.'],
+  pushChatTitle:['聊天里的任务做完时通知我','Notify me when a chat task is done'], pushChatHint:['只在你没有看着 Bob 的时候才通知，内容是他最后说的话。','Only when you are not looking at Bob. The message is the last thing he said.'],
+  chat_long:['耗时较长或步骤较多的任务（推荐）','Long or multi-step tasks (recommended)'], chat_always:['每次回复都通知','Every reply'], chat_off:['不通知','Never'],
+  pushLastOk:['最近一次推送：{n} · 已送达推送服务','Last push: {n} · accepted by the push service'], pushLastBad:['最近一次推送：{n} · 失败：{m}','Last push: {n} · failed: {m}'],
   pushEnable:['启用通知','Enable notifications'], pushTest:['发送测试通知','Send a test'],
   pushDiag:['运行方式：{m} · 通知权限：{p}','Mode: {m} · Permission: {p}'],
   pushModeApp:['主屏 App','Home Screen app'], pushModeTab:['浏览器标签','Browser tab'],
@@ -2058,7 +2065,7 @@ const urlB64ToBytes = base64 => {
 }
 async function loadPushState() {
   const can = 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window
-  pushConfig = pushConfig ?? await getJson('/api/push/config')
+  pushConfig = (await getJson('/api/push/config')) ?? pushConfig
   const count = pushConfig?.subscriptions ?? 0
   const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
   const box = $('pushState'), enable = $('pushEnable'), test = $('pushTest')
@@ -2070,6 +2077,11 @@ async function loadPushState() {
   diag.hidden = false
   const perm = !('Notification' in window) ? t('pushPermDenied') : Notification.permission === 'granted' ? t('pushPermGranted') : Notification.permission === 'denied' ? t('pushPermDenied') : t('pushPermDefault')
   const caps = ['Notification' in window ? 'Notification' : '', 'PushManager' in window ? 'PushManager' : '', 'serviceWorker' in navigator ? 'SW' : ''].filter(Boolean).join(' / ') || t('pushUnsupported')
+  const mode = $('pushChatMode')
+  if (!mode.options.length) { for (const v of ['long', 'always', 'off']) mode.append(new Option(t('chat_' + v), v)); mode.onchange = () => post('/api/notify', { chat: mode.value }) }
+  mode.value = pushConfig?.chat ?? 'long'
+  const last = pushConfig?.last
+  $('pushLast').textContent = !last ? '' : last.ok ? t('pushLastOk', fmtTime(last.at)) : t('pushLastBad', fmtTime(last.at)).replace('{m}', last.detail)
   diag.textContent = t('pushDiag', { m: isInstalled() ? t('pushModeApp') : t('pushModeTab'), p: perm }) + ' · ' + caps
   if (iOS && !isInstalled()) { $('pushHint').textContent = t('pushIosHint'); enable.disabled = true }
   else if (!can) { $('pushHint').textContent = t('pushUnsupported'); enable.disabled = true }
@@ -2110,7 +2122,24 @@ $('pushEnable').onclick = async () => {
 $('pushTest').onclick = async () => {
   const r = await post('/api/push/test')
   $('pushHint').textContent = r.status === 200 ? t('pushTest') : (r.data.error ?? t('failed'))
+  loadPushState()
 }
+
+// Tell the server whether this device is being looked at, so a finished task only notifies when the owner is away.
+// A page that is visible but not focused (a tab left open on another monitor) does not count.
+const deviceId = (() => { try { return localStorage.getItem('bobbot.device') || (localStorage.setItem('bobbot.device', crypto.randomUUID()), localStorage.getItem('bobbot.device')) } catch { return 'anon' } })()
+const here = () => document.visibilityState === 'visible' && document.hasFocus()
+let reportedHere = null
+function reportPresence(force = false) {
+  if ($('app').hidden) return // not signed in yet
+  const now = here()
+  if (!force && !now && reportedHere === false) return // already told them we are away
+  reportedHere = now
+  fetch('/api/presence', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: deviceId, here: now }), keepalive: true }).catch(() => {})
+}
+setInterval(() => { if (here()) reportPresence(true) }, 15000)
+document.addEventListener('visibilitychange', () => reportPresence())
+for (const name of ['focus', 'blur', 'pagehide', 'pageshow']) addEventListener(name, () => reportPresence())
 let wxLoginTimer = null
 async function loadWechatLogin() {
   clearTimeout(wxLoginTimer)
@@ -2624,6 +2653,7 @@ async function boot() {
   show('chat')
   if (!s.hasKey) { $('settingsMsg').textContent = t('noKey'); show('settings') }
   connect()
+  reportPresence(true)
   loadClerk() // the front page shows what is waiting
   loadFeatures() // widgets and styling the owner has kept
 }

@@ -1020,6 +1020,46 @@ try {
   })
 
 
+  const pushedSince = async t0 => (await getJson('/api/push/log')).body.items.filter(p => p.at >= t0)
+  const askBob = async (text, steps = []) => {
+    const t0 = Date.now()
+    script.push(...steps, say(`done: ${text}`))
+    assert.equal((await post('/api/chat', { text })).status, 200)
+    await waitAfter(t0, e => e.type === 'message' && e.text === `done: ${text}`)
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
+    await sleep(150)
+    return t0
+  }
+  const threeSteps = () => [use('list_files', { path: '.' }), use('list_files', { path: '.' }), use('list_files', { path: '.' })]
+  await check('a finished chat task notifies the owner when they are away, and says what Bob said', async () => {
+    assert.equal((await post('/api/notify', { chat: 'sideways' })).status, 400)
+    assert.equal((await post('/api/notify', { chat: 'always' })).status, 200)
+    await post('/api/presence', { id: 'phone', here: false })
+    const t0 = await askBob('tell me when ready')
+    const pushed = await pushedSince(t0)
+    assert.equal(pushed.length, 1, 'no notification was sent')
+    assert.equal(pushed[0].title, 'tell me when ready'); assert.equal(pushed[0].body, 'done: tell me when ready')
+    const config = (await getJson('/api/push/config')).body
+    assert.equal(config.chat, 'always'); assert.equal(config.last.title, 'tell me when ready')
+  })
+  await check('no notification while a device that is visible and focused is on the page, or after it stops reporting', async () => {
+    await post('/api/presence', { id: 'desk', here: true })
+    assert.equal((await getJson('/api/push/config')).body.ownerHere, true)
+    assert.equal((await pushedSince(await askBob('owner is here'))).length, 0, 'the owner was notified while looking')
+    await post('/api/presence', { id: 'desk', here: false })
+    assert.equal((await getJson('/api/push/config')).body.ownerHere, false)
+    assert.equal((await pushedSince(await askBob('owner left'))).length, 1)
+  })
+  await check('"long tasks" notifies for many steps but not for a quick answer, and "never" is silent', async () => {
+    assert.equal((await post('/api/notify', { chat: 'long' })).data.chat, 'long')
+    assert.equal((await pushedSince(await askBob('quick one'))).length, 0, 'a quick answer notified')
+    const slow = await pushedSince(await askBob('slow one', threeSteps()))
+    assert.equal(slow.length, 1); assert.equal(slow[0].body, 'done: slow one')
+    await post('/api/notify', { chat: 'off' })
+    assert.equal((await pushedSince(await askBob('silent one', threeSteps()))).length, 0)
+    await post('/api/notify', { chat: 'long' })
+  })
+
   console.log('Spending limit')
   await check('at the cap, new chat is refused with no model call', async () => {
     assert.equal((await post('/api/budget', { capUsd: 0.000001 })).status, 200)
