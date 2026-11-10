@@ -1134,7 +1134,9 @@ if (!vapid?.publicKey || !vapid?.privateKey) {
   vapid = webpush.generateVAPIDKeys()
   fs.writeFileSync(VAPID_FILE, JSON.stringify(vapid), { mode: 0o600 })
 }
-try { webpush.setVapidDetails('mailto:bob@localhost', vapid.publicKey, vapid.privateKey) } catch (error) { console.error('[bobbot] web push is unavailable:', error.message) }
+// Apple rejects a JWT whose subject is not a real mailto/URL (localhost is refused with BadJwtToken).
+const PUSH_SUBJECT = process.env.BOB_PUSH_SUBJECT || 'https://ry.bobbik.org'
+try { webpush.setVapidDetails(PUSH_SUBJECT, vapid.publicKey, vapid.privateKey) } catch (error) { console.error('[bobbot] web push is unavailable:', error.message) }
 
 const savePushSubs = () => writeAtomic(PUSH_FILE, JSON.stringify(pushSubs))
 

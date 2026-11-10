@@ -59,6 +59,8 @@ BobBot 现在是一个**能长期住在 VPS 里、主动关心你、记得你、
 
 ## 6. 提醒与推送
 
+- **iOS 推送修复（2026-11-10）**：VAPID 的 `subject` 原为 `mailto:bob@localhost`，Apple 返回 `403 BadJwtToken`，表现为通知永远收不到；改为 `https://ry.bobbik.org`（可用 `BOB_PUSH_SUBJECT` 覆盖），实测 APNs 返回 201。另修复设置页缓存订阅数导致启用后仍显示“尚未开启”，以及 iOS 权限询问必须在点击手势内直接调用。
+
 - **iOS**：PWA + APNs Web Push。`manifest.webmanifest` + `sw.js` + VAPID；设置 → 手机通知启用后自动创建「手机通知」渠道；发送失败清理失效订阅（`3b70271`）。
 - **Android**：开发文档确定使用**独立 APK 客户端**（不走 FCM），见 [ARCHITECTURE.md](ARCHITECTURE.md) §5。
 - **渠道**：Lark / 企业微信 / Telegram / Discord / 微信（官方）/ 手机通知；每条投递结果写入收件箱 `delivery`。
