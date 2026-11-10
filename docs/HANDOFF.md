@@ -18,6 +18,7 @@
 | 原型目录 | `/home/bobbik/dsh_projects/bob-bot/prototype` |
 | 远程 | `https://github.com/bobbik1984/bob-bot.git` |
 | VPS | `ubuntu@82.157.186.181`（RY，腾讯云，Ubuntu 24.04，2C/2G+2G swap，Node 24.22.2，Chrome 157） |
+| SSH 钥匙 | RY 只接受 x1t-workstation，文件 `~/.ssh/id_ed25519_github`；`vps1_deploy_ed25519` 只对 vps1 有效。ssh-agent 里没有时，先 `ssh-add` 或用 `BOB_RY_HOST` 指向带 `IdentityFile` 的别名。不要往 RY 的 `authorized_keys` 加临时钥匙 |
 | 线上域名 | `https://ry.bobbik.org`（Cloudflare 隧道） |
 | 服务 | `bobbot.service`（站点 8787 + bob-agent 兼容 API 3721）、`bobbot-wechat.service`（官方微信桥 + 发送接口 3722）、`cloudflared.service` |
 
@@ -40,7 +41,8 @@
 | `server.mjs` | 唯一入口：HTTP/SSE/WebSocket、会话、审批、clerk、微信/推送/记忆/主动关心/功能包的路由与调度 |
 | `public/index.html` | 单页前端（无构建）：聊天、文员、设置、浏览器接管窗口、卡片、Orb、i18n、语音 |
 | `agent.mjs` | DSH 子进程管理、模型调用、预算 |
-| `browser.mjs` | 共享 Headless Chromium、CDP、截图/推流 |
+| `browser.mjs` | 共享 Headless Chromium、CDP、截图/推流；页面快照（框架与 Shadow DOM）、标签页、下载、地址检查、崩溃恢复 |
+| `store.mjs` | 状态文件原子写入与合并写入 |
 | `clerk.mjs` | 待办、定时任务、收件箱、渠道数据模型 |
 | `cards.mjs` | 模型生成信息卡的校验 |
 | `channels.mjs` | 出站渠道（Lark/企微/Telegram/Discord/微信/手机通知） |
@@ -50,7 +52,7 @@
 | `compat-api.mjs` | bob-agent `/v1/*` 兼容 API（给微信 bridge 用） |
 | `wechat/` | 官方微信核心与 bridge（vendored，勿换成非官方方案） |
 | `scripts/deploy-ry.sh` | 发布脚本 |
-| `test/unit.mjs`、`test/e2e.mjs` | 单元与端到端测试 |
+| `test/unit.mjs`、`test/browser.mjs`、`test/e2e.mjs`、`test/ui-click.mjs` | 单元、浏览器引擎、端到端、手机/电脑窗口测试 |
 
 ## 4. 数据、密钥与不可提交项
 
@@ -82,7 +84,7 @@ ssh ... 'ln -sfn /home/ubuntu/bob-bot/prototype/node_modules /tmp/bobtest/protot
 ssh ... 'cd /tmp/bobtest/prototype && node test/unit.mjs && node test/e2e.mjs'
 ```
 
-当前基线：`unit 28/28`、`e2e 59/59`。e2e 需要 Chrome 与空闲端口；跑之前 `fuser -k 8799/tcp`。
+当前基线：`unit 28/28`、`browser 18/18`、`e2e 61/61`、`ui 8/8`。e2e 需要 Chrome 与空闲端口；跑之前 `fuser -k 8799/tcp`。
 
 **网络故障兜底**：RY 偶尔连不上 GitHub（GnuTLS/超时）。此时用 `rsync prototype/ ubuntu@RY:/home/ubuntu/bob-bot/prototype/` 同步并 `sudo systemctl restart bobbot`；注意这不会更新 Git HEAD 与构建戳，网络恢复后执行一次正常 `deploy-ry.sh` 对齐。
 

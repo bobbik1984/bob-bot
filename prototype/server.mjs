@@ -18,6 +18,7 @@ import { webFetch } from './web-fetch.mjs'
 import { startCompatApi } from './compat-api.mjs'
 import { Features } from './features.mjs'
 import { Memory } from './memory.mjs'
+import { WriteBehind, writeAtomic } from './store.mjs'
 import QRCode from 'qrcode'
 import * as webpush from 'web-push'
 
@@ -41,6 +42,7 @@ const browser = new CloudBrowser(DATA_DIR)
 const agent = new Agent(DATA_DIR)
 const budget = new Budget(DATA_DIR)
 const host = createHostTools(DATA_DIR)
+const writes = new WriteBehind()
 const clerk = new Clerk(DATA_DIR)
 const extensions = new Extensions(DATA_DIR)
 const features = new Features(path.join(DATA_DIR, 'features'))
@@ -77,7 +79,7 @@ if (convs === null) {
   }
   fs.writeFileSync(CONV_INDEX, JSON.stringify(convs))
 }
-const saveConvs = () => fs.writeFile(CONV_INDEX, JSON.stringify(convs), () => {})
+const saveConvs = () => writes.later(CONV_INDEX, () => JSON.stringify(convs))
 const convOf = id => convs.find(c => c.id === id)
 function historyOf(id) {
   if (!histories.has(id)) histories.set(id, readJson(histFile(id), []))
@@ -94,6 +96,7 @@ function createConversation(title = '', extra = {}) {
 function deleteConversation(id) {
   convs = convs.filter(c => c.id !== id)
   histories.delete(id)
+  writes.cancel(histFile(id))
   fs.rmSync(histFile(id), { force: true })
   agent.forget(id)
   saveConvs()
@@ -120,7 +123,7 @@ function push(event, keep = true, cid = runningCid ?? lastPromptCid) {
     const list = historyOf(cid)
     list.push(stripShot(payload))
     if (list.length > MAX_EVENTS_PER_CHAT) list.splice(0, list.length - MAX_EVENTS_PER_CHAT)
-    fs.writeFile(histFile(cid), JSON.stringify(list), () => {})
+    writes.later(histFile(cid), () => JSON.stringify(historyOf(cid)))
     convOf(cid).updatedAt = payload.at
     saveConvs()
     if (event.type === 'message') broadcast({ type: 'conversations' })
@@ -149,11 +152,15 @@ function waitForHuman() {
 
 /** Shows the owner an approval card and waits. `kind` is click, type, command, read, list or write. */
 async function requireApproval({ kind, summary, target = '', detail = '', screenshot = false, extra = {} }) {
-  if (activeRun) throw new Error('This is a scheduled run, so nobody is there to approve this action. Do not try another way: finish what you can and report what you skipped.')
+  if (activeRun) {
+    activeRun.skipped.push(summary)
+    throw new Error('This is a scheduled run, so nobody is there to approve this action. Do not try another way: finish what you can and report what you skipped.')
+  }
   const id = crypto.randomUUID()
   const shot = screenshot ? await browser.screenshot().catch(() => null) : null
   const payload = push({ type: 'approval', id, kind, summary, target, detail: detail.slice(0, 2000), screenshot: shot, ...extra })
   pending.set(id, payload)
+  notifyOwner('Bob 需要你确认', kind === 'type' ? '确认一次网页输入' : summary.slice(0, 80)) // typed text stays out of the notification
   const allowed = await new Promise(resolve => {
     const timer = setTimeout(() => { approvals.delete(id); resolve(false) }, APPROVAL_TIMEOUT_MS)
     approvals.set(id, value => { clearTimeout(timer); approvals.delete(id); resolve(value) })
@@ -162,6 +169,9 @@ async function requireApproval({ kind, summary, target = '', detail = '', screen
   push({ type: 'approval_done', id, allowed })
   if (!allowed) throw new Error(`The user did not approve this action: ${summary}`)
 }
+
+/** A locked phone cannot see a card in the page, and an unanswered card expires. */
+const notifyOwner = (title, body) => { sendPush({ title, body }).catch(() => {}) }
 
 // ---- agent tools, served as MCP on a private loopback port ----
 const idSchema = { element_id: { type: 'integer', description: 'Number shown in the latest page snapshot' } }
@@ -172,6 +182,17 @@ const TOOLS = [
   ['browser_type', 'Replace the text in a numbered field.', { ...idSchema, text: { type: 'string' }, press_enter: { type: 'boolean' } }, ['element_id', 'text']],
   ['browser_scroll', 'Scroll one screen and return a new snapshot.', { direction: { type: 'string', enum: ['up', 'down'] } }, ['direction']],
   ['browser_request_human', 'Pause and ask the user to complete a login, captcha, QR code or 2FA in the browser window.', { reason: { type: 'string' }, action_type: { type: 'string', enum: ['login', 'captcha', 'qr', 'confirm'] } }, ['reason']],
+  ['browser_select', 'Choose an option in a numbered <select> dropdown, by its text or value. For dropdowns built from other elements, use browser_click.', { ...idSchema, value: { type: 'string' } }, ['element_id', 'value']],
+  ['browser_hover', 'Move the mouse over a numbered element to open its menu, and return a new snapshot.', idSchema, ['element_id']],
+  ['browser_press_key', 'Press one key on the focused element. Enter outside a search box asks the user first.', { key: { type: 'string', enum: ['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace', 'PageUp', 'PageDown', 'Home', 'End'] } }, ['key']],
+  ['browser_back', 'Go back one page in the current tab and return a new snapshot.', {}, []],
+  ['browser_wait', 'Wait for text to appear on a slow page, or for some seconds when no text is given (up to 20), then return a new snapshot.', { text: { type: 'string' }, seconds: { type: 'integer' } }, []],
+  ['browser_read', 'Read the whole current page, not only what is on screen, in pieces. what is text (default), links or tables.', { what: { type: 'string', enum: ['text', 'links', 'tables'] }, offset: { type: 'integer', description: 'Where to continue from, as given at the end of the previous piece' } }, []],
+  ['browser_tabs', 'List the open tabs.', {}, []],
+  ['browser_switch_tab', 'Switch to a tab by its number from browser_tabs and return a snapshot.', { index: { type: 'integer' } }, ['index']],
+  ['browser_close_tab', 'Close a tab by its number from browser_tabs.', { index: { type: 'integer' } }, ['index']],
+  ['browser_downloads', 'List files the browser has downloaded into the workspace folder.', {}, []],
+  ['browser_upload', 'Attach a file from your workspace folder to a numbered file input. Always asks the user first.', { ...idSchema, path: { type: 'string', description: 'Path inside the workspace folder' } }, ['element_id', 'path']],
   ['list_files', 'List a folder on the server. Relative paths start in your workspace folder, which needs no approval; other folders ask the user first.', { path: { type: 'string' } }, []],
   ['read_file', 'Read a text file on the server. Relative paths start in your workspace folder, which needs no approval; other files ask the user first.', { path: { type: 'string' }, max_chars: { type: 'integer' } }, ['path']],
   ['write_file', 'Write a text file on the server. Always asks the user first.', { path: { type: 'string' }, content: { type: 'string' }, append: { type: 'boolean' } }, ['path', 'content']],
@@ -287,6 +308,7 @@ async function callTool(name, args) {
     return removed ? 'Forgotten.' : 'No memory with that id.'
   }
   await waitForHuman()
+  await browser.ensure()
   switch (name) {
     case 'browser_navigate':
       await browser.navigate(String(args.url))
@@ -304,6 +326,7 @@ async function callTool(name, args) {
     }
     case 'browser_type': {
       const info = await element(args.element_id)
+      if (info.secret) throw new Error('This is a password or code field. Do not type it yourself: call browser_request_human so the owner can enter it.')
       if (args.press_enter && !info.search) {
         await requireApproval({ kind: 'type', summary: `Enter "${String(args.text).slice(0, 80)}" and press Enter`, screenshot: true })
       }
@@ -314,10 +337,62 @@ async function callTool(name, args) {
     case 'browser_scroll':
       await browser.scroll(args.direction)
       break
+    case 'browser_select': {
+      await element(args.element_id)
+      await browser.select(args.element_id, String(args.value ?? ''))
+      break
+    }
+    case 'browser_hover':
+      await element(args.element_id)
+      await browser.hover(args.element_id)
+      break
+    case 'browser_press_key': {
+      const key = String(args.key ?? '')
+      if (key === 'Enter' && !(await browser.focused())?.search) {
+        await requireApproval({ kind: 'type', summary: 'Press Enter on this page', screenshot: true })
+        await waitForHuman()
+      }
+      await browser.pressKey(key)
+      await browser.settle(2000)
+      break
+    }
+    case 'browser_back':
+      await browser.back()
+      break
+    case 'browser_wait': {
+      const found = await browser.waitFor(args.text ? String(args.text) : '', args.seconds)
+      if (!found) return `That text did not appear in time.\n\n${await browser.snapshot()}`
+      break
+    }
+    case 'browser_read':
+      return browser.read(args.what, args.offset)
+    case 'browser_tabs':
+      return browser.tabs()
+    case 'browser_switch_tab':
+      await browser.switchTab(args.index)
+      break
+    case 'browser_close_tab':
+      await browser.closeTab(args.index)
+      break
+    case 'browser_downloads':
+      return browser.listDownloads()
+    case 'browser_upload': {
+      const info = await element(args.element_id)
+      if (info.type !== 'file') throw new Error('That element is not a file input.')
+      const where = host.classify(String(args.path ?? ''))
+      if (where.blocked || !where.inWorkspace) throw new Error('Only files inside your workspace folder can be uploaded.')
+      if (!fs.existsSync(where.path) || !fs.statSync(where.path).isFile()) throw new Error(`Not found: ${args.path}`)
+      await requireApproval({ kind: 'upload', summary: `Upload ${path.basename(where.path)} to this page`, target: where.path, screenshot: true })
+      await waitForHuman()
+      await browser.upload(args.element_id, where.path)
+      break
+    }
     case 'browser_request_human': {
+      if (activeRun) activeRun.needsHuman = { reason: String(args.reason ?? '').slice(0, 200), url: await browser.evaluate('location.href').catch(() => '') }
       if (activeRun) throw new Error('Nobody is available to help during a scheduled run. Finish what you can without it and say what you could not do.')
       const id = crypto.randomUUID()
       pending.set(id, push({ type: 'takeover', id, reason: String(args.reason) }))
+      notifyOwner('Bob 需要你帮忙', String(args.reason).slice(0, 80))
       await new Promise((resolve, reject) => {
         const timer = setTimeout(() => { takeover = null; reject(new Error('The user did not respond in time.')) }, HUMAN_TIMEOUT_MS)
         takeover = { id, finish: () => { clearTimeout(timer); takeover = null; resolve() } }
@@ -375,7 +450,7 @@ function jobLine(job) {
 
 const jobView = j => ({
   id: j.id, title: j.title, kind: j.kind, text: j.text, schedule: j.schedule, enabled: j.enabled, nextRun: j.nextRun, lastRun: j.lastRun,
-  lastStatus: j.lastStatus, lastResult: j.lastResult, cid: j.cid, running: activeRun?.jobId === j.id,
+  lastStatus: j.lastStatus, lastResult: j.lastResult, runs: j.runs ?? [], assist: j.assist ?? null, cid: j.cid, running: activeRun?.jobId === j.id,
   channels: j.channels.map(id => clerk.channel(id)?.name).filter(Boolean),
 })
 const pushTodoCard = (todo, created = false) => push({ type: 'card', card: { kind: 'todo', todo, timezone: clerk.timezone, created } })
@@ -495,7 +570,7 @@ const proactive = Object.assign(
   { enabled: false, times: ['09:00', '18:30'], level: 0.35, cid: null, fired: {}, lastAt: 0 },
   readJson(PROACTIVE_FILE, {}),
 )
-const saveProactive = () => fs.writeFileSync(PROACTIVE_FILE, JSON.stringify(proactive), { mode: 0o600 })
+const saveProactive = () => writeAtomic(PROACTIVE_FILE, JSON.stringify(proactive))
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 const QUIET_FROM = 22
 const QUIET_TO = 8
@@ -639,7 +714,7 @@ function bridgeConversation(from, name, { fresh = false } = {}) {
   if (!fresh && existing && convOf(existing)) return existing
   const conv = createConversation(name ? `WeChat · ${name}`.slice(0, 40) : 'WeChat')
   bridgeContacts[key] = conv.id
-  fs.writeFileSync(bridgeContactsFile, JSON.stringify(bridgeContacts))
+  writeAtomic(bridgeContactsFile, JSON.stringify(bridgeContacts))
   broadcast({ type: 'conversations' })
   return conv.id
 }
@@ -723,17 +798,42 @@ async function deliver(job, text, cards = []) {
   }
   clerk.setDelivery(entry.id, delivery)
   broadcast({ type: 'clerk' })
+  return delivery
 }
 
-function recordRun(job, status, text) {
-  clerk.update(job, { lastRun: Date.now(), lastStatus: status, lastResult: String(text).slice(0, 300) })
+/** `status` is ok, partial (done, but some steps needed approval), needs_you, failed or missed. */
+function recordRun(job, status, text, meta = {}) {
+  clerk.recordRun(job, { status, summary: String(text).slice(0, 300), ...meta }, status === 'needs_you' ? meta.assist : null)
   broadcast({ type: 'clerk' })
 }
 
-async function reportFailure(job, reason) {
+const runMeta = run => run ? { ms: Date.now() - run.startedAt, costUsd: Math.max(0, budget.status().spentUsd - run.spentBefore) } : {}
+
+async function reportFailure(job, reason, run = null) {
   const text = `This task could not run: ${reason}`
-  await deliver(job, text)
-  recordRun(job, 'failed', text)
+  const delivery = await deliver(job, text)
+  recordRun(job, 'failed', text, { ...runMeta(run), delivery })
+}
+
+/** After a scheduled run asked for a person: opens the page it stopped on, and runs the job again once they are done. */
+async function startAssist(job) {
+  const { reason, url } = job.assist
+  if (/^https?:/i.test(url ?? '')) await browser.navigate(url).catch(() => {})
+  const id = crypto.randomUUID()
+  pending.set(id, push({ type: 'takeover', id, reason }, true, job.cid))
+  const close = done => {
+    clearTimeout(timer)
+    takeover = null
+    pending.delete(id)
+    push({ type: 'takeover_done', id }, true, job.cid)
+    if (!done) return
+    clerk.update(job, { assist: null })
+    startJob(job).then(result => {
+      if (result === 'busy') deliver(job, 'Thanks. Bob was busy, so this will use your sign-in at its next scheduled time.').catch(() => {})
+    }, error => console.error('assist rerun failed:', error.message))
+  }
+  const timer = setTimeout(() => close(false), HUMAN_TIMEOUT_MS)
+  takeover = { id, finish: () => close(true) }
 }
 
 /** @returns {'started'|'done'|'busy'} Reminders finish at once; tasks start Bob and finish later in finishRun. */
@@ -750,7 +850,7 @@ async function startJob(job) {
   if (!apiKey || !priceOf(cfg)) { await reportFailure(job, 'no model is set up.'); return 'done' }
   if (!job.cid || !convOf(job.cid)) clerk.update(job, { cid: createConversation(job.title, { job: true }).id })
   const cid = job.cid
-  activeRun = { jobId: job.id, cid, texts: [], cards: [], started: false, timer: setTimeout(() => finishRun('failed', 'it took longer than 10 minutes, so it was stopped.', { stop: true }), RUN_LIMIT_MS) }
+  activeRun = { jobId: job.id, cid, texts: [], cards: [], skipped: [], needsHuman: null, startedAt: Date.now(), spentBefore: budget.status().spentUsd, started: false, timer: setTimeout(() => finishRun('failed', 'it took longer than 10 minutes, so it was stopped.', { stop: true }), RUN_LIMIT_MS) }
   runningCid = cid
   lastPromptCid = cid
   push({ type: 'message', role: 'user', text: job.text, scheduled: true }, true, cid)
@@ -770,11 +870,17 @@ async function finishRun(status, detail = '', { stop = false } = {}) {
   if (stop) { agent.stop(); push({ type: 'status', status: 'idle' }, false, run.cid) }
   const job = clerk.job(run.jobId)
   if (!job) return
-  if (status === 'ok') {
-    const text = run.texts.at(-1) ?? (run.cards.length ? '' : 'The task finished without an answer.')
-    await deliver(job, text, run.cards)
-    recordRun(job, 'ok', text || cardText(run.cards[0]))
-  } else await reportFailure(job, detail)
+  if (status !== 'ok') return reportFailure(job, detail, run)
+  const text = run.texts.at(-1) ?? ''
+  if (!text && !run.cards.length) return reportFailure(job, 'it finished without producing a result.', run)
+  const summary = text || cardText(run.cards[0])
+  if (run.needsHuman) {
+    const delivery = await deliver(job, `${text}\n\nNeeds you: ${run.needsHuman.reason}. Open this job in the Clerk tab to finish it, and Bob will run it again.`.trim(), run.cards)
+    if (!job.channels.some(id => clerk.channel(id)?.type === 'webpush')) notifyOwner('Bob 需要你帮忙', job.title)
+    return recordRun(job, 'needs_you', summary, { ...runMeta(run), delivery, assist: { ...run.needsHuman, at: Date.now() } })
+  }
+  const delivery = await deliver(job, text, run.cards)
+  recordRun(job, run.skipped.length ? 'partial' : 'ok', summary, { ...runMeta(run), delivery, skipped: run.skipped.slice(0, 5) })
 }
 
 let ticking = false
@@ -833,7 +939,7 @@ if (!vapid?.publicKey || !vapid?.privateKey) {
 }
 try { webpush.setVapidDetails('mailto:bob@localhost', vapid.publicKey, vapid.privateKey) } catch (error) { console.error('[bobbot] web push is unavailable:', error.message) }
 
-const savePushSubs = () => fs.writeFileSync(PUSH_FILE, JSON.stringify(pushSubs), { mode: 0o600 })
+const savePushSubs = () => writeAtomic(PUSH_FILE, JSON.stringify(pushSubs))
 
 /** Sends a notification to every subscribed home-screen app. Dead subscriptions are dropped. */
 async function sendPush({ title, body, url = '/' }) {
@@ -1166,7 +1272,7 @@ const priceOf = cfg => cfg.kind === 'custom'
 
 const readKeys = () => readJson(KEY_FILE, {})
 function writeKey(kind, key) {
-  fs.writeFileSync(KEY_FILE, JSON.stringify({ ...readKeys(), [kind]: key }), { mode: 0o600 })
+  writeAtomic(KEY_FILE, JSON.stringify({ ...readKeys(), [kind]: key }))
 }
 const loadKey = (kind = modelConfig().kind) => {
   if (kind === 'deepseek' && process.env.DEEPSEEK_API_KEY) return process.env.DEEPSEEK_API_KEY
@@ -1438,7 +1544,7 @@ async function route(req, res) {
         cfg = { kind, model, baseUrl, inputUsd, outputUsd }
       } else return send(res, 400, { error: 'BAD_KIND' })
       if (key) writeKey(kind, key)
-      fs.writeFileSync(MODEL_FILE, JSON.stringify(cfg))
+      writeAtomic(MODEL_FILE, JSON.stringify(cfg))
       modelListCache = { at: 0, ids: null }
       agent.stop()
       runningCid = null
@@ -1573,6 +1679,13 @@ async function route(req, res) {
       if (activeRun?.jobId === body.id) return send(res, 409, { error: 'RUNNING' })
       clerk.removeJob(body.id)
       broadcast({ type: 'clerk' })
+      return send(res, 200, { ok: true })
+    }
+    case '/api/clerk/job/assist': {
+      const job = clerk.job(body.id)
+      if (!job?.assist) return send(res, 404, { error: 'NOTHING_NEEDED' })
+      if (runningCid || activeRun || takeover) return send(res, 409, { error: 'BUSY' })
+      await startAssist(job)
       return send(res, 200, { ok: true })
     }
     case '/api/clerk/job/run': {
@@ -1714,6 +1827,7 @@ async function shutdown() {
   closing = true
   clearInterval(tickTimer)
   agent.stop()
+  writes.flush()
   await browser.close()
   process.exit(0)
 }

@@ -68,7 +68,7 @@ try {
       for (const k of ['2', '4', '6', '8']) await phone.evaluate(`[...document.querySelectorAll('.pad button')].find(b => b.textContent === '${k}').click()`)
     }
     await waitFor(() => phone.evaluate("!document.getElementById('app').hidden"))
-    await phone.evaluate("document.getElementById('openBrowser').click()")
+    await phone.evaluate('openBrowser()') // the page has no button for this: it opens when Bob asks for a takeover
     await waitFor(() => phone.evaluate('document.getElementById("screen").width > 300'))
   }
   await emulate('phone')

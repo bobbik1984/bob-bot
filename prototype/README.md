@@ -63,7 +63,7 @@ Tell Bob in chat, for example "every morning at 8, check the weather in Shanghai
 
 - **Reminders** deliver the exact text at the time. **Tasks** wake Bob at the time to do the work, and the result goes to the inbox and your channels. Each task has its own conversation, so you can see what it did.
 - **Schedules** are daily, weekly (chosen days), monthly or once, in your time zone, including daylight saving changes. A run more than two hours late (for example because the server was off) is skipped and reported as missed. A task waits while Bob is busy with something else.
-- **Unattended rules:** a scheduled task can read web pages with `web_fetch` and browse read-only, but it cannot ask for approval, run commands, install anything or change the schedule. If it hits a login or anything that needs approval, it skips that and says so.
+- **Unattended rules:** a scheduled task can read web pages with `web_fetch` and browse read-only, but it cannot ask for approval, run commands, install anything or change the schedule. If it hits something that needs approval, it skips that and the run is recorded as partly done. If a login has expired, the run is recorded as needing you: you get a notification, the job in the Clerk tab shows a button that opens the page it stopped on, and the job runs again once you hand back.
 - **Time:** every message to Bob starts with the current time and your time zone, so "tomorrow at 3" means what you mean.
 - **Cost:** a task is a normal model run and counts toward the monthly spending limit. If the limit is reached, tasks report that they could not run.
 
@@ -76,7 +76,7 @@ Tell Bob in chat, for example "every morning at 8, check the weather in Shanghai
 | Telegram bot | Bot token (chat id is found automatically after you message the bot) | No |
 | Discord webhook | Webhook | No |
 
-Personal WeChat has no official bot interface, so it is not supported. Use a WeCom group bot instead. "Send a test" tells you whether the service accepted the message and why not if it did not.
+Personal WeChat is reached only through the official iLink bridge described above, and it can only reach contacts who messaged recently. "Send a test" tells you whether the service accepted the message and why not if it did not.
 
 ## Installing tools by chat
 
@@ -112,6 +112,15 @@ Read each command before you allow it. A command can do anything its user can do
 The cloud browser takes the shape of the device that opens it. On a phone it is a phone: a phone-sized page, a mobile user agent and touch, so sites such as ctrip.com serve their mobile version, readable at your screen's scale. On a PC it is a PC: a desktop page as wide as the window, a mouse that can hover, the wheel, and your keyboard typing straight into the page (use the box below the page for Chinese). Rotating the phone or resizing the window fits the page again.
 
 For a site that has no mobile version, the "desktop site" button on a phone lays the page out wide, and pinching with two fingers zooms and moves it. When nobody has the window open, Bob browses the way you last did.
+
+## What Bob can do in the browser
+
+Bob reads the visible page as numbered elements, including iframes, open shadow DOM and clickable elements built from plain `<div>`s. It can click, type, choose from dropdowns, hover, press keys, go back, wait for slow content, read whole pages, tables and link lists in pieces, work across tabs, download into `data/workspace/downloads`, and upload from the workspace (always with approval).
+
+- Bob never types into a password or one-time-code field, and their values never reach the model. It asks you to take over instead.
+- Every document, including redirects, frames and clicked links, is checked against the public-address rule.
+- A click is refused if something else is on top of the element, so the approval rules always judge what will really be clicked.
+- If Chromium crashes, the next action restarts it. Logins are kept on disk.
 
 ## Models and keys
 
@@ -157,7 +166,9 @@ PDF, Word, Excel and images are not supported yet. For a spreadsheet, export it 
 - The API key is saved as a private plain-text file in `data/`, and anyone with server access can read it and the browser profile.
 - Approval uses button-text rules, so an unusually labelled button can get through.
 - QR login needs a second device, and passkeys do not work remotely.
-- Only the top-level page is numbered for the agent, so content inside iframes and shadow DOM is invisible to it.
+- Content inside closed shadow DOM is invisible to the agent. Iframes (including cross-site ones) and open shadow DOM are read and clickable.
+- A scheduled run cannot wait for an approval: it skips that step and reports it. Only an expired login can be finished later.
+- Downloads stop at 50 MB and only the latest 20 are kept.
 - Scheduled tasks and reminders run only while the server is up. A run that was due while it was off is reported as missed, not made up.
 - Telegram and Discord cannot be reached from servers in mainland China.
 - Installing a package or tool server can run arbitrary code from that package. The card shows what, but not whether the package is safe.
@@ -169,6 +180,7 @@ PDF, Word, Excel and images are not supported yet. For a spreadsheet, export it 
 ```sh
 npm run test:unit # schedules and daylight saving, clerk store, channel messages, web_fetch (no network needed)
 npm test          # server, agent loop, approvals, clerk, extensions, models, attachments, spending limit
+npm run test:browser # frames, shadow DOM, tabs, dialogs, downloads, the address guard, crash recovery (local pages, no network)
 npm run test:ui   # drives the real page as a phone and as a PC, and clicks, hovers and types into the cloud browser
 ```
 

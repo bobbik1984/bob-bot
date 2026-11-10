@@ -442,10 +442,39 @@ try {
     assert.equal((await clerkView()).jobs.length, 2, 'a scheduled run changed the schedule')
     const view = await clerkView()
     const task = view.jobs.find(j => j.id === taskId)
-    assert.equal(task.lastStatus, 'ok'); assert.equal(task.lastResult, 'Take an umbrella.')
-    assert.equal(view.inbox[0].text, 'Take an umbrella.'); assert.equal(view.inbox[0].title, 'Morning weather')
+    assert.equal(task.lastStatus, 'needs_you'); assert.equal(task.lastResult, 'Take an umbrella.')
+    assert.equal(task.assist.reason, 'login please'); assert.equal(task.runs[0].status, 'needs_you')
+    assert.ok(view.inbox[0].text.startsWith('Take an umbrella.')); assert.ok(view.inbox[0].text.includes('login please')); assert.equal(view.inbox[0].title, 'Morning weather')
     const convo = (await getJson('/api/conversations')).body.items.find(c => c.id === task.cid)
     assert.ok(convo?.job, 'the run has no conversation of its own')
+  })
+  await check('a run that needed a sign-in can be finished by the owner, and then runs again', async () => {
+    const t1 = Date.now()
+    script.push(say('Signed in, here is the report.'))
+    assert.equal((await post('/api/clerk/job/assist', { id: taskId })).status, 200)
+    const help = await waitAfter(t1, e => e.type === 'takeover' && e.reason === 'login please')
+    assert.equal((await post('/api/takeover/done', {})).status, 200)
+    await waitAfter(t1, e => e.type === 'takeover_done' && e.id === help.id)
+    await waitAfter(t1, e => e.type === 'message' && e.text === 'Signed in, here is the report.')
+    await waitAfter(t1, e => e.type === 'status' && e.status === 'idle')
+    let task
+    for (let i = 0; i < 30; i++) { task = (await clerkView()).jobs.find(j => j.id === taskId); if (task.runs.length >= 2) break; await sleep(100) }
+    assert.equal(task.lastStatus, 'ok'); assert.equal(task.assist, null)
+    assert.deepEqual(task.runs.slice(0, 2).map(r => r.status), ['ok', 'needs_you'])
+    assert.ok(task.runs[0].ms > 0, 'the run has no duration')
+    assert.equal((await post('/api/clerk/job/assist', { id: taskId })).status, 404)
+  })
+  await check('Bob refuses to type into a password field', async () => {
+    const t2 = Date.now()
+    script.push(
+      async () => { await injectPage('<input type="password" aria-label="Code">'); return use('browser_snapshot', {}) },
+      use('browser_type', { element_id: 1, text: 'hunter2' }),
+      say('Could not.'),
+    )
+    assert.equal((await post('/api/chat', { text: 'sign me in' })).status, 200)
+    await waitAfter(t2, e => e.type === 'message' && e.text === 'Could not.')
+    await waitAfter(t2, e => e.type === 'status' && e.status === 'idle')
+    assert.ok(lastSent().includes('password or code field'), 'the refusal is missing')
   })
   await check('organized results are shown as cards in the chat, kept with the run, and sent to the inbox', async () => {
     const t0 = Date.now()

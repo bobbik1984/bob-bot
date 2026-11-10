@@ -11,7 +11,8 @@
     "set-pin": "node set-pin.mjs",
     "test": "node test/e2e.mjs",
     "test:ui": "node test/ui-click.mjs",
-    "test:unit": "node test/unit.mjs"
+    "test:unit": "node test/unit.mjs",
+    "test:browser": "node test/browser.mjs"
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.2.2-rc.1",

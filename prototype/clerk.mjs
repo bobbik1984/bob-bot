@@ -3,9 +3,11 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
+import { writeAtomic } from './store.mjs'
 
 const MAX_JOBS = 30
 const MAX_INBOX = 100
+const MAX_RUNS = 20
 export const CATCH_UP_MS = 2 * 60 * 60 * 1000 // a job more than this late is skipped, not run
 
 const fail = code => Object.assign(new Error(code), { code })
@@ -116,10 +118,10 @@ export class Clerk {
   }
 
   #save() {
-    fs.writeFileSync(this.file, JSON.stringify({ timezone: this.timezone, timezoneChosen: this.timezoneChosen, jobs: this.jobs, todos: this.todos, channels: this.channels }), { mode: 0o600 })
+    writeAtomic(this.file, JSON.stringify({ timezone: this.timezone, timezoneChosen: this.timezoneChosen, jobs: this.jobs, todos: this.todos, channels: this.channels }))
   }
 
-  #saveInbox() { fs.writeFileSync(this.inboxFile, JSON.stringify(this.inbox.slice(0, MAX_INBOX)), { mode: 0o600 }) }
+  #saveInbox() { writeAtomic(this.inboxFile, JSON.stringify(this.inbox.slice(0, MAX_INBOX))) }
 
   setTimezone(tz) {
     if (!validTimezone(tz)) throw fail('BAD_TIMEZONE')
@@ -180,6 +182,13 @@ export class Clerk {
     return job
   }
   update(job, patch) { Object.assign(job, patch); this.#save() }
+
+  /** Keeps the latest runs of a job. `assist` says what the job is waiting for a person to do, if anything. */
+  recordRun(job, { status, summary, assist, ...rest }, waiting = null, now = Date.now()) {
+    job.runs = [{ at: now, status, summary, ...rest }, ...(job.runs ?? [])].slice(0, MAX_RUNS)
+    Object.assign(job, { lastRun: now, lastStatus: status, lastResult: summary, assist: waiting })
+    this.#save()
+  }
 
   /** Jobs whose time has come. Anything more than CATCH_UP_MS late is reported as missed instead. */
   due(now = Date.now()) {

@@ -230,6 +230,15 @@ main { flex:1; min-height:0; position:relative; }
 .job .meta b { color:var(--text); font-weight:600; }
 .job .last { font-size:13px; color:var(--muted); display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
 .job .last.failed { color:var(--danger); }
+.job .last.warn { color:var(--warn); }
+.job .assist { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; border-radius:10px; background:var(--warn-soft); color:var(--warn); font-size:14px; }
+.job .assist .btn { flex:none; }
+.job .runs summary { cursor:pointer; font-size:13px; color:var(--muted); }
+.job .run { display:grid; grid-template-columns:auto 1fr; gap:2px 8px; padding:8px 0; border-top:1px solid var(--line); font-size:13px; color:var(--muted); }
+.job .run b { color:var(--ok); font-weight:600; }
+.job .run b.warn { color:var(--warn); }
+.job .run b.failed { color:var(--danger); }
+.job .run p { grid-column:1 / -1; margin:0; color:var(--text); overflow-wrap:anywhere; }
 .job.paused { opacity:.7; }
 .chiplist { display:flex; flex-wrap:wrap; gap:6px; }
 .mini { font-size:12px; padding:2px 8px; border-radius:999px; background:var(--surface-2); color:var(--muted); }
@@ -591,6 +600,9 @@ const I18N = {
   openRun:['查看过程','See the run'], openClerk:['去文员查看','Open in Clerk'], running:['运行中…','Running…'], inboxTo:['发送到：','Sent to: '],
   confirmDelete:['确定删除「{n}」？','Delete "{n}"?'], toApp:['应用内','This app'],
   lastOk:['上次：','Last: '], lastFailed:['上次失败：','Last failed: '], lastMissed:['上次错过：','Last missed: '],
+  lastPartial:['上次部分完成：','Partly done: '], lastNeedsYou:['上次需要你：','Needed you: '],
+  assistBtn:['去处理','Sort it out'], runsTitle:['运行记录','Run history'],
+  run_ok:['完成','Done'], run_partial:['部分完成','Partly done'], run_needs_you:['需要你','Needed you'], run_failed:['失败','Failed'], run_missed:['错过','Missed'],
   ch_wechat:['微信（官方 iLink）','WeChat (official iLink)'],
   featuresTitle:['功能扩展','Features'], featuresHint:['Bob 可以在对话里给自己安装小型功能包（工具 + 设置面板），安装前会把代码给你确认。','Bob can install small feature packages (tools plus a settings panel) through chat; you review the code before it lands.'],
   featuresEmpty:['还没有安装功能包。','No feature packages installed yet.'], featuresOpen:['打开','Open'], featuresFailed:['加载失败','failed to load'],
@@ -645,6 +657,10 @@ const I18N = {
   takeoverHint:['Bob 需要你完成登录或验证。处理好后点下方「交还」按钮。','Bob needs you to sign in or verify something. When done, tap “Hand back” below.'],
   // steps
   step_browser_navigate:['打开网页','Opening page'], step_browser_snapshot:['查看页面','Reading page'], step_browser_click:['点击','Clicking'],
+  step_browser_select:['选择选项','Choosing an option'], step_browser_hover:['查看菜单','Opening a menu'], step_browser_press_key:['按键','Pressing a key'],
+  step_browser_back:['返回上一页','Going back'], step_browser_wait:['等待页面','Waiting for the page'], step_browser_read:['阅读全文','Reading the page'],
+  step_browser_tabs:['查看标签页','Checking tabs'], step_browser_switch_tab:['切换标签页','Switching tabs'], step_browser_close_tab:['关闭标签页','Closing a tab'],
+  step_browser_downloads:['查看下载','Checking downloads'], step_browser_upload:['上传文件','Uploading a file'],
   step_browser_type:['输入文字','Typing'], step_browser_scroll:['滚动页面','Scrolling'], step_browser_request_human:['请你协助','Asking you for help'],
   step_list_files:['查看文件夹','Listing files'], step_read_file:['读取文件','Reading a file'], step_write_file:['写入文件','Writing a file'], step_run_command:['运行命令','Running a command'],
   step_todo_add:['添加待办','Adding a to-do'], step_todo_list:['查看待办','Checking to-dos'], step_todo_done:['更新待办','Updating a to-do'], step_todo_remove:['删除待办','Removing a to-do'], step_show_card:['整理信息','Preparing a card'],
@@ -1360,8 +1376,9 @@ function jobCard(job, tz = clerkData?.timezone, compact = false, created = false
   ]))
   if (job.kind === 'reminder' && job.text && job.text !== job.title) c.append(el('div', 'quote', job.text))
   if (job.lastStatus) {
-    const prefix = t(job.lastStatus === 'ok' ? 'lastOk' : job.lastStatus === 'missed' ? 'lastMissed' : 'lastFailed')
-    c.append(el('div', 'last' + (job.lastStatus === 'ok' ? '' : ' failed'), `${prefix}${fmtWhen(job.lastRun, tz)} · ${job.lastResult ?? ''}`))
+    const prefix = t({ ok: 'lastOk', missed: 'lastMissed', partial: 'lastPartial', needs_you: 'lastNeedsYou' }[job.lastStatus] ?? 'lastFailed')
+    const tone = job.lastStatus === 'ok' ? '' : job.lastStatus === 'partial' || job.lastStatus === 'needs_you' ? ' warn' : ' failed'
+    c.append(el('div', 'last' + tone, `${prefix}${fmtWhen(job.lastRun, tz)} · ${job.lastResult ?? ''}`))
   }
   const actions = el('div', 'actions')
   if (compact) { // inside the chat a job card only points to the Clerk tab, where it can be changed
@@ -1376,9 +1393,30 @@ function jobCard(job, tz = clerkData?.timezone, compact = false, created = false
   const del = el('button', 'btn danger', t('remove'))
   del.onclick = async () => { if (confirm(t('confirmDelete', job.title))) { const r = await post('/api/clerk/job/delete', { id: job.id }); if (r.status !== 200) c.append(el('div', 'last failed', errText(r.data, r.status))) } }
   actions.append(run, toggle, del)
+  if (job.assist) {
+    const help = el('div', 'assist')
+    const go = el('button', 'btn primary', t('assistBtn'))
+    go.disabled = job.running
+    go.onclick = async () => { const r = await post('/api/clerk/job/assist', { id: job.id }); if (r.status !== 200) c.append(el('div', 'last failed', errText(r.data, r.status))) }
+    help.append(el('span', '', job.assist.reason), go)
+    c.append(help)
+  }
   c.append(actions)
+  if (job.runs?.length) c.append(runHistory(job, tz))
   if (job.cid) { const see = el('button', 'link', t('openRun')); see.onclick = () => selectConv(job.cid); c.append(see) }
   return c
+}
+function runHistory(job, tz) {
+  const box = el('details', 'runs')
+  box.append(el('summary', '', `${t('runsTitle')} · ${job.runs.length}`))
+  for (const r of job.runs) {
+    const cost = r.costUsd > 0 ? ` · $${r.costUsd.toFixed(3)}` : ''
+    const took = r.ms ? ` · ${Math.max(1, Math.round(r.ms / 1000))}s` : ''
+    const row = el('div', 'run')
+    row.append(el('b', r.status === 'ok' ? '' : r.status === 'partial' || r.status === 'needs_you' ? 'warn' : 'failed', t('run_' + r.status)), el('span', '', `${fmtWhen(r.at, tz)}${took}${cost}`), el('p', '', r.summary ?? ''))
+    box.append(row)
+  }
+  return box
 }
 function inboxItem(n) {
   const item = el('button', 'inbox-item' + (n.read ? '' : ' unread')); item.type = 'button'

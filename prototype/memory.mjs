@@ -1,6 +1,7 @@
 // Durable memory: facts the owner would expect Bob to remember, plus insights produced by the nightly dream.
 import crypto from 'node:crypto'
 import fs from 'node:fs'
+import { writeAtomic } from './store.mjs'
 
 const MAX_ITEMS = 120
 const MAX_INSIGHTS = 8
@@ -15,7 +16,7 @@ export class Memory {
     this.state.dreamLog ??= []
   }
 
-  #save() { try { fs.writeFileSync(this.file, JSON.stringify(this.state), { mode: 0o600 }) } catch { /* read only */ } }
+  #save() { try { writeAtomic(this.file, JSON.stringify(this.state)) } catch { /* read only */ } }
 
   list() { return { items: this.state.items, insights: this.state.insights, lastDreamAt: this.state.lastDreamAt } }
 
