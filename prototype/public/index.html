@@ -615,6 +615,7 @@ nav button.on span:first-child { background:var(--accent-soft); }
         <h3 data-i="phone" data-t="pushTitle"></h3>
         <div class="keystate none" id="pushState"></div>
         <p class="hint" id="pushHint" data-t="pushHint"></p>
+        <p class="hint" id="pushDiag" hidden></p>
         <div class="row">
           <button class="btn primary" id="pushEnable" data-t="pushEnable"></button>
           <button class="btn" id="pushTest" data-t="pushTest" hidden></button>
@@ -799,6 +800,11 @@ const I18N = {
   pushHint:['把本站添加到主屏幕后，可以从桌面像 App 一样打开；提醒由系统推送，Safari 关掉也能收到。','Add this site to the Home Screen and open it from there; reminders arrive as system notifications even when Safari is closed.'],
   pushIosHint:['iPhone（iOS 16.4+）：用 Safari 打开 → 分享 → 添加到主屏幕 → 从桌面图标打开，再点“启用通知”。','iPhone (iOS 16.4+): open in Safari → Share → Add to Home Screen → open from the icon → tap Enable.'],
   pushEnable:['启用通知','Enable notifications'], pushTest:['发送测试通知','Send a test'],
+  pushDiag:['运行方式：{m} · 通知权限：{p}','Mode: {m} · Permission: {p}'],
+  pushModeApp:['主屏 App','Home Screen app'], pushModeTab:['浏览器标签','Browser tab'],
+  pushPermDefault:['未请求','Not asked'], pushPermGranted:['已允许','Allowed'], pushPermDenied:['已拒绝','Denied'],
+  pushGrantedNotSubscribed:['通知权限已允许，点「启用通知」完成订阅。','Notifications are allowed; tap Enable to finish subscribing.'],
+  pushPromptBlocked:['系统没有弹出通知询问。请从主屏幕图标重新打开 Bob 再试；仍然没有的话，去 iOS 设置 → 通知 里看 Bob 是否出现。','iOS did not show the notification prompt. Reopen Bob from its Home Screen icon and retry; if it still does not appear, check Settings → Notifications for Bob.'],
   pushOn:['已开启，{n} 台设备已订阅','On, {n} device(s) subscribed'], pushOff:['尚未开启','Not enabled yet'],
   pushDenied:['通知权限被拒绝，请在系统设置 → 通知 → Bob 中允许','Notifications are blocked; allow them in Settings → Notifications → Bob'],
   pushUnsupported:['这个浏览器不能发通知，或需要先从主屏幕图标打开','This browser cannot show notifications, or the app must be opened from the Home Screen'],
@@ -882,7 +888,11 @@ const I18N = {
   noPin:['尚未设置 PIN，请在服务器运行 npm run set-pin -- 1234','No PIN yet. On the server run: npm run set-pin -- 1234'],
   failed:['操作失败：','Failed: '],
 }
-const t = (k, n) => (I18N[k]?.[langIndex] ?? I18N[k]?.[1] ?? k).replace('{n}', n)
+const t = (k, n) => {
+  const text = I18N[k]?.[langIndex] ?? I18N[k]?.[1] ?? k
+  if (n && typeof n === 'object') return text.replace(/\{(\w+)\}/g, (_, key) => n[key] ?? `{${key}}`)
+  return text.replace('{n}', n)
+}
 const $ = id => document.getElementById(id)
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e }
 document.documentElement.lang = zh ? 'zh-CN' : lang === 'en' ? 'en' : lang
@@ -2056,18 +2066,33 @@ async function loadPushState() {
   box.className = 'keystate ' + (count > 0 ? '' : 'none')
   box.textContent = count > 0 ? t('pushOn', count) : t('pushOff')
   test.hidden = count === 0
+  const diag = $('pushDiag')
+  if (iOS) {
+    diag.hidden = false
+    const perm = !('Notification' in window) ? t('pushPermDenied') : Notification.permission === 'granted' ? t('pushPermGranted') : Notification.permission === 'denied' ? t('pushPermDenied') : t('pushPermDefault')
+    diag.textContent = t('pushDiag', { m: isInstalled() ? t('pushModeApp') : t('pushModeTab'), p: perm })
+  } else diag.hidden = true
   if (iOS && !isInstalled()) { $('pushHint').textContent = t('pushIosHint'); enable.disabled = true }
   else if (!can) { $('pushHint').textContent = t('pushUnsupported'); enable.disabled = true }
   else if (Notification.permission === 'denied') { $('pushHint').textContent = t('pushDenied'); enable.disabled = true }
+  else if (Notification.permission === 'granted' && count === 0) $('pushHint').textContent = t('pushGrantedNotSubscribed')
   else $('pushHint').textContent = t('pushHint')
 }
 $('pushEnable').onclick = async () => {
+  // iOS only shows the permission prompt when requestPermission runs inside the tap itself.
+  let permission = 'Notification' in window ? Notification.permission : 'denied'
+  if (permission === 'default') {
+    try { permission = await Notification.requestPermission() } catch (error) { $('pushHint').textContent = String(error?.message ?? error); return }
+  }
+  if (permission !== 'granted') {
+    if ('Notification' in window && Notification.permission === 'default') $('pushHint').textContent = t('pushPromptBlocked')
+    loadPushState()
+    return
+  }
   try {
     if (!pushConfig) await loadPushState()
     const reg = await navigator.serviceWorker.register('/sw.js')
     await navigator.serviceWorker.ready
-    const permission = await Notification.requestPermission()
-    if (permission !== 'granted') return loadPushState()
     let sub = await reg.pushManager.getSubscription()
     if (!sub) {
       sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToBytes(pushConfig.publicKey) })
