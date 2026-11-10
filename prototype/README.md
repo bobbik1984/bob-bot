@@ -143,6 +143,8 @@ Read each command before you allow it. A command can do anything its user can do
 
 The cloud browser takes the shape of the device that opens it. On a phone it is a phone: a phone-sized page, a mobile user agent and touch, so sites such as ctrip.com serve their mobile version, readable at your screen's scale. On a PC it is a PC: a desktop page as wide as the window, a mouse that can hover, the wheel, and your keyboard typing straight into the page (use the box below the page for Chinese). Rotating the phone or resizing the window fits the page again.
 
+When Bob asks you to take over, the window says why. Tap a field on the page and the box under the page becomes that field: what you type there appears on the page as you type, with the phone keyboard, Chinese input, paste and SMS codes all working, and Enter pressing Enter. A password field hides what you type, and a number or code field brings the number keyboard. A page with no phone layout is zoomed in on the field you picked, sharp, and the fit button puts the whole page back. The bar at the top shows the address and a loading line, with reload, and back is in the row of keys. If the connection drops the window reconnects by itself. The save-picture key saves what is on screen, so a QR code can be scanned from your album in WeChat or Alipay.
+
 For a site that has no mobile version, the "desktop site" button on a phone lays the page out wide, and pinching with two fingers zooms and moves it. When nobody has the window open, Bob browses the way you last did.
 
 ## What Bob can do in the browser

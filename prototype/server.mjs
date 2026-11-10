@@ -2093,8 +2093,19 @@ browser.onFrame = frame => new Promise(resolve => {
 const unit = v => Number.isFinite(v) && v >= 0 && v <= 1
 
 wss.on('connection', ws => {
-  viewer?.close()
+  viewer?.close(4001, 'opened elsewhere') // one window at a time; the old one is told why, so it does not fight back
   viewer = ws
+  // The window is told where the page is and which field has the keyboard, so it can show that and type into it.
+  let lastState = '', lastField = '', typing = Promise.resolve()
+  const stateTimer = setInterval(async () => {
+    if (viewer !== ws || ws.readyState !== 1) return
+    try {
+      const focus = await browser.focusInfo()
+      if ((focus?.key ?? '') !== lastField) { lastField = focus?.key ?? ''; if (focus) await browser.zoomToFocus() } // once per field, so the owner can zoom back out
+      const state = JSON.stringify({ t: 'state', ...(await browser.pageState()), zoomed: browser.zoomed, focus: focus && { key: focus.key, label: focus.label, kind: focus.kind, value: focus.value } })
+      if (state !== lastState) { lastState = state; ws.send(state) }
+    } catch (error) { if (process.env.BOBBOT_DEBUG) console.error('[window state]', error.message) }
+  }, 500)
   ws.on('message', raw => {
     let m
     try { m = JSON.parse(raw) } catch { return }
@@ -2103,6 +2114,10 @@ wss.on('connection', ws => {
       if (m.t === 'pointer' && unit(m.x) && unit(m.y)) return browser.pointer(m.k, m.x, m.y)
       if (m.t === 'wheel' && Number.isFinite(m.d)) return browser.wheel(m.d, Number.isFinite(m.dx) ? m.dx : 0)
       if (m.t === 'text' && typeof m.v === 'string') return browser.insertText(m.v.slice(0, 4000))
+      if (m.t === 'set' && typeof m.v === 'string') return (typing = typing.catch(() => {}).then(() => browser.setFocusedText(m.v.slice(0, 4000)))) // in order, one at a time
+      if (m.t === 'fit') return browser.resetZoom()
+      if (m.t === 'back') return browser.back()
+      if (m.t === 'reload') return browser.reload()
       if (m.t === 'key') return browser.pressKey(m.k)
       if (m.t === 'nav' && typeof m.url === 'string') return browser.navigate(/^https?:/i.test(m.url) ? m.url : `https://${m.url}`)
       return null
@@ -2110,6 +2125,7 @@ wss.on('connection', ws => {
     act?.catch(error => { if (ws.readyState === 1) ws.send(JSON.stringify({ error: error.message })) })
   })
   ws.on('close', () => {
+    clearInterval(stateTimer)
     if (viewer === ws) { viewer = null; browser.stopCast().catch(() => {}) }
   })
 })

@@ -189,6 +189,56 @@ function readText() {
   return parts.filter(Boolean).join('\n\n')
 }
 
+/** The text field that has the keyboard, described for the owner's window. Null when focus is elsewhere. */
+function focusedField() {
+  let el = document.activeElement
+  while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement
+  if (!el || el === document.body) return null
+  const tag = el.tagName
+  const type = (el.getAttribute('type') || 'text').toLowerCase()
+  const texty = tag === 'TEXTAREA' || el.isContentEditable || (tag === 'INPUT' && !/^(checkbox|radio|file|button|submit|reset|range|color|image|hidden)$/.test(type))
+  if (!texty || el.disabled || el.readOnly) return null
+  const hint = [el.autocomplete, el.name, el.id, el.placeholder, el.getAttribute('aria-label')].join(' ')
+  const secret = type === 'password' || /current-password|new-password|cc-/i.test(el.autocomplete || '')
+  const code = /one-time|otp|verif|captcha|验证码|短信/i.test(hint)
+  const value = el.isContentEditable ? el.innerText : el.value
+  const clean = s => String(s ?? '').replace(/\s+/g, ' ').trim()
+  return {
+    key: [tag, type, el.name, el.id, el.placeholder].join('|'),
+    label: clean(el.getAttribute('aria-label') || el.labels?.[0]?.innerText || el.placeholder || el.title || el.name).replace(/[:：]$/, '').slice(0, 40),
+    box: (r => ({ x: r.left, y: r.top, w: r.width, h: r.height }))(el.getBoundingClientRect()),
+    kind: secret ? 'secret' : code ? 'code' : /^(tel|number)$/.test(type) || el.inputMode === 'numeric' ? 'number' : tag === 'TEXTAREA' || el.isContentEditable ? 'multiline' : 'text',
+    value: secret ? '' : String(value ?? '').slice(0, 2000), // a saved password stays on the server
+  }
+}
+
+/** How big the focused field looks on the owner's screen, and then: bring it to the middle. */
+function focusedSize() {
+  let el = document.activeElement
+  while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement
+  return el ? el.getBoundingClientRect().width : 0
+}
+function centerFocused() {
+  let el = document.activeElement
+  while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement
+  el?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' })
+}
+
+function selectFocused() {
+  let el = document.activeElement
+  while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement
+  if (!el) return false
+  if (el.select) el.select()
+  else if (el.isContentEditable) {
+    const range = document.createRange()
+    range.selectNodeContents(el)
+    const chosen = getSelection()
+    chosen.removeAllRanges()
+    chosen.addRange(range)
+  }
+  return true
+}
+
 /** Runs in the page's parent frame, on the element that holds a cross-origin frame. */
 function frameOwnerBox(scroll) {
   if (scroll) this.scrollIntoView({ block: 'center', behavior: 'instant' })
@@ -241,7 +291,8 @@ export class CloudBrowser {
     if (!exe) throw new Error('No Chrome/Chromium found. Set CHROME_PATH.')
     this.dead = false
     fs.mkdirSync(this.profile, { recursive: true })
-    fs.rmSync(path.join(this.profile, 'DevToolsActivePort'), { force: true })
+    this.#clearStaleBrowser()
+    for (const stale of ['DevToolsActivePort', 'SingletonLock', 'SingletonSocket', 'SingletonCookie']) fs.rmSync(path.join(this.profile, stale), { force: true })
     const args = [
       '--headless=new', `--user-data-dir=${this.profile}`, '--remote-debugging-port=0',
       '--no-first-run', '--no-default-browser-check', '--disable-dev-shm-usage', '--window-size=430,800',
@@ -280,6 +331,19 @@ export class CloudBrowser {
     await this.#adopt(targetId)
     this.ready = true
     console.log(`Chromium ready: ${path.basename(exe)}`)
+  }
+
+  /**
+   * If the server was killed, its browser can live on and keep the profile locked, and the next start then fails.
+   * The lock names that process. It is stopped only when it really is a browser on this very profile.
+   */
+  #clearStaleBrowser() {
+    try {
+      const pid = Number(fs.readlinkSync(path.join(this.profile, 'SingletonLock')).split('-').pop())
+      if (!Number.isInteger(pid) || pid <= 1) return
+      const command = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8')
+      if (command.includes(`--user-data-dir=${this.profile}`)) process.kill(pid, 'SIGKILL')
+    } catch { /* no lock, no such process, or not Linux: nothing to clear */ }
   }
 
   /** Brings the browser back if it crashed, for example when the server ran short of memory. Login data is on disk. */
@@ -441,6 +505,7 @@ export class CloudBrowser {
     if (this.casting) await this.page('Page.stopScreencast').catch(() => {})
     this.targetId = page.targetId
     this.session = page.sessionId
+    this.baseScale = null
     this.refs = []
     await this.#applyViewport()
     if (this.casting) await this.#beginCast()
@@ -561,6 +626,64 @@ export class CloudBrowser {
   }
 
   insertText(text) { return this.page('Input.insertText', { text }) }
+
+  /** For the owner's window: where the page is and whether it is still loading. */
+  async pageState() {
+    const state = await this.evaluate('({ url: location.href, title: document.title, loading: document.readyState !== "complete" })')
+    return { ...state, loading: state.loading || (this.inflight.get(this.session)?.size ?? 0) > 2 }
+  }
+
+  /** The focused text field, in the page or in one of its frames, with the session it lives in. */
+  async focusInfo() {
+    for (const session of [this.session, ...[...this.frames.values()].map(f => f.sessionId)]) {
+      const info = await this.#call(session, focusedField).catch(() => null)
+      if (!info) continue
+      // Where the field is, as fractions of the picture the owner sees, so their window can zoom in on it.
+      const frame = this.frames.get(session)
+      const offset = frame ? await this.#frameBox(frame).catch(() => null) : { x: 0, y: 0 }
+      const view = await this.evaluate('({ w: innerWidth, h: innerHeight })').catch(() => null)
+      const { box, ...rest } = info
+      const rect = offset && view ? { x: (box.x + offset.x) / view.w, y: (box.y + offset.y) / view.h, w: box.w / view.w, h: box.h / view.h } : null
+      return { ...rest, rect, session }
+    }
+    return null
+  }
+
+  /** Makes the focused field say exactly `text`, the way typing would, so the owner can type in a real text box. */
+  async setFocusedText(text) {
+    const info = await this.focusInfo()
+    if (info) await this.#call(info.session, selectFocused).catch(() => {})
+    this.lastInputAt = Date.now()
+    if (text) await this.insertText(text)
+    else if (info) await this.pressKey('Backspace')
+  }
+
+  reload() { return this.page('Page.reload') }
+
+  /**
+   * A page with no phone layout arrives tiny. When the owner picks a field, zoom the real page the way two fingers
+   * would, so it is drawn sharp at the new size, and bring the field to the middle.
+   */
+  async zoomToFocus() {
+    if (this.device !== 'phone') return false
+    const info = await this.focusInfo()
+    if (!info) return false
+    const view = await this.evaluate('({ scale: visualViewport.scale, width: visualViewport.width })')
+    const fieldWidth = await this.#call(info.session, focusedSize)
+    if (!(fieldWidth > 0) || fieldWidth >= view.width * 0.45) return false // already easy to read
+    this.baseScale ??= view.scale
+    const target = Math.min(view.scale * (view.width * 0.7) / fieldWidth, view.scale * 4, 3)
+    await this.page('Emulation.setPageScaleFactor', { pageScaleFactor: target })
+    await this.#call(info.session, centerFocused).catch(() => {})
+    return true
+  }
+
+  async resetZoom() {
+    if (this.baseScale) await this.page('Emulation.setPageScaleFactor', { pageScaleFactor: this.baseScale }).catch(() => {})
+    this.baseScale = null
+  }
+
+  get zoomed() { return Boolean(this.baseScale) }
 
   async pressKey(key) {
     const codes = { Enter: 13, Backspace: 8, Tab: 9, Escape: 27, Delete: 46, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Home: 36, End: 35, PageUp: 33, PageDown: 34 }

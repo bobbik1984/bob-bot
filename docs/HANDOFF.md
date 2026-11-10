@@ -85,7 +85,7 @@ ssh ... 'ln -sfn /home/ubuntu/bob-bot/prototype/node_modules /tmp/bobtest/protot
 ssh ... 'cd /tmp/bobtest/prototype && node test/unit.mjs && node test/e2e.mjs'
 ```
 
-当前基线：`unit 34/34`、`plugins 9/9`、`browser 19/19`、`e2e 70/70`、`ui 8/8`。e2e 需要 Chrome 与空闲端口；跑之前 `fuser -k 8799/tcp`。
+当前基线：`unit 34/34`、`plugins 9/9`、`browser 20/20`、`e2e 70/70`、`ui 8/8`。e2e 需要 Chrome 与空闲端口；跑之前 `fuser -k 8799/tcp`。
 
 **网络故障兜底**：RY 偶尔连不上 GitHub（GnuTLS/超时）。此时用 `rsync prototype/ ubuntu@RY:/home/ubuntu/bob-bot/prototype/` 同步并 `sudo systemctl restart bobbot`；注意这不会更新 Git HEAD 与构建戳，网络恢复后执行一次正常 `deploy-ry.sh` 对齐。
 

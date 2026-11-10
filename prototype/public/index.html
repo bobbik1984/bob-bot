@@ -403,6 +403,13 @@ html.fine .conv-main { padding-right:92px; }
 #browser .top form { flex:1; display:flex; gap:8px; min-width:0; }
 #stage { flex:1; min-height:0; position:relative; overflow:hidden; background:var(--stage); }
 #screen { touch-action:none; display:block; background:var(--canvas); position:absolute; left:0; top:0; transform-origin:0 0; outline:0; }
+#loadBar { height:3px; background:var(--surface-2); overflow:hidden; }
+#loadBar i { display:block; height:100%; width:40%; background:var(--accent); border-radius:99px; animation:loadslide 1.1s ease-in-out infinite; }
+@keyframes loadslide { from { transform:translateX(-100%); } to { transform:translateX(250%); } }
+#stageNote { position:absolute; left:0; right:0; top:40%; margin:auto; width:fit-content; max-width:80%; padding:10px 16px; border-radius:14px; background:var(--surface); color:var(--text); box-shadow:var(--shadow-pop); font-size:14px; font-weight:600; text-align:center; }
+#fieldHint { font-size:13px; }
+#fillRow.live #fill { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+#fillRow.live + .keys #backBtn { display:none; }
 #browser .tools { padding:8px 10px calc(8px + env(safe-area-inset-bottom)); display:flex; flex-direction:column; gap:8px; }
 #browser .tools .icon-btn { background:var(--surface); border:1px solid var(--line); border-radius:12px; width:44px; height:44px; color:var(--text); }
 #browser .tools .row.keys { justify-content:space-between; }
@@ -694,18 +701,23 @@ nav button.on span:first-child { background:var(--accent-soft); }
 <section id="browser" hidden>
   <p class="hint takeover-hint" id="takeoverHint" hidden></p>
   <div class="top">
-    <button class="icon-btn" id="closeBrowser" data-al="close" data-i="back"></button>
-    <form id="navForm"><input class="field" id="url" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="https://" aria-label="URL"><button class="btn" data-t="go"></button></form>
+    <button class="icon-btn" id="closeBrowser" data-al="close" data-i="cross"></button>
+    <form id="navForm"><input class="field" id="url" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="https://" aria-label="URL"><button class="btn" id="goBtn" data-t="go" hidden></button></form>
+    <button class="icon-btn" id="reloadBtn" data-al="reload" data-i="reload"></button>
   </div>
-  <div id="stage"><canvas id="screen" tabindex="0"></canvas></div>
+  <div id="loadBar" hidden><i></i></div>
+  <div id="stage"><canvas id="screen" tabindex="0"></canvas><div id="stageNote" role="status" hidden></div></div>
   <div class="tools">
-    <div class="row"><input class="field" id="fill" autocomplete="off" autocapitalize="off" data-ph="fillPh" aria-label="Text to fill"><button class="icon-btn" id="togglePw" data-al="toggle" data-i="eye"></button><button class="btn primary" id="fillBtn" data-t="fill"></button></div>
+    <p class="hint" id="fieldHint"></p>
+    <div class="row" id="fillRow"><input class="field" id="fill" autocomplete="off" autocapitalize="off" data-ph="fillPh" aria-label="Text to fill"><button class="icon-btn" id="togglePw" data-al="toggle" data-i="eye"></button><button class="btn primary" id="fillBtn" data-t="fill"></button></div>
     <div class="row keys">
+      <button class="icon-btn" id="pageBack" data-al="pageBack" data-i="back"></button>
       <button class="icon-btn" id="scrollUp" data-al="up" data-i="up"></button>
       <button class="icon-btn" id="scrollDown" data-al="down" data-i="down"></button>
       <button class="icon-btn" id="backBtn" data-al="backspace" data-i="backspace"></button>
       <button class="icon-btn" id="enterBtn" data-al="enter" data-i="enter"></button>
       <button class="icon-btn" id="modeBtn" data-al="desktopSite" data-i="monitor" hidden></button>
+      <button class="icon-btn" id="saveShot" data-al="saveShot" data-i="download"></button>
       <button class="icon-btn" id="fitBtn" data-al="fit" data-i="fit" hidden></button>
     </div>
     <button class="btn primary block" id="handBack" data-t="handBack" hidden></button>
@@ -846,7 +858,12 @@ const I18N = {
   save:['保存','Save'], logout:['退出登录','Log out'], saved:['已保存','Saved'], noKey:['请先填入 API Key','Add an API key first'],
   build:['版本','Build'],
   // browser window
-  go:['前往','Go'], fill:['填入','Fill'], fillPh:['在此输入文字（中文请在这里输入）','Type text here (use this box for Chinese)'],
+  go:['前往','Go'], fill:['填入','Fill'], fillPh:['在这里打字','Type here'],
+  typingInto:['正在输入：{n}。这里打的字会直接出现在页面上。','Typing into: {n}. What you type here appears on the page.'], thisField:['页面上的输入框','the field on the page'],
+  tapField:['先点一下页面上要填的输入框，再在下面打字。','Tap the field on the page first, then type below.'],
+  reload:['刷新','Reload'], pageBack:['上一页','Back'], saveShot:['保存画面（可在微信里识别二维码）','Save picture (to scan a QR code from your album)'], shotSaved:['画面已保存','Picture saved'],
+  reconnecting:['连接中断，正在重连…','Connection lost. Reconnecting…'], openedElsewhere:['这个窗口已在另一台设备上打开','This window was opened on another device'],
+  takeoverWhy:['Bob 需要你：{n}。处理好后点下方「交还」。','Bob needs you to: {n}. Tap “Hand back” below when done.'],
   toggle:['显示或隐藏','Show or hide'], up:['向上滚动','Scroll up'], down:['向下滚动','Scroll down'], backspace:['退格','Backspace'], enter:['回车','Enter'],
   desktopSite:['电脑版网页','Desktop site'], mobileSite:['手机版网页','Mobile site'], fit:['还原缩放','Reset zoom'],
   handBack:['我已处理好，交还给 Bob','Done, hand back to Bob'],
@@ -894,6 +911,7 @@ const ICONS = {
   pencil:'<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
   trash:'<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>',
   mic:'<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4M8 21h8"/>',
+  reload:'<path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/>', download:'<path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>',
   calendar:'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
   heart:'<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21.2l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/>',
   cpu:'<rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/>',
@@ -2341,7 +2359,7 @@ $('logout').onclick = async () => { await post('/api/logout'); location.reload()
 // A phone gets a phone-sized page, a mobile site and touch. A PC gets a desktop page, a mouse and the keyboard.
 // "Desktop site" lays the page out wide for sites with no mobile version, and two fingers zoom and move it.
 const canvas = $('screen'), ctx = canvas.getContext('2d')
-let ws, spec = null, desktopSite = false
+let ws, spec = null, desktopSite = false, remoteZoomed = false // remoteZoomed: the cloud page itself is zoomed in on a field
 const zoom = { z: 1, x: 0, y: 0 }
 const isPhone = () => matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 700
 const sendWs = m => { if (ws?.readyState === 1) ws.send(JSON.stringify(m)) }
@@ -2359,7 +2377,7 @@ function setZoom(z, x, y) {
   zoom.x = Math.min(0, Math.max(x, w - w * zoom.z))
   zoom.y = Math.min(0, Math.max(y, h - h * zoom.z))
   canvas.style.transform = zoom.z === 1 ? '' : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`
-  $('fitBtn').hidden = zoom.z <= 1.01
+  $('fitBtn').hidden = !remoteZoomed && zoom.z <= 1.01
 }
 function sendViewport() {
   spec = measure()
@@ -2367,25 +2385,93 @@ function sendViewport() {
   setZoom(1, 0, 0)
   sendWs({ t: 'viewport', device: spec.device, w: spec.w, h: spec.h, dpr: spec.dpr, lang: spec.lang })
 }
+let wantWindow = false // true while the owner has the window open, so a dropped connection comes back by itself
+let remoteField = null // the field on the page that has the keyboard
 function openBrowser() {
   $('browser').hidden = false
   const hint = $('takeoverHint')
+  const why = open.get(activeTakeover)?.e.reason
   hint.hidden = !activeTakeover
-  hint.textContent = activeTakeover ? t('takeoverHint') : ''
+  hint.textContent = activeTakeover ? (why ? t('takeoverWhy', why) : t('takeoverHint')) : ''
   $('modeBtn').hidden = !isPhone()
+  wantWindow = true
+  showField(null)
+  connectWindow()
+}
+function connectWindow() {
   ws = new WebSocket(location.origin.replace(/^http/, 'ws') + '/ws/browser')
   ws.binaryType = 'blob'
-  ws.onopen = sendViewport
+  ws.onopen = () => { $('stageNote').hidden = true; sendViewport() }
   ws.onmessage = async m => {
-    if (typeof m.data === 'string') { const e = JSON.parse(m.data); if (e.error) notice(e.error, true); return }
+    if (typeof m.data === 'string') { const e = JSON.parse(m.data); if (e.t === 'state') pageState(e); else if (e.error) toast(e.error, true); return }
     const bmp = await createImageBitmap(m.data)
     if (canvas.width !== bmp.width || canvas.height !== bmp.height) { canvas.width = bmp.width; canvas.height = bmp.height }
     ctx.drawImage(bmp, 0, 0); bmp.close()
   }
+  ws.onclose = e => {
+    if (!wantWindow) return
+    $('stageNote').hidden = false
+    if (e.code === 4001) { $('stageNote').textContent = t('openedElsewhere'); return }
+    $('stageNote').textContent = t('reconnecting')
+    setTimeout(() => { if (wantWindow) connectWindow() }, 1200)
+  }
 }
-function closeBrowser() { ws?.close(); ws = null; $('browser').hidden = true; setZoom(1, 0, 0) }
+function closeBrowser() { wantWindow = false; ws?.close(); ws = null; $('browser').hidden = true; $('stageNote').hidden = true; setZoom(1, 0, 0) }
+
+// Typing: the box below the page is a real text box, so the phone keyboard, Chinese input, paste and SMS codes all work.
+// While a field on the page has the keyboard, whatever the box says is what that field says.
+function showField(field) {
+  const changed = (field?.key ?? '') !== (remoteField?.key ?? '')
+  remoteField = field
+  $('fillRow').classList.toggle('live', Boolean(field))
+  $('fillBtn').hidden = Boolean(field)
+  $('fieldHint').textContent = field ? t('typingInto', field.label || t('thisField')) : t('tapField')
+  if (!changed) return
+  const box = $('fill')
+  box.type = field?.kind === 'secret' ? 'password' : 'text'
+  box.inputMode = field && (field.kind === 'code' || field.kind === 'number') ? 'numeric' : 'text'
+  box.autocomplete = field?.kind === 'code' ? 'one-time-code' : 'off'
+  box.value = field?.value ?? ''
+  $('togglePw').innerHTML = icon(box.type === 'password' ? 'eyeoff' : 'eye')
+  if (field && isPhone()) box.focus({ preventScroll: true }) // some phones only raise the keyboard on a tap; the highlight shows where to tap
+}
+function pageState(state) {
+  if (document.activeElement !== $('url')) $('url').value = state.url === 'about:blank' ? '' : state.url
+  $('loadBar').hidden = !state.loading
+  remoteZoomed = Boolean(state.zoomed)
+  $('fitBtn').hidden = !remoteZoomed && zoom.z <= 1.01
+  showField(state.focus)
+}
+let typeTimer
+const sendTyped = () => { clearTimeout(typeTimer); if (remoteField) sendWs({ t: 'set', v: $('fill').value }) }
+$('fill').addEventListener('input', e => { if (!remoteField || e.isComposing) return; clearTimeout(typeTimer); typeTimer = setTimeout(sendTyped, 120) })
+$('fill').addEventListener('compositionend', () => { if (remoteField) sendTyped() })
+$('fill').addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || e.isComposing) return
+  e.preventDefault()
+  if (remoteField) { sendTyped(); sendWs({ t: 'key', k: 'Enter' }) } else $('fillBtn').click()
+})
+$('url').addEventListener('focus', () => { $('goBtn').hidden = false })
+$('url').addEventListener('blur', () => setTimeout(() => { $('goBtn').hidden = true }, 200))
+$('reloadBtn').onclick = () => sendWs({ t: 'reload' })
+$('pageBack').onclick = () => sendWs({ t: 'back' })
+// A phone cannot scan its own screen, but WeChat and Alipay can read a QR code from a saved picture.
+$('saveShot').onclick = () => canvas.toBlob(async blob => {
+  if (!blob) return
+  const file = new File([blob], 'bob-screen.png', { type: 'image/png' })
+  if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file] }); return } catch { /* cancelled: fall back to a download */ } }
+  const link = el('a'); link.href = URL.createObjectURL(blob); link.download = 'bob-screen.png'
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(link.href), 5000)
+  toast(t('shotSaved'))
+}, 'image/png')
 let resizeTimer
-addEventListener('resize', () => { if (!$('browser').hidden) { clearTimeout(resizeTimer); resizeTimer = setTimeout(sendViewport, 300) } })
+addEventListener('resize', () => {
+  if ($('browser').hidden) return
+  // The phone keyboard opening is not a new screen size: keep the page as it is and keep the field in view.
+  if (document.activeElement === $('fill') && isPhone()) return
+  clearTimeout(resizeTimer); resizeTimer = setTimeout(sendViewport, 300)
+})
 // the browser opens only when the agent asks for a human takeover
 $('closeBrowser').onclick = closeBrowser
 $('handBack').onclick = async () => {
@@ -2401,7 +2487,7 @@ $('modeBtn').onclick = () => {
   $('modeBtn').title = label; $('modeBtn').setAttribute('aria-label', label)
   sendViewport()
 }
-$('fitBtn').onclick = () => setZoom(1, 0, 0)
+$('fitBtn').onclick = () => { sendWs({ t: 'fit' }); setZoom(1, 0, 0) }
 
 // pointer input. The position is a fraction of the page picture, so zooming needs no special handling.
 const norm = e => {
