@@ -349,6 +349,8 @@ html.fine .conv-main { padding-right:92px; }
 
 /* browser window */
 #browser { position:fixed; inset:0; background:var(--bg); display:flex; flex-direction:column; z-index:5; }
+#browser .top .btn { white-space:nowrap; }
+#browser .takeover-hint { margin:0; padding:10px 14px calc(8px); background:var(--warn-soft); color:var(--warn); font-weight:600; }
 #browser .top { display:flex; gap:8px; align-items:center; padding:calc(8px + env(safe-area-inset-top)) 10px 8px; }
 #browser .top form { flex:1; display:flex; gap:8px; min-width:0; }
 #stage { flex:1; min-height:0; position:relative; overflow:hidden; background:var(--stage); }
@@ -373,7 +375,6 @@ html.fine .conv-main { padding-right:92px; }
   <header>
     <span></span>
     <div class="title" id="title"></div>
-    <button class="icon-btn right" id="openBrowser" data-al="browser" data-i="globe"></button>
   </header>
   <main>
     <div class="view" id="viewChat">
@@ -530,6 +531,7 @@ html.fine .conv-main { padding-right:92px; }
 </section>
 
 <section id="browser" hidden>
+  <p class="hint takeover-hint" id="takeoverHint" hidden></p>
   <div class="top">
     <button class="icon-btn" id="closeBrowser" data-al="close" data-i="back"></button>
     <form id="navForm"><input class="field" id="url" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="https://" aria-label="URL"><button class="btn" data-t="go"></button></form>
@@ -640,6 +642,7 @@ const I18N = {
   actTask:['添加定时任务','Add a scheduled task'], actReminder:['添加提醒','Add a reminder'], actClerkDelete:['删除','Delete'], actClerkPause:['暂停','Pause'], actClerkResume:['恢复','Resume'],
   firstRun:['首次运行：{n}','First run: {n}'], sendTo:['发送到：{n}','Send to: {n}'],
   openWindow:['打开浏览器窗口','Open browser window'], doneTakeover:['已交还给 Bob','Handed back to Bob'],
+  takeoverHint:['Bob 需要你完成登录或验证。处理好后点下方「交还」按钮。','Bob needs you to sign in or verify something. When done, tap “Hand back” below.'],
   // steps
   step_browser_navigate:['打开网页','Opening page'], step_browser_snapshot:['查看页面','Reading page'], step_browser_click:['点击','Clicking'],
   step_browser_type:['输入文字','Typing'], step_browser_scroll:['滚动页面','Scrolling'], step_browser_request_human:['请你协助','Asking you for help'],
@@ -1067,11 +1070,11 @@ let activeTakeover = null
 function track(e) { // approvals and takeovers belong to every conversation, because the browser and server are shared
   if (e.type === 'approval' || e.type === 'takeover') {
     open.set(e.id, { e, kind: e.type })
-    if (e.type === 'takeover') { activeTakeover = e.id; $('handBack').hidden = false }
+    if (e.type === 'takeover') { activeTakeover = e.id; $('handBack').hidden = false; openBrowser() }
     refreshBanner()
   } else if (e.type === 'approval_done' || e.type === 'takeover_done') {
     open.delete(e.id)
-    if (e.type === 'takeover_done' && activeTakeover === e.id) { activeTakeover = null; $('handBack').hidden = true }
+    if (e.type === 'takeover_done' && activeTakeover === e.id) { activeTakeover = null; $('handBack').hidden = true; closeBrowser() }
     refreshBanner()
   }
 }
@@ -1862,6 +1865,9 @@ function sendViewport() {
 }
 function openBrowser() {
   $('browser').hidden = false
+  const hint = $('takeoverHint')
+  hint.hidden = !activeTakeover
+  hint.textContent = activeTakeover ? t('takeoverHint') : ''
   $('modeBtn').hidden = !isPhone()
   ws = new WebSocket(location.origin.replace(/^http/, 'ws') + '/ws/browser')
   ws.binaryType = 'blob'
@@ -1876,7 +1882,7 @@ function openBrowser() {
 function closeBrowser() { ws?.close(); ws = null; $('browser').hidden = true; setZoom(1, 0, 0) }
 let resizeTimer
 addEventListener('resize', () => { if (!$('browser').hidden) { clearTimeout(resizeTimer); resizeTimer = setTimeout(sendViewport, 300) } })
-$('openBrowser').onclick = openBrowser
+// the browser opens only when the agent asks for a human takeover
 $('closeBrowser').onclick = closeBrowser
 $('handBack').onclick = async () => {
   const id = activeTakeover
