@@ -11,18 +11,45 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Bob">
 <title>Bob</title>
+<script>
+// Decide light or dark before the first paint, so the page never flashes the wrong one.
+(() => {
+  const system = matchMedia('(prefers-color-scheme: dark)')
+  const apply = () => {
+    let choice = 'auto'
+    try { choice = localStorage.getItem('bobbot.theme') || 'auto' } catch { /* private mode */ }
+    const dark = choice === 'dark' || (choice === 'auto' && system.matches)
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+    document.querySelector('meta[name=theme-color]').content = dark ? '#0e1117' : '#f5f6fa'
+    document.querySelector('meta[name=color-scheme]').content = dark ? 'dark' : 'light'
+  }
+  window.applyTheme = apply
+  apply()
+  system.addEventListener('change', apply)
+})()
+</script>
 <style>
 :root {
   color-scheme: light;
-  --bg:#f4f6fb; --surface:#ffffff; --surface-2:#eef1f7; --text:#1b2230; --muted:#6c778a; --line:#e3e8f1;
-  --accent:#2f6bff; --accent-text:#ffffff; --accent-soft:#e4edff; --accent-ink:#2457d6; --bubble-user:#dbe8ff;
-  --danger:#d64545; --danger-soft:#fdeceb; --ok:#1f9d6b; --ok-soft:#e3f6ee; --warn:#b7791f; --warn-soft:#fff3dc;
-  --shadow:0 6px 24px rgba(30,50,110,.08); --shade:rgba(15,23,42,.45); --stage:#0b0f1a;
+  --bg:#f5f6fa; --surface:#ffffff; --surface-2:#eef0f6; --surface-3:#e2e6ef; --text:#171c28; --muted:#667085; --line:#e4e7ee;
+  --accent:#2f6bff; --accent-text:#ffffff; --accent-soft:#e8efff; --accent-ink:#2152cc; --bubble-user:#2f6bff; --bubble-user-text:#ffffff;
+  --danger:#d64545; --danger-soft:#fdeceb; --ok:#1f9d6b; --ok-soft:#e3f6ee; --warn:#a96a12; --warn-soft:#fff3dc;
+  --shadow-1:0 1px 2px rgba(16,24,40,.05); --shadow:0 1px 2px rgba(16,24,40,.04), 0 8px 24px rgba(16,24,40,.06); --shadow-pop:0 12px 40px rgba(16,24,40,.16);
+  --shade:rgba(15,23,42,.45); --stage:#0b0f1a; --canvas:#ffffff;
+  --ease:cubic-bezier(.2,.8,.2,1);
+}
+html[data-theme=dark] {
+  color-scheme: dark;
+  --bg:#0e1117; --surface:#161a22; --surface-2:#1f242e; --surface-3:#2b313d; --text:#e8ebf2; --muted:#98a2b3; --line:#272d39;
+  --accent:#4b7dff; --accent-soft:#1a2748; --accent-ink:#a3bcff; --bubble-user:#3a66e0;
+  --danger:#f0736f; --danger-soft:#3a1c1e; --ok:#4cc38a; --ok-soft:#143024; --warn:#e3ad52; --warn-soft:#33280f;
+  --shadow-1:0 1px 2px rgba(0,0,0,.4); --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35); --shadow-pop:0 12px 40px rgba(0,0,0,.6);
+  --shade:rgba(0,0,0,.6); --stage:#05070b;
 }
 * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 html, body { height:100%; margin:0; }
 body { background:var(--bg); color:var(--text); font:16px/1.55 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
-button, input, select { font:inherit; color:inherit; }
+button, input, select, textarea { font:inherit; color:inherit; }
 button { cursor:pointer; border:0; background:none; padding:0; }
 button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 svg { width:1.25em; height:1.25em; flex:none; }
@@ -67,7 +94,7 @@ svg { width:1.25em; height:1.25em; flex:none; }
 @keyframes napb { 0% { transform:translate(0,0) scale(.55); opacity:0; } 22% { opacity:.5; } 100% { transform:translate(.5em,-.78em) scale(1.25); opacity:0; } }
 
 /* thinking: a small cloud above the head, with a trail down to it */
-.fx.thinkfx { position:absolute; inset:auto; left:56%; bottom:104%; width:.62em; height:.3em; border-radius:.2em; background:var(--surface); border:1px solid var(--line); box-shadow:0 .06em .22em rgba(30,50,110,.14); align-items:center; justify-content:center; gap:.09em; animation:cloudin .5s ease-out both; }
+.fx.thinkfx { position:absolute; inset:auto; left:56%; bottom:104%; width:.62em; height:.3em; border-radius:.2em; background:var(--surface); border:1px solid var(--line); box-shadow:var(--shadow-1); align-items:center; justify-content:center; gap:.09em; animation:cloudin .5s ease-out both; }
 .fx.thinkfx::before, .fx.thinkfx::after { content:''; position:absolute; border-radius:50%; background:var(--surface); border:1px solid var(--line); }
 .fx.thinkfx::before { width:.1em; height:.1em; left:.08em; bottom:-.15em; }
 .fx.thinkfx::after { width:.06em; height:.06em; left:.02em; bottom:-.26em; }
@@ -131,14 +158,24 @@ main { flex:1; min-height:0; position:relative; }
 /* chat */
 #welcome { display:flex; flex-direction:column; align-items:center; gap:6px; padding:calc(15vh + 112px) 0 8px; text-align:center; }
 #welcome span.s { color:var(--muted); font-size:15px; }
-.chips { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:10px; }
-.chip-btn { padding:9px 14px; border-radius:999px; background:var(--surface); border:1px solid var(--line); font-size:14px; box-shadow:var(--shadow); text-align:left; }
+#welcome h1 { margin:0; font-size:26px; line-height:1.25; font-weight:700; letter-spacing:-.01em; }
+#glance { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:14px; }
+.glance-item { display:inline-flex; align-items:baseline; gap:6px; padding:8px 14px; border-radius:14px; background:var(--surface); border:1px solid var(--line); font-size:13px; color:var(--muted); box-shadow:var(--shadow-1); }
+.glance-item b { font-size:16px; color:var(--text); }
+.glance-item.warn { background:var(--warn-soft); border-color:transparent; color:var(--warn); }
+.glance-item.warn b { color:var(--warn); }
+.chips { display:grid; grid-template-columns:1fr; gap:10px; width:100%; max-width:600px; margin-top:22px; }
+@media (min-width:560px) { .chips { grid-template-columns:repeat(3,1fr); } }
+.chip-btn { display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:18px; background:var(--surface); border:1px solid var(--line); font-size:14px; font-weight:600; box-shadow:var(--shadow-1); text-align:left; }
+html.fine .chip-btn:hover { border-color:var(--accent); box-shadow:var(--shadow); transform:translateY(-1px); }
+.chipicon { width:36px; height:36px; border-radius:12px; display:inline-flex; align-items:center; justify-content:center; background:var(--accent-soft); color:var(--accent-ink); flex:none; }
+.chipicon svg { width:18px; height:18px; }
 #feed { display:flex; flex-direction:column; gap:10px; }
 .bubble-row { display:flex; gap:8px; align-items:flex-end; }
 .bubble-row.user { justify-content:flex-end; }
 .bubble-row .spacer { width:28px; flex:none; }
-.msg { max-width:84%; padding:10px 14px; border-radius:20px; white-space:pre-wrap; overflow-wrap:anywhere; background:var(--surface); border:1px solid var(--line); border-bottom-left-radius:6px; }
-.bubble-row.user .msg { background:var(--bubble-user); border-color:transparent; border-bottom-left-radius:20px; border-bottom-right-radius:6px; }
+.msg { max-width:84%; padding:10px 14px; border-radius:20px; white-space:pre-wrap; overflow-wrap:anywhere; background:var(--surface); border:1px solid var(--line); border-bottom-left-radius:6px; box-shadow:var(--shadow-1); }
+.bubble-row.user .msg { background:var(--bubble-user); color:var(--bubble-user-text); border-color:transparent; box-shadow:none; border-bottom-left-radius:20px; border-bottom-right-radius:6px; }
 .typing { display:flex; gap:5px; padding:14px 16px; }
 .typing i { width:7px; height:7px; border-radius:50%; background:var(--muted); opacity:.45; animation:blink 1.2s infinite; }
 .typing i:nth-child(2) { animation-delay:.2s; } .typing i:nth-child(3) { animation-delay:.4s; }
@@ -156,7 +193,7 @@ main { flex:1; min-height:0; position:relative; }
 #banner svg { width:1.1em; height:1.1em; }
 
 /* cards: one clean block, aligned rows, actions at the bottom */
-.card { background:var(--surface); border:1px solid var(--line); border-radius:22px; padding:16px; display:flex; flex-direction:column; gap:12px; box-shadow:0 10px 30px rgba(30,50,110,.07); }
+.card { background:var(--surface); border:1px solid var(--line); border-radius:22px; padding:16px; display:flex; flex-direction:column; gap:12px; box-shadow:var(--shadow); }
 .card-top { display:flex; align-items:center; gap:10px; }
 .card-top .chipicon { width:36px; height:36px; border-radius:12px; display:inline-flex; align-items:center; justify-content:center; background:var(--accent-soft); color:var(--accent-ink); flex:none; }
 .card-top .chipicon svg { width:18px; height:18px; }
@@ -188,7 +225,7 @@ main { flex:1; min-height:0; position:relative; }
 .todo-body .meta { font-size:13px; color:var(--muted); }
 .check { width:28px; height:28px; border-radius:50%; border:2px solid var(--line); color:transparent; display:inline-flex; align-items:center; justify-content:center; flex:none; margin-top:1px; }
 .check svg { width:16px; height:16px; }
-.check.on { background:var(--ok); border-color:var(--ok); color:#fff; }
+.check.on { background:var(--ok); border-color:var(--ok); color:var(--accent-text); }
 .card.todo.finished .what { text-decoration:line-through; color:var(--muted); }
 .card.todo .rm { color:var(--muted); }
 .msg.md { white-space:normal; }
@@ -304,11 +341,12 @@ select.field { appearance:none; background-image:linear-gradient(45deg,transpare
 .ext code { font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--muted); overflow-wrap:anywhere; }
 
 /* composer and tabs */
-#composer { display:flex; align-items:center; gap:4px; margin:4px 12px 8px; padding:5px 5px 5px 6px; background:var(--surface); border:1px solid var(--line); border-radius:28px; box-shadow:var(--shadow); }
-#composer input { flex:1; min-width:0; border:0; background:none; min-height:40px; }
-#composer input:focus-visible { outline:0; }
-#composer:focus-within { border-color:var(--accent); }
-#composer .send { width:42px; height:42px; border-radius:50%; background:var(--accent); color:var(--accent-text); display:inline-flex; align-items:center; justify-content:center; }
+#composer { display:flex; align-items:flex-end; gap:4px; margin:4px 12px 8px; padding:5px 5px 5px 6px; background:var(--surface); border:1px solid var(--line); border-radius:26px; box-shadow:var(--shadow); transition:border-color .15s, box-shadow .15s; }
+#composer textarea { flex:1; min-width:0; border:0; background:none; resize:none; height:42px; max-height:160px; padding:10px 2px; line-height:22px; outline:0; }
+#composer:focus-within { border-color:var(--accent); box-shadow:var(--shadow), 0 0 0 3px var(--accent-soft); }
+#composer .send { width:42px; height:42px; border-radius:50%; background:var(--accent); color:var(--accent-text); display:inline-flex; align-items:center; justify-content:center; flex:none; transition:background-color .15s, color .15s, transform .12s var(--ease); }
+#composer .send:active { transform:scale(.94); }
+#composer.empty .send { background:var(--surface-3); color:var(--muted); }
 #composer .attach { width:40px; height:40px; border-radius:50%; color:var(--muted); display:inline-flex; align-items:center; justify-content:center; flex:none; }
 #attachRow { display:flex; flex-wrap:wrap; gap:6px; margin:6px 12px 0; }
 .file-chip { display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:5px 6px 5px 10px; border-radius:999px; background:var(--accent-soft); color:var(--accent-ink); font-size:13px; }
@@ -320,7 +358,7 @@ nav { display:flex; border-top:1px solid var(--line); background:var(--surface);
 nav button { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 0 7px; font-size:12px; color:var(--muted); position:relative; }
 nav button.on { color:var(--accent); font-weight:600; }
 nav button svg { width:24px; height:24px; }
-.badge { position:absolute; top:3px; left:calc(50% + 6px); min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:var(--danger); color:#fff; font-size:11px; line-height:18px; text-align:center; }
+.badge { position:absolute; top:3px; left:calc(50% + 6px); min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:var(--danger); color:var(--accent-text); font-size:11px; line-height:18px; text-align:center; }
 
 /* history drawer */
 #scrim { position:absolute; inset:0; background:var(--shade); opacity:0; pointer-events:none; transition:opacity .2s; z-index:3; }
@@ -336,7 +374,7 @@ nav button svg { width:24px; height:24px; }
 .conv-main { position:relative; z-index:1; width:100%; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:flex-start; gap:2px; padding:0 18px; background:var(--surface); text-align:left; touch-action:pan-y; user-select:none; transition:transform .2s ease; }
 .conv.active .conv-main { background:var(--accent-soft); }
 .conv.open .conv-main { transform:translateX(-76px); }
-.conv-del { position:absolute; top:0; right:0; bottom:0; width:76px; background:var(--danger); color:#fff; display:flex; align-items:center; justify-content:center; }
+.conv-del { position:absolute; top:0; right:0; bottom:0; width:76px; background:var(--danger); color:var(--accent-text); display:flex; align-items:center; justify-content:center; }
 .conv-del svg { width:24px; height:24px; }
 .conv-del:focus-visible ~ .conv-main { transform:translateX(-76px); }
 .conv-main .ct { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; display:flex; align-items:center; gap:6px; }
@@ -351,7 +389,7 @@ html.fine .conv:hover .conv-tools { display:flex; }
 html.fine .conv-del { display:none; }
 html.fine .conv-main { padding-right:92px; }
 #micBtn { width:40px; height:40px; border-radius:50%; color:var(--muted); display:inline-flex; align-items:center; justify-content:center; flex:none; }
-#micBtn.rec { color:#fff; background:var(--danger); animation:micpulse 1.2s ease-in-out infinite; }
+#micBtn.rec { color:var(--accent-text); background:var(--danger); animation:micpulse 1.2s ease-in-out infinite; }
 @keyframes micpulse { 50% { box-shadow:0 0 0 6px var(--danger-soft); } }
 .conv.empty-row { height:auto; padding:18px; color:var(--muted); font-size:14px; }
 #convMsg { padding:6px 18px; min-height:20px; color:var(--danger); }
@@ -364,11 +402,102 @@ html.fine .conv-main { padding-right:92px; }
 #browser .top { display:flex; gap:8px; align-items:center; padding:calc(8px + env(safe-area-inset-top)) 10px 8px; }
 #browser .top form { flex:1; display:flex; gap:8px; min-width:0; }
 #stage { flex:1; min-height:0; position:relative; overflow:hidden; background:var(--stage); }
-#screen { touch-action:none; display:block; background:#fff; position:absolute; left:0; top:0; transform-origin:0 0; outline:0; }
+#screen { touch-action:none; display:block; background:var(--canvas); position:absolute; left:0; top:0; transform-origin:0 0; outline:0; }
 #browser .tools { padding:8px 10px calc(8px + env(safe-area-inset-bottom)); display:flex; flex-direction:column; gap:8px; }
 #browser .tools .icon-btn { background:var(--surface); border:1px solid var(--line); border-radius:12px; width:44px; height:44px; color:var(--text); }
 #browser .tools .row.keys { justify-content:space-between; }
 @media (min-width: 900px) { #browser .tools { flex-direction:row; align-items:center; } #browser .tools .row:first-child { flex:1; } #browser .tools .row.keys { gap:8px; } #browser #handBack { width:auto; } }
+
+/* ---- motion and feedback ---- */
+body { -webkit-font-smoothing:antialiased; }
+.btn, .icon-btn, .chip-btn, .link, nav button, .conv-main, .inbox-item, .check, .glance-item { transition:background-color .15s, color .15s, border-color .15s, box-shadow .15s, opacity .15s, filter .15s, transform .12s var(--ease); }
+.btn:disabled { opacity:.5; cursor:default; }
+html.fine .btn:hover:not(:disabled) { filter:brightness(.95); }
+html.fine .icon-btn:hover { background:var(--surface-2); color:var(--text); }
+html.fine .link:hover { text-decoration:underline; }
+html.fine .conv-main:hover { background:var(--surface-2); }
+html.fine .conv.active .conv-main:hover { background:var(--accent-soft); }
+html.fine .inbox-item:hover, html.fine .glance-item:hover { box-shadow:var(--shadow); }
+html.fine .pad button:hover { border-color:var(--accent); }
+@keyframes rise { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+@keyframes fadein { from { opacity:0; } to { opacity:1; } }
+@keyframes pop { 40% { transform:scale(1.2); } }
+@keyframes shake { 20%,60% { transform:translateX(-7px); } 40%,80% { transform:translateX(7px); } }
+#feed > .in { animation:rise .32s var(--ease) both; }
+.view:not([hidden]) { animation:fadein .18s ease-out; }
+.dots.shake { animation:shake .36s; }
+.check.on { animation:pop .28s var(--ease); }
+.daymark { align-self:center; font-size:12px; color:var(--muted); padding-top:6px; }
+.bubble-row.user .fileline { color:inherit; opacity:.85; }
+#jump { position:absolute; left:0; right:0; bottom:12px; margin:auto; width:fit-content; z-index:1; height:36px; padding:0 14px 0 10px; border-radius:999px; background:var(--surface); border:1px solid var(--line); box-shadow:var(--shadow); display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; color:var(--accent-ink); animation:rise .2s var(--ease); }
+#jump svg { width:16px; height:16px; }
+#offline { position:absolute; top:8px; left:0; right:0; margin:auto; width:fit-content; z-index:2; padding:7px 14px; border-radius:999px; background:var(--warn-soft); color:var(--warn); font-size:13px; font-weight:600; box-shadow:var(--shadow-1); }
+#toast { position:fixed; left:0; right:0; margin:auto; width:fit-content; max-width:min(88vw,420px); bottom:calc(96px + env(safe-area-inset-bottom)); z-index:70; padding:10px 16px; border-radius:14px; background:var(--text); color:var(--bg); font-size:14px; font-weight:600; box-shadow:var(--shadow-pop); animation:rise .22s var(--ease); }
+#toast.bad { background:var(--danger); color:var(--accent-text); }
+
+/* ---- clerk: a to-do list that reads like a list ---- */
+.sect-head h3 { font-size:13px; font-weight:600; color:var(--muted); letter-spacing:.02em; }
+#draftList { display:flex; flex-direction:column; gap:10px; }
+#todoList { background:var(--surface); border:1px solid var(--line); border-radius:20px; box-shadow:var(--shadow-1); overflow:hidden; }
+#todoList:empty { display:none; }
+.trow { display:flex; align-items:center; gap:12px; padding:12px 8px 12px 14px; }
+.trow + .trow { border-top:1px solid var(--line); }
+.trow .check { margin:0; }
+.trow .tbody { flex:1; min-width:0; }
+.trow .tt { font-weight:600; overflow-wrap:anywhere; }
+.trow .meta { font-size:13px; color:var(--muted); overflow-wrap:anywhere; }
+.trow.finished .tt { text-decoration:line-through; color:var(--muted); font-weight:400; }
+.trow .rm { opacity:.6; }
+.job .actions .btn { flex:1; min-height:38px; font-size:14px; padding:0 12px; }
+.inbox-item.unread { border-color:var(--line); box-shadow:inset 3px 0 0 var(--accent); }
+
+/* ---- settings ---- */
+.section h3 { display:flex; align-items:center; gap:8px; }
+.section h3 svg { width:18px; height:18px; color:var(--accent-ink); }
+.mem-row { display:flex; align-items:center; gap:10px; padding:8px 4px 8px 12px; border-radius:14px; background:var(--surface-2); font-size:14px; }
+.mem-row .tbody { flex:1; min-width:0; overflow-wrap:anywhere; }
+.mem-row .mini { background:var(--accent-soft); color:var(--accent-ink); flex:none; }
+.mem-row .rm { opacity:.6; width:36px; height:36px; }
+.sect-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.switch { position:relative; width:48px; height:28px; border-radius:999px; background:var(--surface-3); flex:none; transition:background-color .2s; }
+.switch::after { content:''; position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:50%; background:var(--canvas); box-shadow:var(--shadow-1); transition:transform .2s var(--ease); }
+.switch[aria-checked=true] { background:var(--accent); }
+.switch[aria-checked=true]::after { transform:translateX(20px); }
+.seg { display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:4px; padding:4px; border-radius:14px; background:var(--surface-2); }
+.seg button { min-height:36px; border-radius:10px; font-size:14px; font-weight:600; color:var(--muted); transition:background-color .15s, color .15s; }
+.seg button.on { background:var(--surface); color:var(--text); box-shadow:var(--shadow-1); }
+
+/* ---- tabs and history ---- */
+nav button span:first-child { display:inline-flex; padding:3px 18px; border-radius:999px; transition:background-color .2s; }
+nav button.on span:first-child { background:var(--accent-soft); }
+.conv { margin:0 8px 2px; border-radius:14px; }
+.conv-del { top:1px; bottom:1px; right:1px; border-radius:0 13px 13px 0; }
+.card .actions .btn { padding:0 10px; font-size:15px; }
+
+/* ---- a wide screen gets a sidebar instead of a phone in the middle ---- */
+@media (min-width:1000px) {
+  #app { max-width:none; display:grid; grid-template-columns:300px minmax(0,1fr); grid-template-rows:auto minmax(0,1fr) auto auto auto; }
+  #app > nav { grid-column:1; grid-row:1; border-top:0; border-right:1px solid var(--line); padding:10px 10px 6px; gap:4px; }
+  #app > nav button { flex-direction:row; justify-content:center; gap:6px; padding:9px 0; border-radius:12px; font-size:13px; }
+  #app > nav button span:first-child { padding:0; background:none; }
+  #app > nav button.on { background:var(--accent-soft); }
+  #app > nav button svg { width:18px; height:18px; }
+  #app > nav .badge { position:static; }
+  #drawer { position:static; grid-column:1; grid-row:2 / -1; width:auto; transform:none; transition:none; box-shadow:none; border-right:1px solid var(--line); padding-top:8px; z-index:auto; }
+  #scrim, .dhead { display:none; }
+  #app > header { grid-column:2; grid-row:1; }
+  #app > main { grid-column:2; grid-row:2; }
+  #banner { grid-column:2; grid-row:3; }
+  #attachRow { grid-column:2; grid-row:4; }
+  #composer { grid-column:2; grid-row:5; margin-bottom:20px; }
+  #banner, #attachRow, #composer { width:min(760px, calc(100% - 48px)); margin-left:auto; margin-right:auto; }
+  .view { padding-left:max(24px, calc((100% - 760px) / 2)); padding-right:max(24px, calc((100% - 760px) / 2)); }
+  .orb-btn { left:316px; pointer-events:none; }
+  #app.hero .orb-btn { left:calc(300px + (100% - 300px) / 2 - 66px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #feed > .in, .view, .dots.shake, .check.on, #toast, #jump { animation:none !important; }
+}
 </style>
 </head>
 <body>
@@ -389,7 +518,9 @@ html.fine .conv-main { padding-right:92px; }
   <main>
     <div class="view" id="viewChat">
       <div id="welcome">
+        <h1 id="greet"></h1>
         <span class="s" data-t="welcomeSub"></span>
+        <div id="glance" hidden></div>
         <div class="chips" id="chips"></div>
       </div>
       <div id="feed" aria-live="polite"></div>
@@ -410,11 +541,15 @@ html.fine .conv-main { padding-right:92px; }
     </div>
     <div class="view" id="viewSettings" hidden>
       <div class="section">
-        <h3 data-t="langTitle"></h3>
+        <h3 data-i="moon" data-t="themeTitle"></h3>
+        <div class="seg" id="themeSeg"></div>
+      </div>
+      <div class="section">
+        <h3 data-i="globe" data-t="langTitle"></h3>
         <select class="field" id="langSel" data-al="langTitle"></select>
       </div>
       <div class="section">
-        <h3 data-t="channelsTitle"></h3>
+        <h3 data-i="chat" data-t="channelsTitle"></h3>
         <div id="channelList" class="stack"></div>
         <details class="add" id="addChannel">
           <summary data-t="addChannel"></summary>
@@ -423,7 +558,7 @@ html.fine .conv-main { padding-right:92px; }
             <p class="hint" id="chHelp"></p>
             <div class="stack" id="wxLoginBox" hidden>
               <p class="hint" id="wxLoginMsg"></p>
-              <img id="wxLoginQr" alt="" hidden style="width:220px;height:220px;align-self:center;border-radius:16px;background:#fff">
+              <img id="wxLoginQr" alt="" hidden style="width:220px;height:220px;align-self:center;border-radius:16px;background:var(--canvas)">
               <button class="btn block" id="wxLoginBtn" data-t="wxLoginBtn"></button>
             </div>
             <input class="field" id="chName" autocomplete="off" data-ph="chName" data-al="chName">
@@ -437,12 +572,12 @@ html.fine .conv-main { padding-right:92px; }
         </details>
       </div>
       <div class="section">
-        <h3 data-t="featuresTitle"></h3>
+        <h3 data-i="box" data-t="featuresTitle"></h3>
         <p class="hint" data-t="featuresHint"></p>
         <div id="featureList" class="stack"></div>
       </div>
       <div class="section">
-        <h3 data-t="memoryTitle"></h3>
+        <h3 data-i="bookmark" data-t="memoryTitle"></h3>
         <p class="hint" data-t="memoryHint"></p>
         <div id="memoryList" class="stack"></div>
         <p class="hint" id="memoryInsights" hidden></p>
@@ -450,19 +585,18 @@ html.fine .conv-main { padding-right:92px; }
         <p class="hint" id="memoryMsg" role="status"></p>
       </div>
       <div class="section">
-        <h3 data-t="proactiveTitle"></h3>
-        <div class="keystate none" id="proactiveState"></div>
+        <div class="sect-row"><h3 data-i="heart" data-t="proactiveTitle"></h3><button class="switch" type="button" id="toggleProactive" role="switch" aria-checked="false" data-al="proactiveTitle"></button></div>
         <p class="hint" data-t="proactiveHint"></p>
         <label class="hint" for="proactiveLevel" data-t="proactiveLevel"></label>
         <input type="range" id="proactiveLevel" min="0" max="1" step="0.05" style="width:100%;accent-color:var(--accent)">
         <div class="row" style="justify-content:space-between"><span class="mini" data-t="levelReserved"></span><span class="mini" data-t="levelBalanced"></span><span class="mini" data-t="levelActive"></span><span class="mini" data-t="levelClingy"></span></div>
         <p class="hint" id="proactiveLevelText"></p>
         <div class="row"><input class="field" id="proactiveTimes" placeholder="09:00, 18:30" autocapitalize="off" autocomplete="off"><button class="btn" id="saveProactive" data-t="save"></button></div>
-        <div class="row"><button class="btn primary" id="toggleProactive"></button><button class="btn" id="proactiveNow" data-t="proactiveNow"></button></div>
+        <div class="row"><button class="btn" id="proactiveNow" data-t="proactiveNow"></button></div>
         <p class="hint" id="proactiveMsg" role="status"></p>
       </div>
       <div class="section">
-        <h3 data-t="pushTitle"></h3>
+        <h3 data-i="phone" data-t="pushTitle"></h3>
         <div class="keystate none" id="pushState"></div>
         <p class="hint" id="pushHint" data-t="pushHint"></p>
         <div class="row">
@@ -471,12 +605,12 @@ html.fine .conv-main { padding-right:92px; }
         </div>
       </div>
       <div class="section">
-        <h3 data-t="zoneTitle"></h3>
+        <h3 data-i="clock" data-t="zoneTitle"></h3>
         <div class="row"><input class="field" id="zone" autocapitalize="off" autocomplete="off" aria-label="Time zone"><button class="btn" id="saveZone" data-t="save"></button></div>
         <p class="hint" id="zoneMsg" role="status"></p>
       </div>
       <div class="section">
-        <h3 data-t="modelTitle"></h3>
+        <h3 data-i="cpu" data-t="modelTitle"></h3>
         <label class="hint" for="modelSel" data-t="modelLabel"></label>
         <select class="field" id="modelSel"></select>
         <div class="keystate" id="keyState"></div>
@@ -492,14 +626,14 @@ html.fine .conv-main { padding-right:92px; }
         <button class="btn primary block" id="saveModel" data-t="save"></button>
       </div>
       <div class="section">
-        <h3 data-t="capTitle"></h3>
+        <h3 data-i="wallet" data-t="capTitle"></h3>
         <div class="big-n" id="spentBig"></div>
         <div class="bar" id="capBar"><i></i></div>
         <p class="hint" data-t="capLabel"></p>
         <div class="row"><input class="field" id="cap" type="number" inputmode="decimal" min="0.01" step="0.5" aria-label="Monthly limit"><button class="btn" id="saveCap" data-t="save"></button></div>
       </div>
       <div class="section">
-        <h3 data-t="extTitle"></h3>
+        <h3 data-i="terminal" data-t="extTitle"></h3>
         <p class="hint" data-t="extHint"></p>
         <div id="extList"></div>
         <p class="hint" id="extEmpty" data-t="extEmpty"></p>
@@ -507,17 +641,19 @@ html.fine .conv-main { padding-right:92px; }
       <p class="hint" id="settingsMsg" role="status"></p>
       <p class="hint" id="buildInfo"></p>
       <div class="section">
-        <h3 data-t="pinTitle"></h3>
+        <h3 data-i="lock" data-t="pinTitle"></h3>
         <p class="hint" data-t="pinHint"></p>
         <button class="btn danger block" id="logout" data-t="logout"></button>
       </div>
     </div>
+    <button id="jump" type="button" data-i="down" data-t="jumpLatest" hidden></button>
+    <div id="offline" role="status" data-t="offline" hidden></div>
   </main>
   <button id="banner" hidden></button>
   <div id="attachRow" hidden></div>
-  <form id="composer">
+  <form id="composer" class="empty">
     <button type="button" class="attach" id="attachBtn" data-al="attach" data-i="clip"></button>
-    <input id="text" autocomplete="off" data-ph="placeholder" aria-label="Message">
+    <textarea id="text" rows="1" autocomplete="off" enterkeyhint="send" data-ph="placeholder" aria-label="Message"></textarea>
     <button type="button" class="mic" id="micBtn" data-al="voiceInput" data-i="mic"></button>
     <button class="send" data-al="send" data-i="send"></button>
   </form>
@@ -543,6 +679,8 @@ html.fine .conv-main { padding-right:92px; }
     <button id="drawerSpend"></button>
   </aside>
 </section>
+
+<div id="toast" role="status" hidden></div>
 
 <section id="browser" hidden>
   <p class="hint takeover-hint" id="takeoverHint" hidden></p>
@@ -574,7 +712,15 @@ const lang = savedLang === 'auto' ? (navigator.language.startsWith('zh') ? 'zh' 
 const langIndex = Math.max(0, LANGS.findIndex(l => l.code === lang))
 const zh = lang === 'zh'
 const I18N = {
-  loginSub:['输入 PIN 进入','Enter your PIN'], welcomeSub:['随时为你效劳','At your service'],
+  greetNight:['夜深了','Up late'], greetMorning:['早上好','Good morning'], greetNoon:['中午好','Good afternoon'], greetAfternoon:['下午好','Good afternoon'], greetEvening:['晚上好','Good evening'],
+  glanceDrafts:['待你批准','to approve'], glanceNeeds:['需要你处理','need you'], glanceTodos:['待办','to-dos'], glanceUnread:['未读','unread'],
+  jumpLatest:['最新消息','Latest'], offline:['连接中断，正在重连…','Connection lost. Reconnecting…'], yesterday:['昨天','Yesterday'],
+  themeTitle:['外观','Appearance'], theme_auto:['跟随系统','System'], theme_light:['浅色','Light'], theme_dark:['深色','Dark'],
+  actClick:['点击「{n}」','Click "{n}"'], actTypeEnter:['输入「{n}」并回车','Enter "{n}" and press Enter'], actPressEnter:['在此页面按回车','Press Enter on this page'],
+  pagePrefix:['页面：','Page: '], textPrefix:['文字：','Text: '],
+  draftDone:['已按草稿执行','Done as drafted'], draftFailed:['没能执行，详情在收件箱','Could not finish. See the inbox'], draftDiscarded:['草稿已放弃','Draft discarded'],
+  ch_webpush:['手机通知','Phone notifications'],
+  loginSub:['输入 PIN 进入','Enter your PIN'], welcomeSub:['今天想让我做点什么？','What can I do for you today?'],
   tabChat:['对话','Chat'], tabClerk:['文员','Clerk'], tabSettings:['设置','Settings'],
   clerkTitle:['文员','Clerk'], settingsTitle:['设置','Settings'],
   stateNap:['休息中','Napping'], stateThink:['思考中…','Thinking…'], stateSpeak:['回复中','Replying'],
@@ -616,7 +762,7 @@ const I18N = {
   featuresTitle:['功能扩展','Features'], featuresHint:['Bob 可以在对话里给自己安装小型功能包（工具 + 设置面板），安装前会把代码给你确认。','Bob can install small feature packages (tools plus a settings panel) through chat; you review the code before it lands.'],
   featuresEmpty:['还没有安装功能包。','No feature packages installed yet.'], featuresOpen:['打开','Open'], featuresFailed:['加载失败','failed to load'],
   memoryTitle:['记忆','Memory'], memoryHint:['Bob 在夜里会把最近的对话整理成对你的长期记忆；你可以在谈话里让他记住或忘掉事情。','At night Bob folds recent chats into durable memory. You can ask him to remember or forget things in chat.'],
-  memoryEmpty:['还没有记忆。','Nothing remembered yet.'], memoryDreamNow:['现在整理想一次','Dream now'],
+  memoryEmpty:['还没有记忆。','Nothing remembered yet.'], mem_fact:['事实','Fact'], mem_preference:['偏好','Preference'], mem_pattern:['习惯','Pattern'], mem_open_loop:['待跟进','Follow up'], memoryDreamNow:['现在整理想一次','Dream now'],
   memoryLastDream:['上次整理：{n}','Last dream: {n}'], memoryDreamed:['整理完成：新增 {n} 条','Done: {n} new memories'],
   memoryDreamFailed:['整理失败：{n}','Dream failed: {n}'], memoryInsights:['最近观察','Recent observations'],
   proactiveTitle:['主动关心','Check-ins'],
@@ -738,6 +884,12 @@ const ICONS = {
   trash:'<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>',
   mic:'<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4M8 21h8"/>',
   calendar:'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  heart:'<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21.2l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/>',
+  cpu:'<rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/>',
+  wallet:'<path d="M3 7a2 2 0 0 1 2-2h13v4"/><path d="M3 7v10a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1H5a2 2 0 0 1-2-2z"/><path d="M17 14h.01"/>',
+  lock:'<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  moon:'<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+  bookmark:'<path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
 }
 const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`
 const ORB = '<i class="core"></i><i class="ring"></i><i class="wave"></i><i class="wave w2"></i>' +
@@ -766,6 +918,7 @@ async function submitPin() {
   entered = ''
   drawDots()
   if (status === 200) return boot()
+  $('dots').classList.remove('shake'); void $('dots').offsetWidth; $('dots').classList.add('shake')
   $('loginMsg').textContent = data.error === 'LOCKED' ? t('locked', Math.ceil(data.retryAfter / 60)) : data.error === 'PIN_NOT_SET' ? t('noPin') : t('wrongPin', data.remaining)
 }
 const press = d => {
@@ -797,7 +950,7 @@ function show(view) {
   VIEWS.forEach(v => { $('view' + v[0].toUpperCase() + v.slice(1)).hidden = v !== view })
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.view === view))
   $('composer').hidden = view !== 'chat'
-  if (view !== 'chat') $('attachRow').hidden = true
+  if (view !== 'chat') { $('attachRow').hidden = true; $('jump').hidden = true }
   else drawAttachments()
   if (view === 'chat') atEnd()
   if (view === 'clerk') loadClerk()
@@ -811,6 +964,10 @@ function setHero() {
   const hero = currentView === 'chat' && feed.children.length <= 1
   $('app').classList.toggle('hero', hero)
   $('welcome').hidden = !hero
+  if (hero) {
+    const hour = new Date().getHours()
+    $('greet').textContent = t(hour < 5 ? 'greetNight' : hour < 11 ? 'greetMorning' : hour < 13 ? 'greetNoon' : hour < 18 ? 'greetAfternoon' : 'greetEvening')
+  }
 }
 
 // ---- the orb: napping, thinking, speaking ----
@@ -823,7 +980,7 @@ function refreshOrb() {
   // The mood is drawn by the orb itself, so the header stays quiet.
   $('title').textContent = currentView === 'chat' ? '' : t(currentView === 'clerk' ? 'clerkTitle' : 'settingsTitle')
   typing.hidden = !mine
-  if (mine) { feed.append(typing); atEnd() }
+  if (mine) { feed.append(typing); follow() }
 }
 function speak(text) {
   const ms = Math.min(5000, 1200 + text.length * 25)
@@ -840,20 +997,43 @@ typing.append(el('div', 'spacer'))
 const typingBubble = el('div', 'msg typing'); typingBubble.append(el('i'), el('i'), el('i')); typing.append(typingBubble)
 typing.hidden = true
 feed.append(typing)
-const atEnd = () => { scroller.scrollTop = scroller.scrollHeight }
+// New content follows the bottom only while the reader is there. Someone reading back is offered a button instead.
+let stick = true
+const atEnd = () => { scroller.scrollTop = scroller.scrollHeight; stick = true; $('jump').hidden = true }
+const follow = () => { if (stick) atEnd(); else if (currentView === 'chat') $('jump').hidden = false }
+scroller.addEventListener('scroll', () => {
+  stick = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 120
+  if (stick) $('jump').hidden = true
+}, { passive: true })
+$('jump').onclick = atEnd
 let lastKind = null, stepsBox = null
+let quiet = false // true while old history is drawn, so only new things animate in
+let lastStamp = 0
+function stamp(at) {
+  if (!at) return
+  const day = d => new Date(d).toDateString()
+  if (at - lastStamp > 30 * 60e3 || day(at) !== day(lastStamp)) {
+    const time = new Date(at).toLocaleTimeString(zh ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    const date = day(at) === day(Date.now()) ? '' : day(at) === day(Date.now() - 86400e3) ? t('yesterday') : new Date(at).toLocaleDateString(zh ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric' })
+    feed.insertBefore(el('div', 'daymark', `${date} ${time}`.trim()), typing)
+    lastKind = null
+  }
+  lastStamp = at
+}
 const cards = new Map(), open = new Map()
 let activeCid // undefined: not chosen yet. null: a new chat that has no messages yet.
 const updateWelcome = () => { setHero(); refreshOrb() }
 function add(node, kind) {
+  if (!quiet) node.classList.add('in')
   feed.insertBefore(node, typing)
   lastKind = kind
   if (kind !== 'steps') stepsBox = null
-  updateWelcome(); atEnd()
+  updateWelcome()
+  if (kind === 'user') atEnd(); else follow()
 }
 function clearFeed() {
   ;[...feed.children].forEach(c => { if (c !== typing) c.remove() })
-  cards.clear(); lastKind = null; stepsBox = null
+  cards.clear(); lastKind = null; stepsBox = null; lastStamp = 0
   updateWelcome()
 }
 function inlineMd(node, s) {
@@ -904,7 +1084,7 @@ function step(name) {
   stepsBox.querySelector('ul').append(el('li', '', label))
   stepsBox.querySelector('.now').textContent = `${label} · ${t('stepsCount', stepsBox.count)}`
   lastKind = 'steps'
-  atEnd()
+  follow()
 }
 function notice(text, err) { add(el('div', 'notice' + (err ? ' err' : ''), text), 'notice') }
 
@@ -1016,7 +1196,28 @@ function cardTitle(e) {
     if (e.to) lines.push(t('sendTo', e.to.replace('in-app inbox', t('toApp'))))
     return lines
   }
-  return [e.summary]
+  return [actionText(e.summary)]
+}
+/** The server describes page actions in English. Show them in the reader's language. */
+function actionText(summary) {
+  let m
+  if ((m = /^Click "(.*)"$/.exec(summary))) return t('actClick', m[1])
+  if ((m = /^Enter "(.*)" and press Enter$/.exec(summary))) return t('actTypeEnter', m[1])
+  if ((m = /^Write file (.*)$/.exec(summary))) return `${t('actWrite')}: ${baseName(m[1])}`
+  if (summary === 'Run a command') return t('actCommand')
+  if (summary === 'Press Enter on this page') return t('actPressEnter')
+  return summary
+}
+let toastTimer
+function toast(text, bad = false) {
+  const box = $('toast')
+  box.hidden = true // restart the entrance when one toast replaces another
+  box.textContent = text
+  box.className = bad ? 'bad' : ''
+  void box.offsetWidth
+  box.hidden = false
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { box.hidden = true }, 2800)
 }
 function buildCard(e, kind) {
   const c = el('div', 'card ' + (kind === 'approval' ? 'ask' : 'help'))
@@ -1104,7 +1305,7 @@ function track(e) { // approvals and takeovers belong to every conversation, bec
   }
 }
 function render(e) {
-  if (e.type === 'message') message(e.role, e.text, e.files ?? [])
+  if (e.type === 'message') { stamp(e.at); message(e.role, e.text, e.files ?? []) }
   else if (e.type === 'step') step(e.name)
   else if (e.type === 'error') notice(e.text, true)
   else if (e.type === 'notice') notice(t(e.code === 'BUDGET_NEAR' ? 'budgetNear' : e.code === 'EXTENSIONS_BROKEN' ? 'extensionsBroken' : 'budgetExceeded'), true)
@@ -1119,7 +1320,7 @@ function render(e) {
 let workSteps = 0 // real work done in this turn, which is what makes a turn worth saving as a routine
 function offerRoutine() {
   const link = el('button', 'link', t('saveRoutine'))
-  link.onclick = () => { link.remove(); $('text').value = t('saveRoutinePrompt'); $('composer').requestSubmit() }
+  link.onclick = () => { link.remove(); setText(t('saveRoutinePrompt')); $('composer').requestSubmit() }
   add(link, 'notice')
 }
 function route(e) {
@@ -1158,7 +1359,8 @@ async function loadHistory(cid) {
   const { events } = await res.json()
   if (activeCid !== cid) return false
   clearFeed()
-  events.forEach(render)
+  quiet = true
+  try { events.forEach(render) } finally { quiet = false }
   refreshOrb(); updateWelcome(); atEnd()
   return true
 }
@@ -1192,8 +1394,8 @@ function newChat() {
 function fmtTime(ts) {
   const d = new Date(ts)
   return d.toDateString() === new Date().toDateString()
-    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+    ? d.toLocaleTimeString(zh ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    : d.toLocaleDateString(zh ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric' })
 }
 const REVEAL = 76
 const closeRows = except => document.querySelectorAll('.conv.open').forEach(r => { if (r !== except) r.classList.remove('open') })
@@ -1316,11 +1518,14 @@ function openDrawer() {
   $('drawer').classList.add('open'); $('scrim').classList.add('on')
   loadConvs()
 }
+// On a wide screen the history is a sidebar that is always there.
+const wide = matchMedia('(min-width: 1000px)')
 function closeDrawer() {
   $('drawer').classList.remove('open'); $('scrim').classList.remove('on')
-  $('drawer').inert = true
+  $('drawer').inert = !wide.matches
 }
-$('drawer').inert = true
+$('drawer').inert = !wide.matches
+wide.addEventListener('change', () => { closeDrawer(); drawConvs() })
 $('orbBtn').onclick = openDrawer
 $('closeDrawer').onclick = closeDrawer
 $('scrim').onclick = closeDrawer
@@ -1331,9 +1536,11 @@ let source
 function connect() {
   source?.close()
   source = new EventSource('/api/events')
+  source.onerror = () => { $('offline').hidden = false } // the browser reconnects by itself
   source.onmessage = async m => {
     const e = JSON.parse(m.data)
     if (e.type === 'hello') {
+      $('offline').hidden = true
       open.clear()
       for (const p of e.pending) open.set(p.id, { e: p, kind: p.type })
       activeTakeover = [...open.values()].find(x => x.kind === 'takeover')?.e.id ?? null
@@ -1364,9 +1571,10 @@ function connect() {
   }
 }
 
-function prefill(text) { show('chat'); $('text').value = text; $('text').focus() }
-;[['chip1', 'chip1q'], ['chip2', 'chip2q'], ['chip3', 'chip3q']].forEach(([label, prompt]) => {
-  const b = el('button', 'chip-btn', t(label)); b.type = 'button'
+function prefill(text) { show('chat'); setText(text); $('text').focus() }
+;[['chip1', 'chip1q', 'globe'], ['chip2', 'chip2q', 'file'], ['chip3', 'chip3q', 'bell']].forEach(([label, prompt, picture]) => {
+  const b = el('button', 'chip-btn'); b.type = 'button'
+  b.append(tile(picture), el('span', '', t(label)))
   b.onclick = () => prefill(t(prompt))
   $('chips').append(b)
 })
@@ -1379,6 +1587,7 @@ async function loadClerk() {
   if (!data) return
   clerkData = data
   setBadge(data.unread)
+  drawGlance()
   if (!data.timezoneChosen) post('/api/clerk/timezone', { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }) // the first visit sets it from this device
   if (currentView === 'clerk' || currentView === 'settings') drawClerk()
 }
@@ -1437,18 +1646,64 @@ function jobCard(job, tz = clerkData?.timezone, compact = false, created = false
   if (job.cid) { const see = el('button', 'link', t('openRun')); see.onclick = () => selectConv(job.cid); c.append(see) }
   return c
 }
+/** The front page says what is waiting, so nothing important hides behind a tab. */
+function drawGlance() {
+  const d = clerkData
+  const items = [
+    [(d.drafts ?? []).length, 'glanceDrafts', ' warn'],
+    [d.jobs.filter(j => j.assist).length, 'glanceNeeds', ' warn'],
+    [d.todos.filter(todo => !todo.done).length, 'glanceTodos', ''],
+    [d.unread, 'glanceUnread', ''],
+  ].filter(([count]) => count > 0)
+  $('glance').hidden = !items.length
+  $('glance').replaceChildren(...items.map(([count, key, tone]) => {
+    const b = el('button', 'glance-item' + tone); b.type = 'button'
+    b.append(el('b', '', String(count)), el('span', '', t(key)))
+    b.onclick = () => show('clerk')
+    return b
+  }))
+}
+function todoRow(todo, tz) {
+  const row = el('div', 'trow' + (todo.done ? ' finished' : ''))
+  const check = el('button', 'check' + (todo.done ? ' on' : '')); check.type = 'button'
+  check.innerHTML = icon('tick')
+  check.setAttribute('role', 'checkbox')
+  const paint = () => {
+    row.classList.toggle('finished', todo.done); check.classList.toggle('on', todo.done)
+    check.setAttribute('aria-checked', String(todo.done)); check.setAttribute('aria-label', t(todo.done ? 'undo' : 'markDone'))
+  }
+  paint()
+  check.onclick = async () => {
+    todo.done = !todo.done; paint() // show it at once, and put it back if the server says no
+    const r = await post('/api/clerk/todo/toggle', { id: todo.id, done: todo.done })
+    if (r.status !== 200) { todo.done = !todo.done; paint(); toast(errText(r.data, r.status), true) }
+  }
+  const body = el('div', 'tbody')
+  body.append(el('div', 'tt', todo.title))
+  const meta = [todo.due ? dueText(todo.due, tz) : '', todo.note].filter(Boolean).join(' · ')
+  if (meta) body.append(el('div', 'meta', meta))
+  const rm = el('button', 'icon-btn rm'); rm.type = 'button'; rm.innerHTML = icon('trash')
+  rm.title = t('remove'); rm.setAttribute('aria-label', t('remove'))
+  rm.onclick = async () => { const r = await post('/api/clerk/todo/delete', { id: todo.id }); if (r.status === 200) row.remove(); else toast(errText(r.data, r.status), true) }
+  row.append(check, body, rm)
+  return row
+}
 function draftCard(d) {
   const c = el('div', 'card ask')
   const top = el('div', 'card-top')
   top.append(tile('clock'), el('span', 'tag', t('tagDraft')), el('span', 'mini', d.jobTitle))
-  c.append(top, el('div', 'what', d.summary))
-  if (d.detail) c.append(el('div', 'quote', d.detail))
+  c.append(top, el('div', 'what', actionText(d.summary)))
+  if (d.detail) c.append(el('div', 'quote', d.detail.replace(/^Page: /m, t('pagePrefix')).replace(/^Text: /m, t('textPrefix'))))
   if (d.hasShot) { const img = new Image(); img.alt = ''; img.src = `/api/clerk/draft/shot?id=${encodeURIComponent(d.id)}`; c.append(img) }
   const yes = el('button', 'btn primary', t('draftApprove')), no = el('button', 'btn', t('draftReject'))
   const decide = async allow => {
     yes.disabled = no.disabled = true
     const r = await post('/api/clerk/draft/decide', { id: d.id, allow })
-    if (r.status === 200) return
+    if (r.status === 200) {
+      const worked = r.data.status === 'done'
+      toast(t(!allow ? 'draftDiscarded' : worked ? 'draftDone' : 'draftFailed'), allow && !worked)
+      return
+    }
     yes.disabled = no.disabled = false
     c.append(el('div', 'last failed', r.status === 409 ? t('draftBusy') : errText(r.data, r.status)))
   }
@@ -1489,7 +1744,11 @@ const CHANNEL_TYPES = ['wechat', 'lark', 'wecom', 'telegram', 'discord']
 function channelRow(ch) {
   const row = el('div', 'channel')
   const top = el('div', 'ch-top')
-  top.append(el('span', 'badge-t', { lark: 'L', wecom: 'W', telegram: 'T', discord: 'D' }[ch.type]), el('b', '', ch.name))
+  const badge = el('span', 'badge-t')
+  const letter = { lark: 'L', wecom: 'W', telegram: 'T', discord: 'D' }[ch.type]
+  if (letter) badge.textContent = letter
+  else badge.innerHTML = icon(ch.type === 'webpush' ? 'bell' : 'chat')
+  top.append(badge, el('b', '', ch.name))
   const del = el('button', 'icon-btn'); del.innerHTML = icon('cross'); del.title = t('remove'); del.setAttribute('aria-label', t('remove'))
   del.onclick = () => { if (confirm(t('confirmDelete', ch.name))) post('/api/channels/delete', { id: ch.id }) }
   top.append(del)
@@ -1514,7 +1773,7 @@ function drawClerk() {
   $('draftsHead').querySelector('h3').textContent = `${t('draftsTitle')} · ${drafts.length}`
   // Two different things live here: to-dos (things to do, open ones first) and scheduled jobs (recurring or timed work).
   const todos = [...d.todos].sort((a, b) => Number(a.done) - Number(b.done))
-  $('todoList').replaceChildren(...todos.map(todo => todoCard(todo, d.timezone)))
+  $('todoList').replaceChildren(...todos.map(todo => todoRow(todo, d.timezone)))
   $('todosHead').querySelector('h3').textContent = `${t('todosTitle')} · ${d.todos.length}`
   $('todoEmpty').hidden = d.todos.length > 0
   $('jobList').replaceChildren(...d.jobs.map(j => jobCard(j)))
@@ -1528,6 +1787,20 @@ function drawClerk() {
 }
 $('langSel').append(new Option(t('langAuto'), 'auto'), ...LANGS.map(l => new Option(l.label, l.code)))
 $('langSel').value = savedLang
+function drawTheme() {
+  let current = 'auto'
+  try { current = localStorage.getItem('bobbot.theme') || 'auto' } catch { /* private mode */ }
+  $('themeSeg').replaceChildren(...['auto', 'light', 'dark'].map(choice => {
+    const b = el('button', choice === current ? 'on' : '', t('theme_' + choice)); b.type = 'button'
+    b.setAttribute('aria-pressed', String(choice === current))
+    b.onclick = () => {
+      try { if (choice === 'auto') localStorage.removeItem('bobbot.theme'); else localStorage.setItem('bobbot.theme', choice) } catch { /* private mode */ }
+      applyTheme(); drawTheme()
+    }
+    return b
+  }))
+}
+drawTheme()
 $('langSel').onchange = () => {
   const value = $('langSel').value
   if (value === 'auto') localStorage.removeItem('bobbot.lang'); else localStorage.setItem('bobbot.lang', value)
@@ -1541,12 +1814,13 @@ async function loadMemory() {
   list.replaceChildren()
   if (!data.items.length) { list.append(el('p', 'hint', t('memoryEmpty'))) }
   for (const item of data.items) {
-    const row = el('div', 'feature-row')
-    const info = el('div', 'feature-info')
-    info.append(el('b', '', item.text), el('small', '', item.kind))
-    const remove = el('button', 'btn small danger', t('remove'))
+    const row = el('div', 'mem-row')
+    const body = el('div', 'tbody')
+    body.append(el('div', '', item.text))
+    const remove = el('button', 'icon-btn rm'); remove.type = 'button'; remove.innerHTML = icon('trash')
+    remove.title = t('remove'); remove.setAttribute('aria-label', t('remove'))
     remove.onclick = async () => { await post('/api/memory/delete', { id: item.id }); loadMemory() }
-    row.append(info, remove)
+    row.append(el('span', 'mini', t('mem_' + item.kind)), body, remove)
     list.append(row)
   }
   const insights = $('memoryInsights')
@@ -1566,10 +1840,7 @@ async function loadProactive() {
   const data = await getJson('/api/proactive')
   if (!data) return
   proactiveState = data
-  const box = $('proactiveState')
-  box.className = 'keystate ' + (data.enabled ? '' : 'none')
-  box.textContent = data.enabled ? t('proactiveOn') : t('proactiveOff')
-  $('toggleProactive').textContent = data.enabled ? t('proactiveOff') : t('proactiveOn')
+  $('toggleProactive').setAttribute('aria-checked', String(Boolean(data.enabled)))
   if (document.activeElement !== $('proactiveTimes')) $('proactiveTimes').value = data.times.join(', ')
   const level = Number(data.level ?? 0.35)
   if (document.activeElement !== $('proactiveLevel')) $('proactiveLevel').value = String(level)
@@ -1780,6 +2051,7 @@ const TEXT_NAME = /\.(txt|md|markdown|csv|tsv|json|jsonl|log|xml|html?|ya?ml|ini
 let attachments = []
 const kb = n => (n < 1024 ? n + ' B' : Math.round(n / 1024) + ' KB')
 function drawAttachments() {
+  $('composer').classList.toggle('empty', !$('text').value.trim() && !attachments.length)
   const row = $('attachRow')
   row.textContent = ''
   row.hidden = attachments.length === 0 || $('composer').hidden
@@ -1815,7 +2087,7 @@ else {
   speech.onresult = event => {
     let said = ''
     for (let i = 0; i < event.results.length; i++) said += event.results[i][0].transcript
-    $('text').value = (speechBase + said).slice(0, 4000)
+    setText((speechBase + said).slice(0, 4000))
   }
   speech.onend = () => { speechOn = false; $('micBtn').classList.remove('rec') }
   speech.onerror = event => {
@@ -1844,14 +2116,28 @@ $('filePick').onchange = async () => {
   }
   drawAttachments()
 }
+/** The message box grows with what is typed, up to a few lines. */
+function fitText() {
+  const box = $('text')
+  box.style.height = 'auto'
+  box.style.height = `${Math.max(42, Math.min(box.scrollHeight, 160))}px`
+  $('composer').classList.toggle('empty', !box.value.trim() && !attachments.length)
+}
+function setText(value) { $('text').value = value; fitText() }
+$('text').addEventListener('input', fitText)
+$('text').addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return // Shift+Enter is a new line; Enter while choosing Chinese characters is not a send
+  e.preventDefault()
+  $('composer').requestSubmit()
+})
 $('composer').onsubmit = async e => {
   e.preventDefault()
   const text = $('text').value.trim()
   if (!text && !attachments.length) return
   const files = attachments
-  $('text').value = ''
+  setText('')
   attachments = []; drawAttachments()
-  const restore = () => { $('text').value = text; attachments = files; drawAttachments() } // keep the draft so nothing is lost
+  const restore = () => { setText(text); attachments = files; drawAttachments() } // keep the draft so nothing is lost
   if (!activeCid) {
     const made = await post('/api/conversations')
     if (made.status !== 200) { restore(); notice(errText(made.data, made.status), true); return }
@@ -2102,6 +2388,7 @@ async function boot() {
   show('chat')
   if (!s.hasKey) { $('settingsMsg').textContent = t('noKey'); show('settings') }
   connect()
+  loadClerk() // the front page shows what is waiting
 }
 boot()
 </script>

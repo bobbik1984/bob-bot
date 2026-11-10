@@ -55,7 +55,9 @@ Each chat is its own conversation with its own context. Bob works in one chat at
 
 After the server or agent restarts, the first message in an old chat gets the earlier text of that chat as context. Earlier tool results and attached file contents are not replayed.
 
-The page is light-only for now, and the orb shows what Bob is doing: napping, thinking or replying.
+The page follows the system's light or dark setting (Settings → Appearance pins one), and the orb shows what Bob is doing: napping, thinking or replying.
+
+On a window at least 1000px wide the history and the tabs become a sidebar. The front page greets you and shows what is waiting (drafts to approve, jobs that need you, open to-dos, unread results). The message box grows up to a few lines: Enter sends and Shift+Enter starts a new line. New replies follow the bottom only while you are there; if you have scrolled up, a "Latest" button appears instead.
 
 ## The clerk: scheduled tasks and reminders
 
