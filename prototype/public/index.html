@@ -2067,11 +2067,10 @@ async function loadPushState() {
   box.textContent = count > 0 ? t('pushOn', count) : t('pushOff')
   test.hidden = count === 0
   const diag = $('pushDiag')
-  if (iOS) {
-    diag.hidden = false
-    const perm = !('Notification' in window) ? t('pushPermDenied') : Notification.permission === 'granted' ? t('pushPermGranted') : Notification.permission === 'denied' ? t('pushPermDenied') : t('pushPermDefault')
-    diag.textContent = t('pushDiag', { m: isInstalled() ? t('pushModeApp') : t('pushModeTab'), p: perm })
-  } else diag.hidden = true
+  diag.hidden = false
+  const perm = !('Notification' in window) ? t('pushPermDenied') : Notification.permission === 'granted' ? t('pushPermGranted') : Notification.permission === 'denied' ? t('pushPermDenied') : t('pushPermDefault')
+  const caps = ['Notification' in window ? 'Notification' : '', 'PushManager' in window ? 'PushManager' : '', 'serviceWorker' in navigator ? 'SW' : ''].filter(Boolean).join(' / ') || t('pushUnsupported')
+  diag.textContent = t('pushDiag', { m: isInstalled() ? t('pushModeApp') : t('pushModeTab'), p: perm }) + ' · ' + caps
   if (iOS && !isInstalled()) { $('pushHint').textContent = t('pushIosHint'); enable.disabled = true }
   else if (!can) { $('pushHint').textContent = t('pushUnsupported'); enable.disabled = true }
   else if (Notification.permission === 'denied') { $('pushHint').textContent = t('pushDenied'); enable.disabled = true }
