@@ -57,7 +57,7 @@ const fake = http.createServer((req, res) => {
 await new Promise(r => fake.listen(0, '127.0.0.1', r))
 
 // ---- server under test ----
-const env = { ...process.env, BOBBOT_DATA: data, PORT: String(PORT), HOST: '127.0.0.1', DEEPSEEK_API_KEY: 'test-key', BOBBOT_TICK_MS: '1000', BOB_COMPAT_PORT: '3731', WECHAT_BRIDGE_URL: 'http://127.0.0.1:3999', DEEPSEEK_BASE_URL: `http://127.0.0.1:${fake.address().port}` }
+const env = { ...process.env, BOBBOT_NO_NIGHTLY: '1', BOBBOT_DATA: data, PORT: String(PORT), HOST: '127.0.0.1', DEEPSEEK_API_KEY: 'test-key', BOBBOT_TICK_MS: '1000', BOB_COMPAT_PORT: '3731', WECHAT_BRIDGE_URL: 'http://127.0.0.1:3999', DEEPSEEK_BASE_URL: `http://127.0.0.1:${fake.address().port}` }
 const setPin = pin => spawnSync(process.execPath, ['set-pin.mjs', pin], { cwd: root, env, encoding: 'utf8' })
 const server = spawn(process.execPath, ['server.mjs'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] })
 let log = ''
@@ -835,7 +835,8 @@ try {
   })
 
   await check('the nightly dream folds chats into memory, and a check-in can speak or stay silent', async () => {
-    script.push(say('{"add":[{"kind":"fact","text":"用户在上海工作"}],"insights":["最近常问天气"]}'))
+    // A real model takes seconds to answer, and the dream has to wait for it.
+    script.push(async () => { await sleep(1500); return say('{"add":[{"kind":"fact","text":"用户在上海工作"}],"insights":["最近常问天气"]}') })
     const dreamed = await post('/api/memory/dream', {})
     assert.equal(dreamed.status, 200)
     assert.equal(dreamed.data.ok, true)
@@ -849,14 +850,109 @@ try {
     assert.equal((await post('/api/proactive', { level: 2 })).status, 400)
     const leveled = await post('/api/proactive', { level: 0.8 })
     assert.equal(leveled.status, 200); assert.equal(leveled.data.level, 0.8)
-    script.push(say('你今天有两个待办，要我帮你排一下吗？'))
+    await post('/api/proactive', { enabled: false }) // so the clock cannot start a check-in in the middle of this script
+    script.push(async () => { await sleep(1500); return say('你今天有两个待办，要我帮你排一下吗？') })
     const sent = await post('/api/proactive/run', {})
     assert.equal(sent.data.sent, true)
     assert.ok((await clerkView()).inbox.some(n => n.title === '主动关心'), 'the check-in did not reach the inbox')
     script.push(say('[SILENT]'))
     const quiet = await post('/api/proactive/run', {})
     assert.equal(quiet.data.sent, false)
-    await post('/api/proactive', { enabled: false })
+  })
+
+  await check('a dream with an unusable answer reports failure and changes nothing', async () => {
+    const before = (await getJson('/api/memory')).body.items.length
+    script.push(say('sorry, no json here'))
+    const dreamed = await post('/api/memory/dream', {})
+    assert.equal(dreamed.data.ok, false)
+    const after = (await getJson('/api/memory')).body
+    assert.equal(after.items.length, before); assert.equal(after.lastDream.failed, true)
+  })
+
+  await check('a new chat is given what Bob remembers, and only once', async () => {
+    await post('/api/memory/add', { text: '用户常驻上海', kind: 'preference' })
+    const t0 = Date.now()
+    script.push(say('记住了。'))
+    const first = await post('/api/chat', { text: '明天上海天气' })
+    assert.equal(first.status, 200)
+    await waitAfter(t0, e => e.type === 'message' && e.text === '记住了。')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
+    assert.ok(JSON.stringify(requests.at(-1).messages.at(-1)).includes('用户常驻上海'), 'the memory was not given to the model')
+    const t1 = Date.now()
+    script.push(say('好的。'))
+    await post('/api/chat', { cid: first.data.cid, text: '后天呢' })
+    await waitAfter(t1, e => e.type === 'message' && e.text === '好的。')
+    await waitAfter(t1, e => e.type === 'status' && e.status === 'idle')
+    assert.ok(!JSON.stringify(requests.at(-1).messages.at(-1)).includes('用户常驻上海'), 'the same memory was sent twice')
+  })
+
+  const runsReach = async (id, count) => {
+    for (let i = 0; i < 300; i++) {
+      const job = (await clerkView()).jobs.find(j => j.id === id)
+      if ((job?.runs?.length ?? 0) >= count) return job
+      await sleep(100)
+    }
+    throw new Error(`job ${id} did not reach ${count} runs`)
+  }
+  let routineId
+  await check('a chat becomes a routine: confirmed, tried once, and scheduled only when turned on', async () => {
+    const t0 = Date.now()
+    script.push(
+      use('list_files', { path: '.' }),
+      use('routine_steps', {}),
+      use('routine_save', { title: 'Daily digest', goal: 'Collect the news', steps: ['Open the page', 'Summarize it'], success_check: 'At least one item', on_missing: 'Say there was nothing today', schedule: { type: 'daily', time: '08:00' } }),
+      say('Saved.'),
+      use('run_report', { met: true, evidence: 'one item' }),
+      say('Digest ready.'),
+    )
+    assert.equal((await post('/api/chat', { text: 'save that as a routine' })).status, 200)
+    const ask = await waitAfter(t0, e => e.type === 'approval' && e.summary === 'Save as a routine: Daily digest')
+    assert.ok(requests.some(r => JSON.stringify(r.messages).includes('ok: list_files')), 'the real steps were not available')
+    assert.ok(ask.detail.includes('Success check: At least one item'))
+    assert.equal((await post('/api/approve', { id: ask.id, allow: true })).status, 200)
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'Saved.')
+    routineId = (await clerkView()).jobs.find(j => j.title === 'Daily digest').id
+    const job = await runsReach(routineId, 1)
+    assert.equal(job.enabled, false); assert.equal(job.nextRun, null); assert.equal(job.trial, 'done')
+    assert.equal(job.runs[0].status, 'ok'); assert.equal(job.runs[0].trial, true); assert.equal(job.playbook.check, 'At least one item')
+    const turnedOn = (await clerkView()).jobs.length && await post('/api/clerk/job/toggle', { id: routineId, enabled: true })
+    assert.equal(turnedOn.status, 200)
+    const on = (await clerkView()).jobs.find(j => j.id === routineId)
+    assert.equal(on.enabled, true); assert.ok(on.nextRun > Date.now())
+  })
+  await check('a routine that misses its check, or does not report, is not called done', async () => {
+    script.push(use('run_report', { met: false, evidence: 'the page was empty' }), say('No digest.'))
+    assert.equal((await post('/api/clerk/job/run', { id: routineId })).status, 200)
+    let job = await runsReach(routineId, 2)
+    assert.equal(job.runs[0].status, 'failed'); assert.ok(job.lastResult.includes('the page was empty'))
+    script.push(say('Done anyway.'))
+    assert.equal((await post('/api/clerk/job/run', { id: routineId })).status, 200)
+    job = await runsReach(routineId, 3)
+    assert.equal(job.runs[0].status, 'partial')
+  })
+  await check('a scheduled run prepares a draft, and only the owner\'s approval runs it', async () => {
+    const output = path.join(data, 'workspace', 'draft-output.txt')
+    script.push(use('run_command', { command: 'echo draft-ran > draft-output.txt' }), use('run_report', { met: true, evidence: 'prepared' }), say('Prepared it.'))
+    assert.equal((await post('/api/clerk/job/run', { id: routineId })).status, 200)
+    const job = await runsReach(routineId, 4)
+    assert.equal(job.runs[0].status, 'drafted')
+    const [draft] = (await clerkView()).drafts
+    assert.equal(draft.summary, 'Run a command'); assert.ok(draft.detail.includes('draft-ran')); assert.equal(draft.action, undefined)
+    assert.ok(!fs.existsSync(output), 'the command ran without approval')
+    const done = await post('/api/clerk/draft/decide', { id: draft.id, allow: true })
+    assert.equal(done.status, 200); assert.equal(done.data.status, 'done')
+    assert.ok(fs.existsSync(output), 'the approved command did not run')
+    assert.ok(!(await clerkView()).drafts.some(d => d.id === draft.id), 'the draft is still waiting')
+    assert.equal((await post('/api/clerk/draft/decide', { id: draft.id, allow: true })).status, 404)
+  })
+  await check('a discarded draft never runs', async () => {
+    const output = path.join(data, 'workspace', 'never.txt')
+    script.push(use('run_command', { command: 'echo no > never.txt' }), use('run_report', { met: true, evidence: 'prepared' }), say('Prepared again.'))
+    assert.equal((await post('/api/clerk/job/run', { id: routineId })).status, 200)
+    await runsReach(routineId, 5)
+    const [draft] = (await clerkView()).drafts
+    assert.equal((await post('/api/clerk/draft/decide', { id: draft.id, allow: false })).data.status, 'rejected')
+    assert.ok(!fs.existsSync(output)); assert.ok(!(await clerkView()).drafts.some(d => d.id === draft.id), 'the draft is still waiting')
   })
 
   console.log('Spending limit')

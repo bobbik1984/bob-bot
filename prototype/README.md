@@ -78,6 +78,21 @@ Tell Bob in chat, for example "every morning at 8, check the weather in Shanghai
 
 Personal WeChat is reached only through the official iLink bridge described above, and it can only reach contacts who messaged recently. "Send a test" tells you whether the service accepted the message and why not if it did not.
 
+## Routines and drafts
+
+After Bob finishes real work in a chat, a "Save as a routine" link appears, or you can ask in your own words. Bob builds the routine from the steps that actually happened, with a success check, the points where a person must decide, and what to do if the source data is missing. You confirm it, it gets one trial run whose result stays in the app, and it is scheduled only after you turn it on.
+
+Each run reports whether the success check was met. That is the model's own judgement of its result, so read the first few results. A routine that misses its check is recorded as failed, and one that does not report is recorded as partly done.
+
+When a scheduled run reaches something that needs approval (a command, writing a file, a risky click or submit on a page), it saves the exact action as a draft and carries on. Drafts appear at the top of the Clerk tab with what they will do. Approving runs that saved action without asking the model again: a page action is repeated on a fresh copy of the page, and stops if a recorded element is gone or is no longer unique. Discarded drafts never run, and unanswered ones expire after 7 days. Installing software and changing the schedule are never drafted.
+
+## Memory, dreaming and check-ins
+
+Every chat, WeChat conversation and scheduled task now receives what Bob remembers: unfinished work and preferences first, then whatever the message mentions, up to about 1500 characters. A new chat also gets open to-dos, scheduled jobs and what the last few chats were about. Memory supplies facts such as your city. Weather is always fetched fresh.
+
+- **Dreaming** runs once a night between 03:30 and 08:00 and retries if it fails, so it works with check-ins off. Settings shows the last failure. A single dream can remove at most 3 memories, and what it removed is logged.
+- **Check-ins** are off by default. The switch controls only whether Bob may message you first. Memory, dreaming, reminders and tasks work either way. The level sets the daily message limit and tone, and adds check moments at 12:30, 15:30 and 20:30 when your own times are too few for that limit.
+
 ## Installing tools by chat
 
 Ask Bob for what you need, for example "install the GitHub tool" or "teach yourself my weekly report format". Every install shows a card with exactly what will happen, and nothing happens until you confirm.

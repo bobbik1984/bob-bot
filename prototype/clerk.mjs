@@ -8,6 +8,8 @@ import { writeAtomic } from './store.mjs'
 const MAX_JOBS = 30
 const MAX_INBOX = 100
 const MAX_RUNS = 20
+const MAX_DRAFTS = 50
+const DRAFT_DAYS = 7
 export const CATCH_UP_MS = 2 * 60 * 60 * 1000 // a job more than this late is skipped, not run
 
 const fail = code => Object.assign(new Error(code), { code })
@@ -115,6 +117,8 @@ export class Clerk {
     this.todos = saved.todos ?? []
     this.channels = saved.channels ?? []
     try { this.inbox = JSON.parse(fs.readFileSync(this.inboxFile, 'utf8')) } catch { this.inbox = [] }
+    this.draftFile = path.join(dir, 'drafts.json')
+    try { this.drafts = JSON.parse(fs.readFileSync(this.draftFile, 'utf8')) } catch { this.drafts = [] }
   }
 
   #save() {
@@ -204,6 +208,29 @@ export class Clerk {
     job.nextRun = job.schedule.type === 'once' ? null : nextRun(job.schedule, this.timezone, now)
     if (job.nextRun === null) job.enabled = false
     this.#save()
+  }
+
+  // ---- drafts: an action a scheduled run prepared, waiting for the owner ----
+  #saveDrafts() { writeAtomic(this.draftFile, JSON.stringify(this.drafts)) }
+  addDraft(fields, now = Date.now()) {
+    const draft = { id: `d${crypto.randomBytes(5).toString('hex')}`, at: now, status: 'pending', ...fields }
+    this.drafts = [draft, ...this.drafts].slice(0, MAX_DRAFTS)
+    this.#saveDrafts()
+    return draft
+  }
+  draft(id) { return this.drafts.find(d => d.id === id) }
+  settleDraft(draft, status, result = '', now = Date.now()) {
+    Object.assign(draft, { status, result: String(result).slice(0, 500), settledAt: now })
+    this.#saveDrafts()
+  }
+  /** What is still waiting. An old draft stops being offered, because the page or the need has probably moved on. */
+  pendingDrafts(now = Date.now()) {
+    let changed = false
+    for (const draft of this.drafts) {
+      if (draft.status === 'pending' && now - draft.at > DRAFT_DAYS * 86400e3) { draft.status = 'expired'; changed = true }
+    }
+    if (changed) this.#saveDrafts()
+    return this.drafts.filter(d => d.status === 'pending')
   }
 
   // ---- to-dos: things to remember or do, with an optional due time ----

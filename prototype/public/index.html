@@ -238,6 +238,7 @@ main { flex:1; min-height:0; position:relative; }
 .job .run b { color:var(--ok); font-weight:600; }
 .job .run b.warn { color:var(--warn); }
 .job .run b.failed { color:var(--danger); }
+.job .runs .step { margin:6px 0 0; font-size:13px; color:var(--text); overflow-wrap:anywhere; }
 .job .run p { grid-column:1 / -1; margin:0; color:var(--text); overflow-wrap:anywhere; }
 .job.paused { opacity:.7; }
 .chiplist { display:flex; flex-wrap:wrap; gap:6px; }
@@ -394,6 +395,10 @@ html.fine .conv-main { padding-right:92px; }
       <div id="feed" aria-live="polite"></div>
     </div>
     <div class="view" id="viewClerk" hidden>
+      <div id="draftBox" hidden>
+        <div class="sect-head" id="draftsHead"><h3 data-t="draftsTitle"></h3></div>
+        <div id="draftList"></div>
+      </div>
       <div class="sect-head" id="todosHead"><h3 data-t="todosTitle"></h3></div>
       <div id="todoList"></div>
       <p class="hint empty-note" id="todoEmpty" data-t="todosEmpty" hidden></p>
@@ -602,6 +607,10 @@ const I18N = {
   lastOk:['上次：','Last: '], lastFailed:['上次失败：','Last failed: '], lastMissed:['上次错过：','Last missed: '],
   lastPartial:['上次部分完成：','Partly done: '], lastNeedsYou:['上次需要你：','Needed you: '],
   assistBtn:['去处理','Sort it out'], runsTitle:['运行记录','Run history'],
+  draftsTitle:['待批草稿','Waiting for approval'], tagDraft:['草稿','Draft'], draftApprove:['批准并执行','Approve and run'], draftReject:['放弃','Discard'], draftBusy:['Bob 正在忙，请稍后再批准。','Bob is busy. Approve this in a moment.'],
+  lastDrafted:['上次待批准：','Waiting for approval: '], run_drafted:['待批准','Waiting'], runTrial:['试运行','Trial'],
+  saveRoutine:['存为日常任务','Save as a routine'], saveRoutinePrompt:['把刚才做成功的步骤存为日常任务。','Save the steps that just worked as a routine.'],
+  routineCheck:['校验','Check'], routineSteps:['步骤','Steps'], routineMissing:['缺数据时','If data is missing'], trialRunning:['正在试运行，结果会进收件箱。启用前不会定时运行。','Trial run in progress. The result goes to your inbox, and nothing is scheduled until you turn it on.'], trialDone:['试运行结束。看过结果后再启用定时。','Trial finished. Turn it on once the result looks right.'], enableRoutine:['启用定时','Turn on'],
   run_ok:['完成','Done'], run_partial:['部分完成','Partly done'], run_needs_you:['需要你','Needed you'], run_failed:['失败','Failed'], run_missed:['错过','Missed'],
   ch_wechat:['微信（官方 iLink）','WeChat (official iLink)'],
   featuresTitle:['功能扩展','Features'], featuresHint:['Bob 可以在对话里给自己安装小型功能包（工具 + 设置面板），安装前会把代码给你确认。','Bob can install small feature packages (tools plus a settings panel) through chat; you review the code before it lands.'],
@@ -611,7 +620,7 @@ const I18N = {
   memoryLastDream:['上次整理：{n}','Last dream: {n}'], memoryDreamed:['整理完成：新增 {n} 条','Done: {n} new memories'],
   memoryDreamFailed:['整理失败：{n}','Dream failed: {n}'], memoryInsights:['最近观察','Recent observations'],
   proactiveTitle:['主动关心','Check-ins'],
-  proactiveHint:['在设定的时间，Bob 会看一眼你的待办和任务，只有确实值得提醒时才开口；每天最多两次，22:00–08:00 不打扰。','At the times you set, Bob looks at your to-dos and jobs and speaks only when something is worth it; at most twice a day, never between 22:00 and 08:00.'],
+  proactiveHint:['在设定的时间，以及主动性档位增加的时间点，Bob 会看一眼你的待办和任务，只有确实值得提醒时才开口；高冷每天最多 1 条，粘人最多 4 条，22:00–08:00 不打扰。','At your set times, plus extra moments at higher levels, Bob checks your to-dos and tasks and speaks only when it is worth it: from 1 message a day (Reserved) to 4 (Clingy), never between 22:00 and 08:00.'],
   proactiveOff:['已关闭','Off'], proactiveOn:['已开启','On'], proactiveNow:['现在试一次','Try now'],
   proactiveLevel:['主动性','Proactivity'], levelReserved:['高冷','Reserved'], levelBalanced:['得体','Balanced'], levelActive:['积极','Active'], levelClingy:['粘人','Clingy'],
   proactiveSent:['已经发了一条主动消息，去对话或收件箱看看。','Sent a check-in; see the chat or inbox.'],
@@ -1107,9 +1116,16 @@ function render(e) {
   else if (e.type === 'approval_done') closeCard(e.id, t(e.allowed ? 'approved' : 'rejected'), e.allowed)
   else if (e.type === 'takeover_done') closeCard(e.id, t('doneTakeover'))
 }
+let workSteps = 0 // real work done in this turn, which is what makes a turn worth saving as a routine
+function offerRoutine() {
+  const link = el('button', 'link', t('saveRoutine'))
+  link.onclick = () => { link.remove(); $('text').value = t('saveRoutinePrompt'); $('composer').requestSubmit() }
+  add(link, 'notice')
+}
 function route(e) {
   track(e)
   if (e.cid !== activeCid) return
+  if (e.type === 'step' && /browser_(navigate|click|type|select|read)|web_fetch|_file|run_command|mcp__/.test(e.name)) workSteps += 1
   render(e)
   if (e.type === 'message' && e.role === 'assistant') speak(e.text)
 }
@@ -1335,8 +1351,12 @@ function connect() {
     else if (e.type === 'memory') { if (currentView === 'settings') loadMemory() }
     else if (e.type === 'budget') showBudget(e)
     else if (e.type === 'status') {
-      if (e.status === 'running') runningCid = e.cid
-      else if (runningCid === e.cid) runningCid = null
+      if (e.status === 'running') { if (runningCid !== e.cid) workSteps = 0; runningCid = e.cid }
+      else if (runningCid === e.cid) {
+        runningCid = null
+        if (e.cid === activeCid && workSteps >= 2 && !clerkData?.jobs.some(j => j.cid === e.cid)) offerRoutine()
+        workSteps = 0
+      }
       refreshOrb()
       if (!$('drawer').inert) drawConvs()
     }
@@ -1376,8 +1396,8 @@ function jobCard(job, tz = clerkData?.timezone, compact = false, created = false
   ]))
   if (job.kind === 'reminder' && job.text && job.text !== job.title) c.append(el('div', 'quote', job.text))
   if (job.lastStatus) {
-    const prefix = t({ ok: 'lastOk', missed: 'lastMissed', partial: 'lastPartial', needs_you: 'lastNeedsYou' }[job.lastStatus] ?? 'lastFailed')
-    const tone = job.lastStatus === 'ok' ? '' : job.lastStatus === 'partial' || job.lastStatus === 'needs_you' ? ' warn' : ' failed'
+    const prefix = t({ ok: 'lastOk', missed: 'lastMissed', partial: 'lastPartial', needs_you: 'lastNeedsYou', drafted: 'lastDrafted' }[job.lastStatus] ?? 'lastFailed')
+    const tone = job.lastStatus === 'ok' ? '' : ['partial', 'needs_you', 'drafted'].includes(job.lastStatus) ? ' warn' : ' failed'
     c.append(el('div', 'last' + tone, `${prefix}${fmtWhen(job.lastRun, tz)} · ${job.lastResult ?? ''}`))
   }
   const actions = el('div', 'actions')
@@ -1388,11 +1408,22 @@ function jobCard(job, tz = clerkData?.timezone, compact = false, created = false
   }
   const run = el('button', 'btn', t(job.kind === 'task' ? 'runNow' : 'sendNow')); run.disabled = job.running
   run.onclick = async () => { const r = await post('/api/clerk/job/run', { id: job.id }); if (r.status !== 200) { c.append(el('div', 'last failed', errText(r.data, r.status))) } }
-  const toggle = el('button', 'btn', t(job.enabled ? 'pause' : 'resume'))
+  const trialOver = job.playbook && job.trial === 'done' && !job.enabled
+  const trialOn = job.trial === 'pending' || job.trial === 'running'
+  const toggle = el('button', trialOver ? 'btn primary' : 'btn', t(trialOver ? 'enableRoutine' : job.enabled ? 'pause' : 'resume'))
+  toggle.disabled = trialOn
   toggle.onclick = () => post('/api/clerk/job/toggle', { id: job.id, enabled: !job.enabled })
   const del = el('button', 'btn danger', t('remove'))
   del.onclick = async () => { if (confirm(t('confirmDelete', job.title))) { const r = await post('/api/clerk/job/delete', { id: job.id }); if (r.status !== 200) c.append(el('div', 'last failed', errText(r.data, r.status))) } }
   actions.append(run, toggle, del)
+  if (job.playbook) {
+    c.append(rowsOf([[t('routineCheck'), job.playbook.check], [t('routineMissing'), job.playbook.onMissing]]))
+    const how = el('details', 'runs')
+    how.append(el('summary', '', `${t('routineSteps')} · ${job.playbook.steps.length}`))
+    job.playbook.steps.forEach((text, i) => how.append(el('p', 'step', `${i + 1}. ${text}`)))
+    c.append(how)
+    if (trialOn || trialOver) c.append(el('div', 'last warn', t(trialOn ? 'trialRunning' : 'trialDone')))
+  }
   if (job.assist) {
     const help = el('div', 'assist')
     const go = el('button', 'btn primary', t('assistBtn'))
@@ -1406,6 +1437,28 @@ function jobCard(job, tz = clerkData?.timezone, compact = false, created = false
   if (job.cid) { const see = el('button', 'link', t('openRun')); see.onclick = () => selectConv(job.cid); c.append(see) }
   return c
 }
+function draftCard(d) {
+  const c = el('div', 'card ask')
+  const top = el('div', 'card-top')
+  top.append(tile('clock'), el('span', 'tag', t('tagDraft')), el('span', 'mini', d.jobTitle))
+  c.append(top, el('div', 'what', d.summary))
+  if (d.detail) c.append(el('div', 'quote', d.detail))
+  if (d.hasShot) { const img = new Image(); img.alt = ''; img.src = `/api/clerk/draft/shot?id=${encodeURIComponent(d.id)}`; c.append(img) }
+  const yes = el('button', 'btn primary', t('draftApprove')), no = el('button', 'btn', t('draftReject'))
+  const decide = async allow => {
+    yes.disabled = no.disabled = true
+    const r = await post('/api/clerk/draft/decide', { id: d.id, allow })
+    if (r.status === 200) return
+    yes.disabled = no.disabled = false
+    c.append(el('div', 'last failed', r.status === 409 ? t('draftBusy') : errText(r.data, r.status)))
+  }
+  yes.onclick = () => decide(true)
+  no.onclick = () => decide(false)
+  const actions = el('div', 'actions')
+  actions.append(yes, no)
+  c.append(actions)
+  return c
+}
 function runHistory(job, tz) {
   const box = el('details', 'runs')
   box.append(el('summary', '', `${t('runsTitle')} · ${job.runs.length}`))
@@ -1413,7 +1466,7 @@ function runHistory(job, tz) {
     const cost = r.costUsd > 0 ? ` · $${r.costUsd.toFixed(3)}` : ''
     const took = r.ms ? ` · ${Math.max(1, Math.round(r.ms / 1000))}s` : ''
     const row = el('div', 'run')
-    row.append(el('b', r.status === 'ok' ? '' : r.status === 'partial' || r.status === 'needs_you' ? 'warn' : 'failed', t('run_' + r.status)), el('span', '', `${fmtWhen(r.at, tz)}${took}${cost}`), el('p', '', r.summary ?? ''))
+    row.append(el('b', r.status === 'ok' ? '' : ['partial', 'needs_you', 'drafted'].includes(r.status) ? 'warn' : 'failed', (r.trial ? `${t('runTrial')} · ` : '') + t('run_' + r.status)), el('span', '', `${fmtWhen(r.at, tz)}${took}${cost}`), el('p', '', r.summary ?? ''))
     box.append(row)
   }
   return box
@@ -1455,6 +1508,10 @@ function channelRow(ch) {
 }
 function drawClerk() {
   const d = clerkData
+  const drafts = d.drafts ?? []
+  $('draftBox').hidden = drafts.length === 0
+  $('draftList').replaceChildren(...drafts.map(draftCard))
+  $('draftsHead').querySelector('h3').textContent = `${t('draftsTitle')} · ${drafts.length}`
   // Two different things live here: to-dos (things to do, open ones first) and scheduled jobs (recurring or timed work).
   const todos = [...d.todos].sort((a, b) => Number(a.done) - Number(b.done))
   $('todoList').replaceChildren(...todos.map(todo => todoCard(todo, d.timezone)))
@@ -1495,7 +1552,7 @@ async function loadMemory() {
   const insights = $('memoryInsights')
   insights.hidden = !data.insights.length
   insights.textContent = data.insights.length ? `${t('memoryInsights')}: ` + data.insights.map(i => i.text).join(' · ') : ''
-  $('memoryLastDream').textContent = data.lastDreamAt ? t('memoryLastDream', whenText(data.lastDreamAt, clerkData?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone)) : ''
+  $('memoryLastDream').textContent = data.lastDream?.failed ? t('memoryDreamFailed', data.lastDream.reason) : data.lastDreamAt ? t('memoryLastDream', whenText(data.lastDreamAt, clerkData?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone)) : ''
 }
 $('memoryDream').onclick = async () => {
   $('memoryMsg').textContent = '…'

@@ -36,6 +36,8 @@ const MAX_TOTAL_CHARS = 500_000
 const MAX_EVENTS_PER_CHAT = 400
 const HUMAN_TIMEOUT_MS = 15 * 60 * 1000
 const APPROVAL_TIMEOUT_MS = 10 * 60 * 1000
+const MAX_DRAFTS_PER_RUN = 5
+const DRAFT_SHOT_DIR = path.join(DATA_DIR, 'draft-shots')
 const RISKY = /支付|付款|购买|下单|结算|删除|发送|发布|提交|转账|\b(pay|buy|purchase|checkout|order|delete|remove|send|post|publish|submit|transfer|tweet)\b/i
 
 const browser = new CloudBrowser(DATA_DIR)
@@ -97,7 +99,10 @@ function deleteConversation(id) {
   convs = convs.filter(c => c.id !== id)
   histories.delete(id)
   writes.cancel(histFile(id))
+  writes.cancel(traceFile(id))
+  traces.delete(id)
   fs.rmSync(histFile(id), { force: true })
+  fs.rmSync(traceFile(id), { force: true })
   agent.forget(id)
   saveConvs()
 }
@@ -151,8 +156,12 @@ function waitForHuman() {
 }
 
 /** Shows the owner an approval card and waits. `kind` is click, type, command, read, list or write. */
-async function requireApproval({ kind, summary, target = '', detail = '', screenshot = false, extra = {} }) {
+async function requireApproval({ kind, summary, target = '', detail = '', screenshot = false, extra = {}, draft = null }) {
   if (activeRun) {
+    if (draft && activeRun.drafts.length < MAX_DRAFTS_PER_RUN) {
+      await saveDraft(summary, detail, draft, screenshot)
+      throw new Error('This is a scheduled run, so nobody can approve this now. It has been saved as a draft for the owner to approve later. Do not retry it or try another way. Carry on with what does not depend on it, and say it is waiting for approval.')
+    }
     activeRun.skipped.push(summary)
     throw new Error('This is a scheduled run, so nobody is there to approve this action. Do not try another way: finish what you can and report what you skipped.')
   }
@@ -168,6 +177,44 @@ async function requireApproval({ kind, summary, target = '', detail = '', screen
   pending.delete(id)
   push({ type: 'approval_done', id, allowed })
   if (!allowed) throw new Error(`The user did not approve this action: ${summary}`)
+}
+
+/** Keeps the exact action, so approving later runs what was shown and does not depend on a model. */
+async function saveDraft(summary, detail, action, screenshot) {
+  const run = activeRun
+  const key = `${summary}\n${detail}`
+  if (run.drafts.includes(key)) return
+  run.drafts.push(key)
+  const shot = screenshot ? await browser.screenshot().catch(() => null) : null
+  const draft = clerk.addDraft({ jobId: run.jobId, jobTitle: clerk.job(run.jobId)?.title ?? '', cid: run.cid, summary, detail: detail.slice(0, 2000), action, hasShot: Boolean(shot) })
+  if (shot) {
+    fs.mkdirSync(DRAFT_SHOT_DIR, { recursive: true })
+    fs.writeFileSync(path.join(DRAFT_SHOT_DIR, `${draft.id}.jpg`), Buffer.from(shot, 'base64'), { mode: 0o600 })
+  }
+  broadcast({ type: 'clerk' })
+}
+
+/** Where a page action started, and the harmless steps since then, so it can be repeated on a fresh page. */
+async function pageDraft(final, text = '') {
+  const url = activeRun.page?.url ?? await browser.evaluate('location.href').catch(() => '')
+  return { kind: 'browser', url, log: (activeRun.page?.log ?? []).slice(-20), final, shown: `Page: ${url}${text ? `\nText: ${text}` : ''}` }
+}
+const logPageStep = step => { if (activeRun) { activeRun.page ??= { url: null, log: [] }; activeRun.page.log.push(step) } }
+
+async function executeDraft({ action }) {
+  if (action.kind === 'command') {
+    const where = host.classify(action.cwd)
+    if (where.blocked) throw new Error(BLOCKED)
+    return host.runCommand(action.command, { cwd: where.path, timeoutSeconds: action.timeoutSeconds })
+  }
+  if (action.kind === 'write') {
+    const where = host.classify(action.path)
+    if (where.blocked) throw new Error(BLOCKED)
+    return host.writeFile(where.path, action.content, Boolean(action.append))
+  }
+  await browser.ensure()
+  const { url, title } = await browser.replay(action)
+  return `Now on: ${title} (${url})`
 }
 
 /** A locked phone cannot see a card in the page, and an unanswered card expires. */
@@ -198,6 +245,20 @@ const TOOLS = [
   ['write_file', 'Write a text file on the server. Always asks the user first.', { path: { type: 'string' }, content: { type: 'string' }, append: { type: 'boolean' } }, ['path', 'content']],
   ['run_command', 'Run a shell command on the server and return its output. Always asks the user first. Runs in your workspace folder unless cwd is given.', { command: { type: 'string' }, cwd: { type: 'string' }, timeout_seconds: { type: 'integer', description: `Up to ${MAX_COMMAND_SECONDS}` } }, ['command']],
   ['web_fetch', 'Fetch a public web address with GET and return it as text (weather, news, public APIs). Read-only, no approval needed.', { url: { type: 'string' } }, ['url']],
+  ['routine_steps', 'List the tool steps actually taken in this chat, with what succeeded and failed, to turn into a routine.', {}, []],
+  ['routine_save', 'Save what was done in this chat as a routine, after the user confirms. It gets one trial run and is scheduled only when the user turns it on. Pass id to revise an existing routine.', {
+    id: { type: 'string', description: 'Only when revising an existing routine' },
+    title: { type: 'string', description: 'Short name' },
+    goal: { type: 'string', description: 'What the routine is for, in one sentence' },
+    steps: { type: 'array', items: { type: 'string' }, description: 'The steps that worked, in order, specific enough to redo without this chat. Up to 15' },
+    success_check: { type: 'string', description: 'How to judge from the result that it worked, for example "at least one item with a source link"' },
+    stop_points: { type: 'array', items: { type: 'string' }, description: 'Situations where a person must decide before going on' },
+    on_missing: { type: 'string', description: 'What to do when the source data is missing or empty' },
+    sites: { type: 'array', items: { type: 'string' }, description: 'Websites it depends on' },
+    schedule: { type: 'object', description: 'Same as clerk_create' },
+    channels: { type: 'array', items: { type: 'string' }, description: 'Channel names from clerk_list_channels' },
+  }, ['title', 'goal', 'steps', 'success_check', 'on_missing', 'schedule']],
+  ['run_report', 'For a scheduled routine only: say whether its success check was met. Call once, just before your final message.', { met: { type: 'boolean' }, evidence: { type: 'string', description: 'One short line on what shows this' }, missing_data: { type: 'boolean', description: 'True if the source data was missing or empty' } }, ['met', 'evidence']],
   ['clerk_list_channels', 'List the chat channels messages can be sent to (names only), besides the in-app inbox.', {}, []],
   ['clerk_list', 'List the scheduled tasks and reminders.', {}, []],
   ['clerk_create', 'Schedule a reminder (a message to deliver) or a task (work for you to do) and show the user a card to confirm it.', {
@@ -265,14 +326,14 @@ async function hostTool(name, args) {
       if (where.blocked) throw new Error(BLOCKED)
       cwd = where.path
     }
-    await requireApproval({ kind: 'command', summary: 'Run a command', target: cwd, detail: command })
+    await requireApproval({ kind: 'command', summary: 'Run a command', target: cwd, detail: command, draft: { kind: 'command', command, cwd, timeoutSeconds: args.timeout_seconds } })
     return host.runCommand(command, { cwd, timeoutSeconds: args.timeout_seconds })
   }
   const where = host.classify(args.path ?? '.')
   if (where.blocked) throw new Error(BLOCKED)
   if (name === 'write_file') {
     const content = String(args.content ?? '')
-    await requireApproval({ kind: 'write', summary: `Write file ${where.path}`, target: where.path, detail: `${args.append ? 'Append' : 'Overwrite'}, ${content.length} characters:\n${content.slice(0, 1500)}` })
+    await requireApproval({ kind: 'write', summary: `Write file ${where.path}`, target: where.path, detail: `${args.append ? 'Append' : 'Overwrite'}, ${content.length} characters:\n${content.slice(0, 1500)}`, draft: { kind: 'write', path: where.path, content, append: Boolean(args.append) } })
     return host.writeFile(where.path, content, Boolean(args.append))
   }
   const kind = name === 'read_file' ? 'read' : 'list'
@@ -292,6 +353,13 @@ async function callTool(name, args) {
   if (['list_files', 'read_file', 'write_file', 'run_command'].includes(name)) return hostTool(name, args)
   if (name === 'web_fetch') return webFetch(String(args.url ?? ''))
   if (name === 'show_card') return showCard(args)
+  if (name === 'routine_steps') return (tracesOf(runningCid).map(s => `${s.ok ? 'ok' : 'FAILED'}: ${s.line}`).join('\n')) || 'No tool steps in this chat yet.'
+  if (name === 'routine_save') return routineSave(args)
+  if (name === 'run_report') {
+    if (!activeRun) throw new Error('run_report is only for scheduled routines.')
+    activeRun.report = { met: args.met === true, evidence: String(args.evidence ?? '').slice(0, 200), missing_data: args.missing_data === true }
+    return 'Recorded.'
+  }
   if (name.startsWith('clerk_')) return clerkTool(name, args)
   if (name.startsWith('todo_')) return todoTool(name, args)
   if (['ext_list', 'install_package', 'mcp_add', 'mcp_remove', 'skill_create', 'skill_install', 'skill_remove'].includes(name)) return extTool(name, args)
@@ -312,26 +380,33 @@ async function callTool(name, args) {
   switch (name) {
     case 'browser_navigate':
       await browser.navigate(String(args.url))
+      if (activeRun) activeRun.page = { url: String(args.url), log: [] }
       break
     case 'browser_snapshot':
       break
     case 'browser_click': {
       const info = await element(args.element_id)
+      const loc = browser.elementInfo(args.element_id)
       if (RISKY.test(info.text) || (info.type === 'submit' && !info.search)) {
-        await requireApproval({ kind: 'click', summary: `Click "${info.text || info.tag}"`, screenshot: true })
+        const draft = activeRun ? await pageDraft({ op: 'click', loc }) : null
+        await requireApproval({ kind: 'click', summary: `Click "${info.text || info.tag}"`, detail: draft?.shown ?? '', screenshot: true, draft })
       }
       await waitForHuman()
       await browser.click(args.element_id)
+      logPageStep({ op: 'click', loc })
       break
     }
     case 'browser_type': {
       const info = await element(args.element_id)
       if (info.secret) throw new Error('This is a password or code field. Do not type it yourself: call browser_request_human so the owner can enter it.')
+      const loc = browser.elementInfo(args.element_id)
       if (args.press_enter && !info.search) {
-        await requireApproval({ kind: 'type', summary: `Enter "${String(args.text).slice(0, 80)}" and press Enter`, screenshot: true })
+        const draft = activeRun ? await pageDraft({ op: 'type', loc, text: String(args.text), enter: true }, String(args.text)) : null
+        await requireApproval({ kind: 'type', summary: `Enter "${String(args.text).slice(0, 80)}" and press Enter`, detail: draft?.shown ?? '', screenshot: true, draft })
       }
       await waitForHuman()
       await browser.type(args.element_id, String(args.text), Boolean(args.press_enter))
+      logPageStep({ op: 'type', loc, text: String(args.text), enter: Boolean(args.press_enter) })
       break
     }
     case 'browser_scroll':
@@ -339,7 +414,9 @@ async function callTool(name, args) {
       break
     case 'browser_select': {
       await element(args.element_id)
+      const loc = browser.elementInfo(args.element_id)
       await browser.select(args.element_id, String(args.value ?? ''))
+      logPageStep({ op: 'select', loc, value: String(args.value ?? '') })
       break
     }
     case 'browser_hover':
@@ -349,7 +426,8 @@ async function callTool(name, args) {
     case 'browser_press_key': {
       const key = String(args.key ?? '')
       if (key === 'Enter' && !(await browser.focused())?.search) {
-        await requireApproval({ kind: 'type', summary: 'Press Enter on this page', screenshot: true })
+        const draft = activeRun ? await pageDraft({ op: 'key', key: 'Enter' }) : null
+        await requireApproval({ kind: 'type', summary: 'Press Enter on this page', detail: draft?.shown ?? '', screenshot: true, draft })
         await waitForHuman()
       }
       await browser.pressKey(key)
@@ -358,6 +436,7 @@ async function callTool(name, args) {
     }
     case 'browser_back':
       await browser.back()
+      if (activeRun) activeRun.page = null // the steps so far no longer lead to this page
       break
     case 'browser_wait': {
       const found = await browser.waitFor(args.text ? String(args.text) : '', args.seconds)
@@ -407,6 +486,30 @@ async function callTool(name, args) {
   return browser.snapshot()
 }
 
+// ---- what really happened in a chat, so a routine is built from the steps that worked ----
+const traceFile = id => path.join(CONV_DIR, `${id}.trace.json`)
+const traces = new Map()
+const NOT_WORK = /^(memory_|todo_|clerk_|routine_|run_report|show_card|browser_snapshot|browser_tabs|browser_downloads|ext_list|feature_list)/
+function tracesOf(cid) {
+  if (!traces.has(cid)) traces.set(cid, readJson(traceFile(cid), []))
+  return traces.get(cid)
+}
+function traceLine(name, args) {
+  if (NOT_WORK.test(name)) return null
+  const element = args.element_id ? browser.elementInfo(args.element_id) : null
+  const { element_id, content, ...rest } = args
+  const shown = Object.keys(rest).length ? ` ${JSON.stringify(rest).slice(0, 200)}` : ''
+  return `${name}${element ? ` <${element.tag}> "${element.name}"` : ''}${shown}`
+}
+function trace(line, ok) {
+  const cid = runningCid
+  if (!line || !cid || !convOf(cid)) return
+  const list = tracesOf(cid)
+  list.push({ line, ok, at: Date.now() })
+  if (list.length > 60) list.splice(0, list.length - 60)
+  writes.later(traceFile(cid), () => JSON.stringify(tracesOf(cid)))
+}
+
 async function handleMcp(req, res) {
   if (req.headers.authorization !== `Bearer ${mcpToken}`) return send(res, 401, { error: 'unauthorized' })
   if (req.method !== 'POST') return send(res, 405, { error: 'method not allowed' })
@@ -421,9 +524,13 @@ async function handleMcp(req, res) {
   if (msg.method === 'tools/call') {
     const { name, arguments: args = {} } = msg.params
     push({ type: 'step', name })
+    const line = traceLine(name, args) // before the call, while element numbers still mean what the model saw
     try {
-      return reply({ content: [{ type: 'text', text: await callTool(name, args) }] })
+      const text = await callTool(name, args)
+      trace(line, true)
+      return reply({ content: [{ type: 'text', text }] })
     } catch (error) {
+      trace(line, false)
       return reply({ content: [{ type: 'text', text: error.message }], isError: true })
     }
   }
@@ -450,7 +557,7 @@ function jobLine(job) {
 
 const jobView = j => ({
   id: j.id, title: j.title, kind: j.kind, text: j.text, schedule: j.schedule, enabled: j.enabled, nextRun: j.nextRun, lastRun: j.lastRun,
-  lastStatus: j.lastStatus, lastResult: j.lastResult, runs: j.runs ?? [], assist: j.assist ?? null, cid: j.cid, running: activeRun?.jobId === j.id,
+  lastStatus: j.lastStatus, lastResult: j.lastResult, runs: j.runs ?? [], assist: j.assist ?? null, playbook: j.playbook ?? null, trial: j.trial ?? null, cid: j.cid, running: activeRun?.jobId === j.id,
   channels: j.channels.map(id => clerk.channel(id)?.name).filter(Boolean),
 })
 const pushTodoCard = (todo, created = false) => push({ type: 'card', card: { kind: 'todo', todo, timezone: clerk.timezone, created } })
@@ -486,11 +593,11 @@ function todoTool(name, args) {
 const pushJobCard = (job, created = false) => push({ type: 'card', card: { kind: 'job', job: jobView(job), timezone: clerk.timezone, created } })
 
 // ---- the nightly dream: fold recent chats into durable memory ----
-let dreamPending = null
 const DREAM_PROMPT = `You are consolidating the user's memory. Read the current memory, the recent conversations, the to-dos and the scheduled jobs.
 Return ONLY a JSON object, no prose and no code fences:
 {"add":[{"kind":"fact|preference|pattern|open_loop","text":"..."}],"update":[{"id":"m...","text":"..."}],"remove":["m..."],"insights":["one short observation worth a later check-in"]}
-Rules: only durable things the user would expect you to remember (who they are, how they work, standing preferences, repeating patterns, promises made); never secrets, passwords or one-off details; at most 6 adds; do not duplicate existing memory; insights are short and useful for starting a conversation later.`
+Do not call any tools. Write memories in the user's language.
+Rules: only durable things the user would expect you to remember (who they are, how they work, standing preferences, repeating patterns, promises made, work still in progress as open_loop); never secrets, passwords or one-off details; at most 6 adds; do not duplicate existing memory; insights are short and useful for starting a conversation later.`
 
 const extractJson = text => {
   const match = /\{[\s\S]*\}/.exec(String(text ?? ''))
@@ -498,27 +605,30 @@ const extractJson = text => {
   try { return JSON.parse(match[0]) } catch { return null }
 }
 
-async function waitDream(cid, ms = 180_000) {
-  return new Promise(resolve => {
-    const entry = { cid, chunks: [], done: false }
-    const timer = setTimeout(() => { entry.done = true; resolve('') }, ms)
+// agent.prompt() returns as soon as the model has been asked, so a reply has to be awaited through the status events.
+const turnWaiters = new Map()
+function waitTurn(cid, ms = 180_000) {
+  const entry = { chunks: [], started: false, timedOut: false }
+  entry.done = new Promise(resolve => {
+    const timer = setTimeout(() => { entry.timedOut = true; entry.finish() }, ms)
     entry.finish = () => {
-      if (entry.done) return
-      entry.done = true
       clearTimeout(timer)
+      turnWaiters.delete(cid)
       resolve(entry.chunks.join('\n').trim())
     }
-    dreamPending = entry
   })
+  turnWaiters.set(cid, entry)
+  return entry
 }
 
 async function dream({ test = false } = {}) {
-  if (!test && (runningCid || activeRun)) return { ok: false, reason: 'busy' }
+  if (runningCid || activeRun || takeover) return { ok: false, reason: 'busy' }
+  if (budget.status().exceeded) return { ok: false, reason: 'the monthly spending limit has been reached' }
   const cfg = modelConfig()
   const apiKey = loadKey(cfg.kind)
   if (!apiKey) return { ok: false, reason: 'no key' }
   const since = memory.state.lastDreamAt || Date.now() - 24 * 3600 * 1000
-  const sources = convs.filter(c => c.title && c.updatedAt > since && !c.job).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 8)
+  const sources = convs.filter(c => c.title && c.updatedAt > since && !c.job && c.id !== proactive.cid).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 8)
   const notes = []
   for (const conv of sources) {
     for (const event of historyOf(conv.id).filter(e => e.type === 'message').slice(-20)) {
@@ -530,37 +640,48 @@ async function dream({ test = false } = {}) {
   const current = memory.state.items.slice(0, 40).map(i => `[${i.id}] ${i.kind}: ${i.text}`).join('\n') || '(empty)'
   const todos = clerk.todos.filter(t => !t.done).slice(0, 10).map(t => `- ${t.title}${t.due ? ` (due ${t.due.replace('T', ' ')})` : ''}`).join('\n') || '(none)'
   const jobs = clerk.jobs.filter(j => !j.todoId).slice(0, 8).map(j => `- ${j.title} (${describeSchedule(j.schedule)})`).join('\n') || '(none)'
-  const conv = createConversation('记忆整理')
-  const cid = conv.id
+  const cid = createConversation('').id // no title, so it never shows in the chat list
   runningCid = cid
-  const reply = waitDream(cid)
+  const turn = waitTurn(cid)
+  const fail = reason => {
+    if (runningCid === cid) runningCid = null
+    deleteConversation(cid)
+    memory.noteDreamFailure(reason)
+    broadcast({ type: 'memory' })
+    return { ok: false, reason }
+  }
   try {
     await ensureAgent(cfg, apiKey)
     await agent.prompt(cid, `[Current memory]\n${current}\n\n[To-dos]\n${todos}\n\n[Scheduled jobs]\n${jobs}\n\n[Recent conversations]\n${notes.join('\n').slice(0, 6000)}\n\n${DREAM_PROMPT}`)
-    await sleep(400)
-    dreamPending?.finish?.()
   } catch (error) {
-    dreamPending = null
-    if (runningCid === cid) runningCid = null
-    deleteConversation(cid)
-    return { ok: false, reason: error.message }
+    turn.finish()
+    return fail(error.message)
   }
-  const text = await reply
-  dreamPending = null
-  if (runningCid === cid) runningCid = null
+  const text = await turn.done
+  if (turn.timedOut) { agent.stop(); return fail('the model took too long') }
   const parsed = extractJson(text)
-  if (!parsed) console.error(`[bobbot] dream produced no usable JSON: ${text.slice(0, 300)}`)
-  const result = parsed ? memory.applyDream(parsed) : { added: 0, updated: 0, removed: 0 }
+  if (!parsed) {
+    console.error(`[bobbot] dream produced no usable JSON: ${text.slice(0, 300)}`)
+    return fail('the model did not return usable JSON')
+  }
+  if (runningCid === cid) runningCid = null
+  const result = memory.applyDream(parsed)
   deleteConversation(cid)
   broadcast({ type: 'memory' })
-  return { ok: true, ...result, parsed: Boolean(parsed) }
+  return { ok: true, ...result }
 }
 
+let lastDreamTry = 0
+/** Any time from 03:30 to 08:00, so a busy server or one bad answer does not lose the whole night. */
 async function maybeDream() {
+  if (process.env.BOBBOT_NO_NIGHTLY) return // tests drive the dream themselves
   const now = Date.now()
-  if (now - (memory.state.lastDreamAt || 0) < 20 * 3600 * 1000) return
-  const { hour, hhmm } = clockIn(clerk.timezone)
-  if (hour !== 3 || !hhmm.endsWith(':30')) return
+  if (now - (memory.state.lastDreamAt || 0) < 20 * 3600 * 1000 || now - lastDreamTry < 40 * 60e3) return
+  const { hour, minute } = clockIn(clerk.timezone)
+  const at = hour * 60 + minute
+  if (at < 210 || at >= 480) return
+  if (runningCid || activeRun || takeover) return
+  lastDreamTry = now
   await dream()
 }
 
@@ -585,15 +706,12 @@ const proactivePlan = () => {
 
 const clockIn = tz => {
   const p = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date())
-  return { hhmm: `${p.find(x => x.type === 'hour').value}:${p.find(x => x.type === 'minute').value}`, hour: Number(p.find(x => x.type === 'hour').value) }
+  return { hhmm: `${p.find(x => x.type === 'hour').value}:${p.find(x => x.type === 'minute').value}`, hour: Number(p.find(x => x.type === 'hour').value), minute: Number(p.find(x => x.type === 'minute').value) }
 }
 const dayIn = tz => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
 
-let proactivePending = null // { cid, chunks }
-
-function proactiveContext() {
-  const now = Date.now()
-  const lines = [`[Current time: ${humanTime(now)}, ${dayIn(clerk.timezone)}. Time zone: ${clerk.timezone}.]`]
+function workLines() {
+  const lines = []
   const open = clerk.todos.filter(t => !t.done)
   if (open.length) {
     lines.push('Open to-dos:')
@@ -604,6 +722,49 @@ function proactiveContext() {
     lines.push('Scheduled jobs:')
     for (const j of jobs) lines.push(`- ${j.title} (${describeSchedule(j.schedule)}), next ${humanTime(j.nextRun)}${j.lastStatus ? `, last ${j.lastStatus}` : ''}`)
   }
+  const waiting = clerk.pendingDrafts().length
+  if (waiting) lines.push(`Drafts waiting for the user's approval: ${waiting}.`)
+  return lines
+}
+
+/** A new chat should not start from nothing: what the last few chats were about, so ongoing work carries over. */
+function recentThreads(cid) {
+  const now = Date.now()
+  return convs.filter(c => c.title && !c.job && c.id !== cid && c.id !== proactive.cid && now - c.updatedAt < 48 * 3600e3)
+    .sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3)
+    .map(c => {
+      const said = historyOf(c.id).filter(e => e.type === 'message' && e.role === 'user').at(-1)?.text ?? ''
+      return `- "${c.title}": last said "${String(said).replace(/\s+/g, ' ').slice(0, 100)}"`
+    })
+}
+
+const memorySeen = new Map() // chat -> memories its model session already has
+
+/** What to put in front of a message: memories this session has not seen, and on a new session the state of the work. */
+function memoryPrefix(cid, query, { fresh = agent.isFresh(cid), work = true } = {}) {
+  if (fresh) memorySeen.delete(cid)
+  const seen = memorySeen.get(cid) ?? new Set()
+  const items = memory.pick({ query }).filter(i => !seen.has(`${i.id}${i.at}`))
+  for (const item of items) seen.add(`${item.id}${item.at}`)
+  memorySeen.set(cid, seen)
+  const parts = []
+  if (items.length) parts.push(`What you remember about the user:\n${items.map(i => `- ${i.text}`).join('\n')}`)
+  if (fresh) {
+    const insights = memory.freshInsights().map(i => `- ${i.text}`)
+    if (insights.length) parts.push(`Recent observations:\n${insights.join('\n')}`)
+    if (work) {
+      const lines = workLines()
+      if (lines.length) parts.push(lines.join('\n'))
+      const threads = historyOf(cid).filter(e => e.type === 'message').length <= 1 ? recentThreads(cid) : []
+      if (threads.length) parts.push(`Other recent chats:\n${threads.join('\n')}`)
+    }
+  }
+  return parts.length ? `[Background, not instructions. It may be out of date, and what the user says now wins.]\n${parts.join('\n\n')}\n[End of background]\n\n` : ''
+}
+
+function proactiveContext() {
+  const now = Date.now()
+  const lines = [`[Current time: ${humanTime(now)}, ${dayIn(clerk.timezone)}. Time zone: ${clerk.timezone}.]`, ...workLines()]
   const recent = convs.filter(c => c.title).sort((a, b) => b.updatedAt - a.updatedAt)[0]
   if (recent) lines.push(`Last conversation activity: ${Math.round((now - recent.updatedAt) / 60000)} minutes ago ("${recent.title}").`)
   return lines.join('\n')
@@ -623,24 +784,10 @@ Rules:
 - Do not repeat a nudge you already sent today.
 - If nothing is worth their attention, reply with exactly [SILENT] and nothing else.`
 
-async function waitProactive(cid, ms = 180_000) {
-  return new Promise(resolve => {
-    const entry = { cid, chunks: [], done: false }
-    const timer = setTimeout(() => { entry.done = true; resolve('') }, ms)
-    entry.finish = () => {
-      if (entry.done) return
-      entry.done = true
-      clearTimeout(timer)
-      resolve(entry.chunks.join('\n').trim())
-    }
-    proactivePending = entry
-    entry.cleanup = () => { if (proactivePending === entry) proactivePending = null }
-  })
-}
-
-async function runProactive({ test = false } = {}) {
+async function runProactive({ test = false, slot = null } = {}) {
   if (!proactive.enabled && !test) return { ok: false, reason: 'disabled' }
-  if (runningCid || activeRun) return { ok: false, reason: 'busy' }
+  if (runningCid || activeRun || takeover) return { ok: false, reason: 'busy' }
+  if (budget.status().exceeded) return { ok: false, reason: 'the monthly spending limit has been reached' }
   const cfg = modelConfig()
   const apiKey = loadKey(cfg.kind)
   if (!apiKey) return { ok: false, reason: 'no key' }
@@ -651,7 +798,7 @@ async function runProactive({ test = false } = {}) {
     const plan = proactivePlan()
     if (now - (proactive.lastAt || 0) < plan.minGap) return { ok: false, reason: 'too soon' }
     const today = dayIn(clerk.timezone)
-    const count = Object.keys(proactive.fired ?? {}).filter(k => k.startsWith(today)).length
+    const count = Object.entries(proactive.fired ?? {}).filter(([k, v]) => k.startsWith(today) && v === 'sent').length // staying silent uses up nothing
     if (count >= plan.maxPerDay) return { ok: false, reason: 'daily limit' }
   }
   let cid = proactive.cid && convOf(proactive.cid) ? proactive.cid : null
@@ -664,27 +811,31 @@ async function runProactive({ test = false } = {}) {
   }
   runningCid = cid
   lastPromptCid = cid
-  const reply = waitProactive(cid)
+  const turn = waitTurn(cid)
+  const stamp = slot ?? `${dayIn(clerk.timezone)} ${clockIn(clerk.timezone).hhmm}`
+  const remember = outcome => {
+    proactive.fired = { ...Object.fromEntries(Object.entries(proactive.fired ?? {}).filter(([k]) => k >= stamp.slice(0, 10))), [stamp]: outcome }
+    if (outcome === 'sent') proactive.lastAt = now
+    saveProactive()
+  }
   try {
     await ensureAgent(cfg, apiKey)
     await agent.prompt(cid, `${proactiveContext()}\n\n${memory.context()}\n\nTone for this check-in: ${PROACTIVE_TONE[proactivePlan().tone]}\n\n${PROACTIVE_PROMPT}`)
-    await sleep(400)
-    proactivePending?.finish?.()
   } catch (error) {
-    proactivePending?.cleanup?.()
-    proactivePending = null
+    turn.finish()
     if (runningCid === cid) runningCid = null
+    remember('failed')
     return { ok: false, reason: error.message }
   }
-  const text = await reply
-  proactivePending?.cleanup?.()
-  proactivePending = null
+  const text = await turn.done
   if (runningCid === cid) runningCid = null
+  if (turn.timedOut) {
+    agent.stop()
+    remember('failed')
+    return { ok: false, reason: 'the model took too long' }
+  }
   const silent = !text || text.includes('[SILENT]')
-  const stamp = `${dayIn(clerk.timezone)} ${clockIn(clerk.timezone).hhmm}`
-  proactive.lastAt = now
-  proactive.fired = { ...Object.fromEntries(Object.entries(proactive.fired ?? {}).filter(([k]) => k >= stamp.slice(0, 10))), [stamp]: silent ? 'silent' : 'sent' }
-  saveProactive()
+  remember(silent ? 'silent' : 'sent')
   if (silent) return { ok: true, sent: false }
   push({ type: 'message', role: 'assistant', text }, true, cid)
   clerk.addInbox({ title: '主动关心', text })
@@ -693,14 +844,30 @@ async function runProactive({ test = false } = {}) {
   return { ok: true, sent: true, text, cid }
 }
 
-/** Fires a check-in when a configured time arrives, at most twice a day. */
+// A higher level adds check moments, otherwise its larger daily allowance could never be reached.
+const EXTRA_CHECK_TIMES = ['12:30', '15:30', '20:30']
+function proactiveSlots() {
+  const slots = [...proactive.times]
+  for (const time of EXTRA_CHECK_TIMES) {
+    if (slots.length >= proactivePlan().maxPerDay) break
+    if (!slots.includes(time)) slots.push(time)
+  }
+  return slots
+}
+
+/** Each check moment stays open for 30 minutes, so being busy at that exact minute does not lose it. */
 async function maybeProactive() {
-  if (!proactive.enabled || runningCid || activeRun) return
-  const { hhmm } = clockIn(clerk.timezone)
-  if (!proactive.times.includes(hhmm)) return
-  const key = `${dayIn(clerk.timezone)} ${hhmm}`
-  if (proactive.fired?.[key]) return
-  await runProactive()
+  if (!proactive.enabled || runningCid || activeRun || takeover) return
+  const { hour, minute } = clockIn(clerk.timezone)
+  const nowAt = hour * 60 + minute
+  for (const time of proactiveSlots()) {
+    const [h, m] = time.split(':').map(Number)
+    const late = nowAt - (h * 60 + m)
+    const key = `${dayIn(clerk.timezone)} ${time}`
+    if (late < 0 || late > 30 || proactive.fired?.[key]) continue
+    await runProactive({ slot: key })
+    return
+  }
 }
 
 // ---- WeChat: one conversation per contact, so contexts stay separate ----
@@ -749,11 +916,13 @@ async function askFromBridge({ from, name, text, conversationId }) {
   if (!conv.title) { conv.title = name ? `WeChat · ${name}`.slice(0, 40) : 'WeChat'; saveConvs() }
   runningCid = cid
   lastPromptCid = cid
+  const prior = priorContext(cid)
   push({ type: 'message', role: 'user', text }, true, cid)
   const reply = waitBridgeReply(cid)
   try {
     await ensureAgent(cfg, apiKey)
-    await agent.prompt(cid, `${nowHeader()}\n${text}`)
+    const context = agent.isFresh(cid) ? prior : ''
+    await agent.prompt(cid, `${memoryPrefix(cid, text)}${context}${nowHeader()}\n${text}`)
   } catch (error) {
     const waiter = bridgeWaiters.get(cid)
     if (waiter) { bridgeWaiters.delete(cid); waiter.done = true }
@@ -778,6 +947,7 @@ function clerkView() {
     timezone: clerk.timezone, timezoneChosen: clerk.timezoneChosen, busy: Boolean(runningCid),
     jobs: clerk.jobs.filter(j => !j.todoId).map(jobView), todos: clerk.todos,
     inbox: clerk.inbox, channels: clerk.channels.map(publicChannel), unread: clerk.unread(),
+    drafts: clerk.pendingDrafts().map(({ action, ...rest }) => rest),
   }
 }
 
@@ -788,7 +958,7 @@ async function deliver(job, text, cards = []) {
   const content = [text, ...cards.map(cardText)].filter(Boolean).join('\n\n')
   const body = content === job.title ? content : `${job.title}\n${content}`
   const delivery = []
-  for (const id of job.channels) {
+  for (const id of job.trial === 'running' ? [] : job.channels) { // a trial result stays in the app
     const channel = clerk.channel(id)
     if (!channel) continue
     const sent = channel.type === 'webpush'
@@ -801,8 +971,13 @@ async function deliver(job, text, cards = []) {
   return delivery
 }
 
-/** `status` is ok, partial (done, but some steps needed approval), needs_you, failed or missed. */
+/** `status` is ok, partial (done, but something was skipped or unconfirmed), drafted (waiting for approval), needs_you, failed or missed. */
 function recordRun(job, status, text, meta = {}) {
+  if (job.trial === 'running') {
+    meta = { ...meta, trial: true }
+    clerk.update(job, { trial: 'done' })
+    if (status !== 'needs_you' && status !== 'drafted') notifyOwner('试运行完成', job.title)
+  }
   clerk.recordRun(job, { status, summary: String(text).slice(0, 300), ...meta }, status === 'needs_you' ? meta.assist : null)
   broadcast({ type: 'clerk' })
 }
@@ -850,13 +1025,13 @@ async function startJob(job) {
   if (!apiKey || !priceOf(cfg)) { await reportFailure(job, 'no model is set up.'); return 'done' }
   if (!job.cid || !convOf(job.cid)) clerk.update(job, { cid: createConversation(job.title, { job: true }).id })
   const cid = job.cid
-  activeRun = { jobId: job.id, cid, texts: [], cards: [], skipped: [], needsHuman: null, startedAt: Date.now(), spentBefore: budget.status().spentUsd, started: false, timer: setTimeout(() => finishRun('failed', 'it took longer than 10 minutes, so it was stopped.', { stop: true }), RUN_LIMIT_MS) }
+  activeRun = { jobId: job.id, cid, texts: [], cards: [], skipped: [], drafts: [], report: null, page: null, needsHuman: null, startedAt: Date.now(), spentBefore: budget.status().spentUsd, started: false, timer: setTimeout(() => finishRun('failed', 'it took longer than 10 minutes, so it was stopped.', { stop: true }), RUN_LIMIT_MS) }
   runningCid = cid
   lastPromptCid = cid
   push({ type: 'message', role: 'user', text: job.text, scheduled: true }, true, cid)
   try {
     await ensureAgent(cfg, apiKey)
-    await agent.prompt(cid, `${nowHeader()}\n${job.text}`, { fresh: true })
+    await agent.prompt(cid, `${memoryPrefix(cid, `${job.title} ${job.text}`, { fresh: true, work: false })}${nowHeader()}\n${job.text}`, { fresh: true })
   } catch (error) { await finishRun('failed', error.message) }
   return 'started'
 }
@@ -879,8 +1054,21 @@ async function finishRun(status, detail = '', { stop = false } = {}) {
     if (!job.channels.some(id => clerk.channel(id)?.type === 'webpush')) notifyOwner('Bob 需要你帮忙', job.title)
     return recordRun(job, 'needs_you', summary, { ...runMeta(run), delivery, assist: { ...run.needsHuman, at: Date.now() } })
   }
-  const delivery = await deliver(job, text, run.cards)
-  recordRun(job, run.skipped.length ? 'partial' : 'ok', summary, { ...runMeta(run), delivery, skipped: run.skipped.slice(0, 5) })
+  const notes = []
+  let outcome = 'ok'
+  if (run.drafts.length) {
+    outcome = 'drafted'
+    notes.push(`Waiting for your approval in the Clerk tab: ${run.drafts.length} prepared action${run.drafts.length > 1 ? 's' : ''}.`)
+    if (!job.channels.some(id => clerk.channel(id)?.type === 'webpush')) notifyOwner('有待批草稿', job.title)
+  } else if (run.skipped.length) outcome = 'partial'
+  const report = run.report
+  if (job.playbook && outcome === 'ok') {
+    if (!report) { outcome = 'partial'; notes.push('It did not confirm its success check.') }
+    else if (report.missing_data) { outcome = 'partial'; notes.push(`The source data was missing: ${report.evidence}`) }
+    else if (!report.met) { outcome = 'failed'; notes.push(`The success check was not met: ${report.evidence}`) }
+  }
+  const delivery = await deliver(job, [text, ...notes].filter(Boolean).join('\n\n'), run.cards)
+  recordRun(job, outcome, notes.length && outcome !== 'drafted' ? notes.at(-1) : summary, { ...runMeta(run), delivery, skipped: run.skipped.slice(0, 5), ...(report ? { check: report } : {}) })
 }
 
 let ticking = false
@@ -978,6 +1166,16 @@ async function offerWechatChannel() {
   } catch { /* bridge not running yet */ }
 }
 
+/** A new routine gets one trial as soon as Bob is free. A trial cut off by a restart is not repeated on its own. */
+async function runPendingTrial() {
+  for (const job of clerk.jobs) if (job.trial === 'running' && activeRun?.jobId !== job.id) clerk.update(job, { trial: 'done' })
+  if (runningCid || activeRun || takeover) return
+  const job = clerk.jobs.find(j => j.trial === 'pending')
+  if (!job) return
+  clerk.update(job, { trial: 'running' })
+  if (await startJob(job) === 'busy') clerk.update(job, { trial: 'pending' })
+}
+
 async function tick() {
   if (ticking) return
   ticking = true
@@ -985,6 +1183,7 @@ async function tick() {
     await offerWechatChannel()
     await maybeProactive()
     await maybeDream()
+    await runPendingTrial()
     const now = Date.now()
     const { run, missed } = clerk.due(now)
     for (const job of missed) {
@@ -1018,6 +1217,46 @@ function checkJobInput(args) {
   return { kind, title, text, schedule, first }
 }
 
+function channelIdsFor(names) {
+  try { return clerk.resolveChannels(names ?? []) } catch (error) {
+    if (error.message !== 'UNKNOWN_CHANNEL') throw error
+    throw new Error(`Unknown channel. Available: ${error.available.join(', ') || 'none, only the in-app inbox'}.`)
+  }
+}
+
+const renderPlaybook = p => [
+  `Goal: ${p.goal}`,
+  `Steps:\n${p.steps.map((step, i) => `${i + 1}. ${step}`).join('\n')}`,
+  p.sites.length ? `Sites: ${p.sites.join(', ')}` : '',
+  `Success check: ${p.check}`,
+  p.stopPoints.length ? `Stop and do not continue in these cases. Call browser_request_human with the reason:\n${p.stopPoints.map(x => `- ${x}`).join('\n')}` : '',
+  `If the source data is missing or empty: ${p.onMissing}. Never invent data.`,
+  'Just before your final message, call run_report to say whether the success check was met.',
+].filter(Boolean).join('\n\n')
+
+async function routineSave(args) {
+  if (activeRun) throw new Error('A scheduled run cannot change the schedule.')
+  const line = (value, max) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
+  const list = (value, count, max) => (Array.isArray(value) ? value : []).map(x => line(x, max)).filter(Boolean).slice(0, count)
+  const playbook = { goal: line(args.goal, 400), steps: list(args.steps, 15, 300), check: line(args.success_check, 300), stopPoints: list(args.stop_points, 6, 200), onMissing: line(args.on_missing, 300), sites: list(args.sites, 8, 100) }
+  if (!playbook.goal || !playbook.steps.length || !playbook.check || !playbook.onMissing) throw new Error('A routine needs a goal, steps, a success_check and on_missing.')
+  const existing = args.id ? clerk.job(String(args.id)) : null
+  if (args.id && !existing?.playbook) throw new Error(`No routine with id "${args.id}". Call clerk_list to see the ids.`)
+  const text = renderPlaybook(playbook)
+  if (text.length > 4000) throw new Error('This routine is too long. Use fewer or shorter steps.')
+  const input = checkJobInput({ title: args.title, kind: 'task', text, schedule: args.schedule })
+  const channelIds = channelIdsFor(args.channels)
+  await requireApproval({
+    kind: 'clerk', summary: `Save as a routine: ${input.title}`, target: input.title, detail: text,
+    extra: { action: 'create', jobKind: 'task', schedule: input.schedule, firstRun: input.first, timezone: clerk.timezone, channels: channelIds.map(id => clerk.channel(id).name) },
+  })
+  const job = existing ?? clerk.addJob({ title: input.title, kind: 'task', text, schedule: input.schedule, channels: channelIds })
+  clerk.update(job, { title: input.title, text, schedule: input.schedule, channels: channelIds, playbook, trial: 'pending', enabled: false, nextRun: null })
+  pushJobCard(job, true)
+  broadcast({ type: 'clerk' })
+  return 'Saved. One trial run starts shortly and its result goes to the inbox. Nothing is scheduled until the user turns it on after seeing the result. Reply with one short sentence.'
+}
+
 async function clerkTool(name, args) {
   if (name === 'clerk_list_channels') {
     const names = clerk.channels.map(c => `${c.name} (${c.type})`)
@@ -1030,11 +1269,7 @@ async function clerkTool(name, args) {
   if (activeRun) throw new Error('A scheduled run cannot change the schedule.')
   if (name === 'clerk_create') {
     const input = checkJobInput(args)
-    let channelIds
-    try { channelIds = clerk.resolveChannels(args.channels ?? []) } catch (error) {
-      if (error.message !== 'UNKNOWN_CHANNEL') throw error
-      throw new Error(`Unknown channel. Available: ${error.available.join(', ') || 'none, only the in-app inbox'}.`)
-    }
+    const channelIds = channelIdsFor(args.channels)
     const channels = channelIds.map(id => clerk.channel(id).name)
     await requireApproval({
       kind: 'clerk', summary: `Add a ${input.kind}: ${input.title}`, target: input.title,
@@ -1216,19 +1451,22 @@ async function ensureAgent(cfg, apiKey) {
 // ---- agent wiring ----
 agent.on('text', (cid, text) => {
   if (!convOf(cid)) return
-  if (proactivePending?.cid === cid) { proactivePending.chunks.push(text); return }
-  if (dreamPending?.cid === cid) { dreamPending.chunks.push(text); return }
+  const waiter = turnWaiters.get(cid)
+  if (waiter) { waiter.chunks.push(text); return }
   bridgeWaiters.get(cid)?.texts.push(text)
   if (activeRun?.cid === cid) activeRun.texts.push(text)
   push({ type: 'message', role: 'assistant', text }, true, cid)
 })
 agent.on('status', (cid, status) => {
   if (!convOf(cid)) return // sub-sessions and deleted chats
+  const waiter = turnWaiters.get(cid)
   if (status === 'running') {
     runningCid = cid
+    if (waiter) waiter.started = true
     if (activeRun?.cid === cid) activeRun.started = true
   } else {
     if (runningCid === cid) runningCid = null
+    if (waiter?.started) waiter.finish()
     bridgeWaiters.get(cid)?.finish()
     if (activeRun?.cid === cid && activeRun.started) finishRun('ok')
     if (extensionsDirty && !runningCid && !activeRun) { extensionsDirty = false; agent.stop() }
@@ -1237,6 +1475,7 @@ agent.on('status', (cid, status) => {
 })
 agent.on('tool', (cid, name) => { if (convOf(cid) && !name.startsWith('mcp__bobbot__')) push({ type: 'step', name }, true, cid) })
 agent.on('exit', code => {
+  for (const waiter of [...turnWaiters.values()]) waiter.finish()
   const cid = runningCid ?? lastPromptCid
   runningCid = null
   if (cid && convOf(cid)) push({ type: 'error', text: `Agent stopped unexpectedly (${code}). Send a message to restart it.` }, true, cid)
@@ -1439,6 +1678,15 @@ async function route(req, res) {
     return undefined
   }
   if (req.method === 'GET' && pathname === '/api/clerk') return send(res, 200, clerkView())
+  if (req.method === 'GET' && pathname === '/api/clerk/draft/shot') {
+    const draft = clerk.draft(new URL(req.url, 'http://local').searchParams.get('id') ?? '')
+    if (!draft?.hasShot) return send(res, 404, { error: 'NO_SHOT' })
+    try {
+      const image = fs.readFileSync(path.join(DRAFT_SHOT_DIR, `${draft.id}.jpg`))
+      res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-store' })
+      return res.end(image)
+    } catch { return send(res, 404, { error: 'NO_SHOT' }) }
+  }
   if (req.method === 'GET' && pathname === '/api/extensions') return send(res, 200, extensionsView())
   if (req.method === 'GET' && pathname === '/api/features') return send(res, 200, { items: features.list() })
   if (req.method === 'GET' && pathname === '/api/memory') return send(res, 200, memory.list())
@@ -1504,7 +1752,7 @@ async function route(req, res) {
       try {
         await ensureAgent(cfg, apiKey)
         const context = agent.isFresh(cid) ? prior : ''
-        await agent.prompt(cid, `${context}${nowHeader()}\n${promptWithFiles(text || '(see the attached files)', files)}`)
+        await agent.prompt(cid, `${memoryPrefix(cid, text)}${context}${nowHeader()}\n${promptWithFiles(text || '(see the attached files)', files)}`)
       } catch (error) {
         if (runningCid === cid) runningCid = null
         throw error
@@ -1680,6 +1928,28 @@ async function route(req, res) {
       clerk.removeJob(body.id)
       broadcast({ type: 'clerk' })
       return send(res, 200, { ok: true })
+    }
+    case '/api/clerk/draft/decide': {
+      const draft = clerk.draft(String(body.id ?? ''))
+      if (!draft || draft.status !== 'pending') return send(res, 404, { error: 'EXPIRED' })
+      if (body.allow !== true) {
+        clerk.settleDraft(draft, 'rejected')
+        broadcast({ type: 'clerk' })
+        return send(res, 200, { ok: true, status: 'rejected' })
+      }
+      if (runningCid || activeRun || takeover || viewer) return send(res, 409, { error: 'BUSY' })
+      runningCid = draft.cid
+      try {
+        const result = await executeDraft(draft)
+        clerk.settleDraft(draft, 'done', result)
+      } catch (error) {
+        clerk.settleDraft(draft, 'failed', error.message)
+      } finally {
+        if (runningCid === draft.cid) runningCid = null
+      }
+      clerk.addInbox({ title: draft.jobTitle, jobId: draft.jobId, text: `${draft.status === 'done' ? 'Done' : 'Could not finish'}: ${draft.summary}\n${draft.result}` })
+      broadcast({ type: 'clerk' })
+      return send(res, 200, { ok: true, status: draft.status, result: draft.result })
     }
     case '/api/clerk/job/assist': {
       const job = clerk.job(body.id)

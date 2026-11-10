@@ -739,6 +739,36 @@ export class CloudBrowser {
     await this.settle(2000)
   }
 
+  /** How a numbered element can be recognised later, when its number no longer means anything. */
+  elementInfo(id) {
+    const item = this.refs[Number(id) - 1]?.item
+    return item ? { tag: item.tag, type: item.type, name: item.name } : null
+  }
+
+  async #findAgain(loc) {
+    for (let screen = 0; screen < 8; screen++) {
+      await this.snapshot()
+      const found = this.refs.flatMap((ref, i) => (ref.item.tag === loc.tag && ref.item.type === loc.type && ref.item.name === loc.name ? [i + 1] : []))
+      if (found.length > 1) throw new Error(`The page now has several "${loc.name}" elements, so it is not safe to choose one.`)
+      if (found.length) return found[0]
+      await this.scroll('down')
+    }
+    throw new Error(`The page has changed: "${loc.name}" is no longer there.`)
+  }
+
+  /** Repeats the exact steps a draft recorded, without asking any model. Stops at the first step it cannot match. */
+  async replay({ url, log = [], final }) {
+    await this.navigate(url)
+    for (const step of [...log, final]) {
+      if (step.op === 'key') { await this.pressKey(step.key); await this.settle(); continue }
+      const id = await this.#findAgain(step.loc)
+      if (step.op === 'click') await this.click(id)
+      else if (step.op === 'type') await this.type(id, step.text, Boolean(step.enter))
+      else if (step.op === 'select') await this.select(id, step.value)
+    }
+    return { url: await this.evaluate('location.href'), title: await this.evaluate('document.title') }
+  }
+
   async scroll(direction) {
     await this.wheel(direction === 'up' ? -this.viewport.height * 0.8 : this.viewport.height * 0.8)
     await sleep(500)

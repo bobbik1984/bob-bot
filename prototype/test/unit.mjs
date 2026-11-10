@@ -9,6 +9,7 @@ import { cardText, checkCard } from '../cards.mjs'
 import { buildRequest, findTelegramChat, publicChannel, sendToChannel, validateChannel } from '../channels.mjs'
 import { CATCH_UP_MS, Clerk, describeSchedule, formatLocal, nextRun, normalizeSchedule, zonedToUtc } from '../clerk.mjs'
 import { htmlToText, webFetch } from '../web-fetch.mjs'
+import { Memory } from '../memory.mjs'
 
 const results = []
 const check = async (name, fn) => {
@@ -240,6 +241,57 @@ await check('a public page is fetched, converted and cut to length', async () =>
   const json = await webFetch('https://1.1.1.1/data', { fetchImpl: page(200, { 'content-type': 'application/json' }, '{"temp":21}') })
   assert.match(json, /\{"temp":21\}$/)
   await assert.rejects(webFetch('https://1.1.1.1/', { fetchImpl: page(404, {}, '') }), /HTTP 404/)
+})
+
+const tempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'bobbot-unit-'))
+await check('memory puts unfinished work first and finds what a message mentions', () => {
+  const m = new Memory(path.join(tempDir(), 'm.json'))
+  m.add({ text: '喜欢吃辣', kind: 'preference' })
+  m.add({ text: '常驻上海，通勤骑车', kind: 'fact' })
+  m.add({ text: '季度报告还差第三节', kind: 'open_loop' })
+  assert.equal(m.pick()[0].text, '季度报告还差第三节')
+  assert.equal(m.pick({ query: '上海明天下雨吗' })[0].text, '常驻上海，通勤骑车')
+  assert.equal(m.pick({ maxChars: 12 }).length, 1)
+})
+await check('memory ignores a duplicate that only differs in punctuation', () => {
+  const m = new Memory(path.join(tempDir(), 'm.json'))
+  assert.ok(m.add({ text: 'Lives in Shanghai.' }))
+  assert.equal(m.add({ text: 'lives in shanghai' }), null)
+})
+await check('one dream cannot wipe the memory or store a secret', () => {
+  const m = new Memory(path.join(tempDir(), 'm.json'))
+  const ids = Array.from({ length: 6 }, (_, i) => m.add({ text: `fact number ${i}` }).id)
+  const out = m.applyDream({ remove: ids, add: [{ text: '登录密码是 1234' }, { text: 'a real fact', kind: 'nonsense' }] })
+  assert.equal(out.removed, 3); assert.equal(out.added, 1)
+  assert.equal(m.state.items.find(i => i.text === 'a real fact').kind, 'fact')
+  assert.equal(m.state.dreamLog[0].forgotten.length, 3)
+})
+await check('old observations stop being used', () => {
+  const m = new Memory(path.join(tempDir(), 'm.json'))
+  m.state.insights = [{ text: 'new', at: Date.now() }, { text: 'old', at: Date.now() - 8 * 86400e3 }]
+  assert.deepEqual(m.freshInsights().map(i => i.text), ['new'])
+})
+await check('a job keeps its latest 20 runs and clears what it was waiting for', () => {
+  const c = new Clerk(tempDir(), { serverTimezone: 'UTC' })
+  const job = c.addJob({ title: 'J', kind: 'task', text: 'x', schedule: { type: 'daily', time: '08:00' } })
+  for (let i = 0; i < 25; i++) c.recordRun(job, { status: 'ok', summary: String(i) })
+  assert.equal(job.runs.length, 20); assert.equal(job.runs[0].summary, '24')
+  c.recordRun(job, { status: 'needs_you', summary: 'x' }, { reason: 'login' })
+  assert.equal(job.assist.reason, 'login')
+  c.recordRun(job, { status: 'ok', summary: 'y' })
+  assert.equal(job.assist, null)
+})
+await check('drafts survive a restart, can be settled, and expire after a week', () => {
+  const dir = tempDir()
+  const now = Date.now()
+  const c = new Clerk(dir, { serverTimezone: 'UTC' })
+  const old = c.addDraft({ summary: 'old', action: { kind: 'command' } }, now - 8 * 86400e3)
+  const fresh = c.addDraft({ summary: 'fresh', action: { kind: 'command' } }, now)
+  assert.deepEqual(c.pendingDrafts(now).map(d => d.summary), ['fresh'])
+  assert.equal(c.draft(old.id).status, 'expired')
+  c.settleDraft(fresh, 'rejected')
+  const again = new Clerk(dir, { serverTimezone: 'UTC' })
+  assert.equal(again.draft(fresh.id).status, 'rejected'); assert.equal(again.pendingDrafts(now).length, 0)
 })
 
 const failed = results.filter(r => !r).length

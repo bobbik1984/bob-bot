@@ -35,6 +35,8 @@ const routes = {
     <p>${long}</p>
     <script>customElements.define('shadow-host',class extends HTMLElement{connectedCallback(){this.attachShadow({mode:'open'}).innerHTML='<button onclick="fetch(\\'/hit/shadow\\')">Shadow button</button><p>Shadow words</p>'}});
       setTimeout(()=>document.body.insertAdjacentHTML('afterbegin','<p>Late arrival</p>'),1500)</script>`),
+  '/form': () => page(`<input aria-label=Title><button onclick="fetch('/hit/sent-'+document.querySelector('input').value)">Send</button>`),
+  '/twice': () => page('<button>Send</button><button>Send</button>'),
   '/inner': () => page(`<button onclick="fetch('/hit/same-frame')">Same frame button</button>`),
   '/cross': () => page(`<p>Cross words</p><button onclick="fetch('/hit/cross')">Cross frame button</button><input aria-label="Cross field">`),
   '/other': () => page('<h2>Other page</h2>'),
@@ -161,6 +163,17 @@ await check('a download is saved under its own name in the workspace', async () 
 await check('a hidden file input is listed and receives a file', async () => {
   const s = await open(); const id = s.split('\n').find(l => l.includes('type=file')).match(/^\[(\d+)\]/)[1]
   await browser.upload(id, path.join(data, 'workspace/downloads/report.csv')); await hit('/hit/up-report.csv')
+})
+await check('a draft repeats its recorded steps on a fresh page, and stops if the page changed', async () => {
+  await browser.navigate(`${base}/form`)
+  const s = await browser.snapshot()
+  const input = browser.elementInfo(idOf(s, 'Title')), button = browser.elementInfo(idOf(s, 'Send'))
+  assert.deepEqual(button, { tag: 'button', type: '', name: 'Send' })
+  await browser.navigate(`${base}/other`)
+  const done = await browser.replay({ url: `${base}/form`, log: [{ op: 'type', loc: input, text: 'hello' }], final: { op: 'click', loc: button } })
+  assert.ok(done.url.endsWith('/form')); await hit('/hit/sent-hello')
+  await assert.rejects(browser.replay({ url: `${base}/twice`, final: { op: 'click', loc: button } }), /several/)
+  await assert.rejects(browser.replay({ url: `${base}/other`, final: { op: 'click', loc: button } }), /no longer there/)
 })
 await check('after a browser crash the next action brings it back', async () => {
   browser.proc.kill('SIGKILL')
