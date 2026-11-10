@@ -119,6 +119,8 @@ Scheduled tasks and reminders send their result to the channels you chose. A tas
 
 "Not looking" means no device has the page visible and focused: each open page reports that every 15 seconds and when it is hidden or loses focus, so a tab left open on another monitor does not hold back the phone. WeChat chats are answered in WeChat, and scheduled runs, check-ins and dreams report themselves, so none of them notify twice. If Bob stops unexpectedly or the monthly limit is reached during a task, you are told that instead.
 
+Tapping a notification opens what it is about: a finished chat task, an approval or a request for you opens that chat, and a scheduled result, a draft or a task that needs you opens the Clerk tab. If the app is already open it moves there without reloading. Without a target the app still starts where you left it.
+
 Settings also shows the result of the last push. A failure now carries the push service's own status and reason (for example `HTTP 403 BadJwtToken`), a temporary failure is retried once, and `GET /api/push/log` lists the last 20 attempts with what was sent.
 
 ## Installing tools by chat

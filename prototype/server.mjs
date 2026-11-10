@@ -173,7 +173,7 @@ async function requireApproval({ kind, summary, target = '', detail = '', screen
   const shot = screenshot ? await browser.screenshot().catch(() => null) : null
   const payload = push({ type: 'approval', id, kind, summary, target, detail: detail.slice(0, 2000), screenshot: shot, ...extra })
   pending.set(id, payload)
-  notifyOwner('Bob 需要你确认', kind === 'type' ? '确认一次网页输入' : summary.slice(0, 80)) // typed text stays out of the notification
+  notifyOwner('Bob 需要你确认', kind === 'type' ? '确认一次网页输入' : summary.slice(0, 80), chatLink(payload.cid)) // typed text stays out of the notification
   const allowed = await new Promise(resolve => {
     const timer = setTimeout(() => { approvals.delete(id); resolve(false) }, APPROVAL_TIMEOUT_MS)
     approvals.set(id, value => { clearTimeout(timer); approvals.delete(id); resolve(value) })
@@ -222,7 +222,10 @@ async function executeDraft({ action }) {
 }
 
 /** A locked phone cannot see a card in the page, and an unanswered card expires. */
-const notifyOwner = (title, body) => { sendPush({ title, body }).catch(() => {}) }
+const notifyOwner = (title, body, url = '/') => { sendPush({ title, body, url }).catch(() => {}) }
+/** Where a notification should open the app: the chat it is about, or a page such as the clerk. */
+const chatLink = cid => (cid ? `/?c=${encodeURIComponent(cid)}` : '/')
+const CLERK_LINK = '/?v=clerk'
 
 // ---- agent tools, served as MCP on a private loopback port ----
 const idSchema = { element_id: { type: 'integer', description: 'Number shown in the latest page snapshot' } }
@@ -479,8 +482,9 @@ async function callTool(name, args) {
       if (activeRun) activeRun.needsHuman = { reason: String(args.reason ?? '').slice(0, 200), url: await browser.evaluate('location.href').catch(() => '') }
       if (activeRun) throw new Error('Nobody is available to help during a scheduled run. Finish what you can without it and say what you could not do.')
       const id = crypto.randomUUID()
-      pending.set(id, push({ type: 'takeover', id, reason: String(args.reason) }))
-      notifyOwner('Bob 需要你帮忙', String(args.reason).slice(0, 80))
+      const asked = push({ type: 'takeover', id, reason: String(args.reason) })
+      pending.set(id, asked)
+      notifyOwner('Bob 需要你帮忙', String(args.reason).slice(0, 80), chatLink(asked.cid))
       await new Promise((resolve, reject) => {
         const timer = setTimeout(() => { takeover = null; reject(new Error('The user did not respond in time.')) }, HUMAN_TIMEOUT_MS)
         takeover = { id, finish: () => { clearTimeout(timer); takeover = null; resolve() } }
@@ -849,7 +853,7 @@ async function runProactive({ test = false, slot = null } = {}) {
   push({ type: 'message', role: 'assistant', text }, true, cid)
   clerk.addInbox({ title: '主动关心', text })
   broadcast({ type: 'clerk' })
-  sendPush({ title: '主动关心', body: text.slice(0, 300) }).catch(() => {})
+  sendPush({ title: '主动关心', body: text.slice(0, 300), url: chatLink(cid) }).catch(() => {})
   return { ok: true, sent: true, text, cid }
 }
 
@@ -971,7 +975,7 @@ async function deliver(job, text, cards = []) {
     const channel = clerk.channel(id)
     if (!channel) continue
     const sent = channel.type === 'webpush'
-      ? await sendPush({ title: job.title, body: body.slice(0, 3500) })
+      ? await sendPush({ title: job.title, body: body.slice(0, 3500), url: CLERK_LINK })
       : await sendToChannel(channel, body)
     delivery.push({ channel: channel.name, ok: sent.ok, ...(sent.ok ? {} : { error: sent.error }) })
   }
@@ -985,7 +989,7 @@ function recordRun(job, status, text, meta = {}) {
   if (job.trial === 'running') {
     meta = { ...meta, trial: true }
     clerk.update(job, { trial: 'done' })
-    if (status !== 'needs_you' && status !== 'drafted') notifyOwner('试运行完成', job.title)
+    if (status !== 'needs_you' && status !== 'drafted') notifyOwner('试运行完成', job.title, CLERK_LINK)
   }
   clerk.recordRun(job, { status, summary: String(text).slice(0, 300), ...meta }, status === 'needs_you' ? meta.assist : null)
   broadcast({ type: 'clerk' })
@@ -1060,7 +1064,7 @@ async function finishRun(status, detail = '', { stop = false } = {}) {
   const summary = text || cardText(run.cards[0])
   if (run.needsHuman) {
     const delivery = await deliver(job, `${text}\n\nNeeds you: ${run.needsHuman.reason}. Open this job in the Clerk tab to finish it, and Bob will run it again.`.trim(), run.cards)
-    if (!job.channels.some(id => clerk.channel(id)?.type === 'webpush')) notifyOwner('Bob 需要你帮忙', job.title)
+    if (!job.channels.some(id => clerk.channel(id)?.type === 'webpush')) notifyOwner('Bob 需要你帮忙', job.title, CLERK_LINK)
     return recordRun(job, 'needs_you', summary, { ...runMeta(run), delivery, assist: { ...run.needsHuman, at: Date.now() } })
   }
   const notes = []
@@ -1068,7 +1072,7 @@ async function finishRun(status, detail = '', { stop = false } = {}) {
   if (run.drafts.length) {
     outcome = 'drafted'
     notes.push(`Waiting for your approval in the Clerk tab: ${run.drafts.length} prepared action${run.drafts.length > 1 ? 's' : ''}.`)
-    if (!job.channels.some(id => clerk.channel(id)?.type === 'webpush')) notifyOwner('有待批草稿', job.title)
+    if (!job.channels.some(id => clerk.channel(id)?.type === 'webpush')) notifyOwner('有待批草稿', job.title, CLERK_LINK)
   } else if (run.skipped.length) outcome = 'partial'
   const report = run.report
   if (job.playbook && outcome === 'ok') {
@@ -1152,7 +1156,7 @@ const pushReason = error => {
 async function sendPush({ title, body, url = '/' }) {
   const started = Date.now()
   const finish = (ok, detail) => {
-    pushLog.unshift({ at: started, title: String(title).slice(0, 40), body: String(body).slice(0, 110), ok, detail, ms: Date.now() - started })
+    pushLog.unshift({ at: started, title: String(title).slice(0, 40), body: String(body).slice(0, 110), url, ok, detail, ms: Date.now() - started })
     pushLog.length = Math.min(pushLog.length, 20)
     return ok ? { ok: true } : { ok: false, error: detail }
   }
@@ -1197,7 +1201,7 @@ function finishTurn(cid, failure = '') {
   const long = Date.now() - turn.startedAt >= LONG_TURN_MS || turn.steps >= LONG_TURN_STEPS
   if (notifyPrefs.chat === 'long' && !long && !failure) return
   const said = turn.text.replace(/[*`#]/g, '').replace(/\s+/g, ' ').trim()
-  notifyOwner(convOf(cid)?.title || 'Bob', (failure || said || '已完成').slice(0, 110))
+  notifyOwner(convOf(cid)?.title || 'Bob', (failure || said || '已完成').slice(0, 110), chatLink(cid))
 }
 
 // After the official WeChat bridge logs in, offer a reminder channel once, so jobs can send there by name.

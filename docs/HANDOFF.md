@@ -85,7 +85,7 @@ ssh ... 'ln -sfn /home/ubuntu/bob-bot/prototype/node_modules /tmp/bobtest/protot
 ssh ... 'cd /tmp/bobtest/prototype && node test/unit.mjs && node test/e2e.mjs'
 ```
 
-当前基线：`unit 34/34`、`plugins 9/9`、`browser 20/20`、`e2e 73/73`、`ui 8/8`。e2e 需要 Chrome 与空闲端口；跑之前 `fuser -k 8799/tcp`。
+当前基线：`unit 36/36`、`plugins 9/9`、`browser 20/20`、`e2e 73/73`、`ui 8/8`。e2e 需要 Chrome 与空闲端口；跑之前 `fuser -k 8799/tcp`。
 
 **注意：`deploy-ry.sh` 会 `git reset --hard origin/main`**，会丢弃 RY 上任何未提交的改动。不要在 RY 上直接留未提交的实验代码；先在本地提交再部署。
 

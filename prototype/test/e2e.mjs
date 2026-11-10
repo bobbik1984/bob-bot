@@ -1021,10 +1021,12 @@ try {
 
 
   const pushedSince = async t0 => (await getJson('/api/push/log')).body.items.filter(p => p.at >= t0)
+  let askedCid = ''
   const askBob = async (text, steps = []) => {
     const t0 = Date.now()
     script.push(...steps, say(`done: ${text}`))
-    assert.equal((await post('/api/chat', { text })).status, 200)
+    const sent = await post('/api/chat', { text })
+    assert.equal(sent.status, 200); askedCid = sent.data.cid
     await waitAfter(t0, e => e.type === 'message' && e.text === `done: ${text}`)
     await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
     await sleep(150)
@@ -1039,6 +1041,7 @@ try {
     const pushed = await pushedSince(t0)
     assert.equal(pushed.length, 1, 'no notification was sent')
     assert.equal(pushed[0].title, 'tell me when ready'); assert.equal(pushed[0].body, 'done: tell me when ready')
+    assert.equal(pushed[0].url, `/?c=${askedCid}`, 'the notification does not open the chat it is about')
     const config = (await getJson('/api/push/config')).body
     assert.equal(config.chat, 'always'); assert.equal(config.last.title, 'tell me when ready')
   })

@@ -294,6 +294,38 @@ await check('drafts survive a restart, can be settled, and expire after a week',
   assert.equal(again.draft(fresh.id).status, 'rejected'); assert.equal(again.pendingDrafts(now).length, 0)
 })
 
+// The service worker is plain browser code: run it against a fake worker scope to check what a tap on a notification does.
+import vm from 'node:vm'
+function tapNotification({ windows, url }) {
+  const handlers = {}
+  const calls = []
+  const scope = {
+    location: { origin: 'https://bob.example' },
+    registration: { showNotification: () => {} },
+    addEventListener: (name, fn) => { handlers[name] = fn },
+    skipWaiting: () => {},
+    clients: {
+      claim: () => {},
+      matchAll: async () => windows.map(w => ({ url: w, focus: async () => calls.push(['focus', w]), postMessage: m => calls.push(['post', w, m]) })),
+      openWindow: async u => calls.push(['open', u]),
+    },
+    URL,
+  }
+  scope.self = scope
+  vm.runInNewContext(fs.readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8'), scope)
+  let pending
+  handlers.notificationclick({ notification: { close: () => calls.push(['close']), data: { url } }, waitUntil: p => { pending = p } })
+  return pending.then(() => JSON.parse(JSON.stringify(calls))) // objects made inside the fake scope are from another realm
+}
+await check('tapping a notification moves an open app to its chat, without a reload', async () => {
+  const calls = await tapNotification({ windows: ['https://other.example/', 'https://bob.example/?v=clerk'], url: '/?c=cabc123' })
+  assert.deepEqual(calls, [['close'], ['focus', 'https://bob.example/?v=clerk'], ['post', 'https://bob.example/?v=clerk', { type: 'open', url: '/?c=cabc123' }]])
+})
+await check('tapping a notification with no app open starts the app at that chat', async () => {
+  assert.deepEqual(await tapNotification({ windows: ['https://other.example/'], url: '/?c=cabc123' }), [['close'], ['open', 'https://bob.example/?c=cabc123']])
+  assert.deepEqual(await tapNotification({ windows: [], url: undefined }), [['close'], ['open', 'https://bob.example/']])
+})
+
 const failed = results.filter(r => !r).length
 console.log(`\n${results.length - failed}/${results.length} passed`)
 process.exit(failed ? 1 : 0)

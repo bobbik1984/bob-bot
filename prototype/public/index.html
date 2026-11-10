@@ -1413,7 +1413,21 @@ async function loadHistory(cid) {
 const STALE_SESSION_MS = 3 * 60 * 60 * 1000
 let restoredOnce = false
 // A chat that has been quiet for three hours starts a new session; otherwise come back to where you were.
+/** Opens what a notification was about, from the address it started with or from a message sent to an open app. */
+async function openFromLink(link) {
+  let params
+  try { params = new URL(link, location.origin).searchParams } catch { return false }
+  const cid = params.get('c'), view = params.get('v')
+  if (cid && !convs.some(c => c.id === cid)) await loadConvs() // a chat that began a moment ago
+  let went = false
+  if (cid && convs.some(c => c.id === cid)) { await selectConv(cid); went = true }
+  else if (VIEWS.includes(view)) { show(view); went = true }
+  if (went) { try { localStorage.setItem('bobbot.lastView', currentView) } catch { /* private mode */ } }
+  return went
+}
 async function restoreLastPage() {
+  if (location.search && await openFromLink(location.href)) { history.replaceState(null, '', '/'); persistView = true; return } // opened by a notification
+  history.replaceState(null, '', '/')
   let lastCid = ''
   let savedView = 'chat'
   try { lastCid = localStorage.getItem('bobbot.lastCid') || ''; savedView = localStorage.getItem('bobbot.lastView') || 'chat' } catch { /* private mode */ }
@@ -2140,6 +2154,14 @@ function reportPresence(force = false) {
 setInterval(() => { if (here()) reportPresence(true) }, 15000)
 document.addEventListener('visibilitychange', () => reportPresence())
 for (const name of ['focus', 'blur', 'pagehide', 'pageshow']) addEventListener(name, () => reportPresence())
+// A notification tapped while the app is open: go there without a reload.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.onmessage = event => {
+    if (event.data?.type === 'open' && !$('app').hidden) openFromLink(String(event.data.url ?? '/'))
+  }
+  // Keeps the worker current, so a fix to what a tap does reaches a phone that has already subscribed.
+  if ('Notification' in window && Notification.permission === 'granted') navigator.serviceWorker.register('/sw.js').catch(() => {})
+}
 let wxLoginTimer = null
 async function loadWechatLogin() {
   clearTimeout(wxLoginTimer)

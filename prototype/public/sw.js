@@ -15,18 +15,19 @@ self.addEventListener('push', event => {
   }))
 })
 
+// A tap opens what the notification is about. An app that is already open is told where to go instead of being
+// reloaded, so nothing the owner was doing is lost; with no app open, it starts at that address.
 self.addEventListener('notificationclick', event => {
   event.notification.close()
-  const url = event.notification.data?.url || '/'
+  const target = new URL(event.notification.data?.url || '/', self.location.origin)
   event.waitUntil((async () => {
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-    for (const client of windows) {
-      if (new URL(client.url).origin === self.location.origin) {
-        await client.focus()
-        if ('navigate' in client) await client.navigate(url)
-        return
-      }
+    const open = windows.find(client => new URL(client.url).origin === self.location.origin)
+    if (open) {
+      await open.focus()
+      open.postMessage({ type: 'open', url: target.pathname + target.search })
+      return
     }
-    return self.clients.openWindow(url)
+    return self.clients.openWindow(target.href)
   })())
 })
