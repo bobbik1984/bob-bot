@@ -2074,7 +2074,10 @@ $('pushEnable').onclick = async () => {
     }
     const saved = await post('/api/push/subscribe', { subscription: sub.toJSON() })
     if (saved.status !== 200) throw new Error(saved.data.error ?? 'subscribe failed')
+    // the config was cached when Settings opened, so trust the count the server just returned
+    pushConfig = { ...(pushConfig ?? {}), subscriptions: saved.data.subscriptions ?? 1 }
     await post('/api/push/test')
+    loadClerk()
     loadPushState()
   } catch (error) {
     $('pushHint').textContent = String(error?.message ?? error)
