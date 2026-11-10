@@ -69,13 +69,20 @@ if [[ "$MODE" == "github" ]]; then git fetch --prune origin; fi
 OLD="$(git rev-parse HEAD)"
 NEW="$(git rev-parse "$TARGET")"
 
-# Resetting throws away edits made directly on RY. Keep them as a patch first, so nothing is lost silently.
-if ! git diff --quiet "$NEW" -- . ':(exclude)prototype/data'; then
+# Resetting throws away edits made directly on RY. A file counts as an edit when it differs from RY's own current
+# commit and also from the commit being deployed (a file already holding the new content, or one that is just
+# behind, is not lost). Those edits are kept as a patch first, so nothing disappears silently.
+LOST=()
+while IFS= read -r file; do
+  [[ -n "$file" ]] || continue
+  git diff --quiet "$NEW" -- "$file" || LOST+=("$file")
+done < <(git diff --name-only HEAD -- . ':(exclude)prototype/data')
+if (( ${#LOST[@]} > 0 )); then
   mkdir -p "$HOME/bob-bot-discarded"
   PATCH="$HOME/bob-bot-discarded/$(date +%Y%m%d-%H%M%S).patch"
-  git diff "$NEW" -- . ':(exclude)prototype/data' > "$PATCH"
-  echo "==> RY had changes that are not in this commit; saved as $PATCH, then replaced"
-  git diff --stat "$NEW" | tail -8 | sed 's/^/    /'
+  git diff HEAD -- "${LOST[@]}" > "$PATCH"
+  echo "==> RY had edits that are not in this commit; saved as $PATCH, then replaced:"
+  printf '    %s\n' "${LOST[@]}"
 fi
 git reset --hard "$NEW"
 CHANGED="$(git diff --name-only "$OLD" "$NEW" || true)"
