@@ -69,7 +69,7 @@ RY 上 `prototype/data/` 包含：`pin.json`、`secrets.json`、`conversations/`
 cd /home/bobbik/dsh_projects/bob-bot
 # 改代码 → 自测（见下）→ 提交
 git add -A && git commit -m "..."
-bash scripts/deploy-ry.sh          # push + RY 拉取 + 依赖安装 + 重启 + 双端健康检查
+bash scripts/deploy-ry.sh          # 提交直推 RY（不经 GitHub）+ 依赖安装 + 重启 + 双端健康检查
 ```
 
 验证：`curl -s https://ry.bobbik.org/api/version`，或打开站点 → 设置 → 底部的版本号与部署时间。
@@ -87,9 +87,9 @@ ssh ... 'cd /tmp/bobtest/prototype && node test/unit.mjs && node test/e2e.mjs'
 
 当前基线：`unit 36/36`、`plugins 9/9`、`browser 20/20`、`e2e 73/73`、`ui 8/8`。e2e 需要 Chrome 与空闲端口；跑之前 `fuser -k 8799/tcp`。
 
-**注意：`deploy-ry.sh` 会 `git reset --hard origin/main`**，会丢弃 RY 上任何未提交的改动。不要在 RY 上直接留未提交的实验代码；先在本地提交再部署。
+**部署不依赖 GitHub**：RY 在国内，常连不上 GitHub。`deploy-ry.sh` 通过 SSH 把当前提交直接推给 RY（旁路引用 `refs/deploy/main`），RY 再 `git reset --hard` 到它；GitHub 备份在 x1t 上尽力推送，失败只警告。只部署已提交的内容，且必须在 `main` 上。`--via-github` 才让 RY 自己拉 GitHub。
 
-**网络故障兜底**：RY 偶尔连不上 GitHub（GnuTLS/超时）。此时用 `rsync prototype/ ubuntu@RY:/home/ubuntu/bob-bot/prototype/` 同步并 `sudo systemctl restart bobbot`；注意这不会更新 Git HEAD 与构建戳，网络恢复后执行一次正常 `deploy-ry.sh` 对齐。
+**注意：部署会让 RY 的工作区与该提交完全一致**，RY 上直接改的文件会被替换。脚本会先把差异存成 `~/bob-bot-discarded/<时间>.patch` 并提示，需要时可用 `git apply` 找回。仍然不要在 RY 上直接做实验；先在本地提交再部署。`prototype/data/` 与未被跟踪的文件不受影响。
 
 ## 6. 当前状态（2026-11-10）
 
@@ -120,7 +120,7 @@ curl -s http://127.0.0.1:3722/status     # 微信桥是否登录
 ss -tlnp | grep -E '8787|3721|3722'
 ```
 
-常见问题：GitHub TLS 超时（用 rsync 兜底）；Chromium 启动失败（检查 `data/browser_profile` 的 SingletonLock 与内存）；端口 3721/3722 被临时实例占用（`fuser -k`）；`node_modules` 缺包（`npm install`）。
+常见问题：部署报 GitHub 超时（默认已不经 GitHub；若用了 `--via-github` 就改回默认）；Chromium 启动失败（检查 `data/browser_profile` 的 SingletonLock 与内存）；端口 3721/3722 被临时实例占用（`fuser -k`）；`node_modules` 缺包（`npm install`）。
 
 ## 9. 交接检查单（10 分钟）
 

@@ -63,11 +63,13 @@ RY 是当前的自测 VPS（`ubuntu@82.157.186.181`，腾讯云 2C/2G，Ubuntu 2
 # 1. 改代码并提交
 git add -A && git commit -m "..."
 
-# 2. 推送到 GitHub 并自动同步、重启、验收
+# 2. 把这个提交直接推给 RY，自动重启、验收（GitHub 只作备份）
 bash scripts/deploy-ry.sh
 ```
 
-脚本会：push `main` → RY 上 `git fetch && git reset --hard origin/main` → 依赖变化时 `npm install` → 重启 `bobbot.service` → 写入构建戳（`prototype/data/build.json`）→ 本机与公网双重健康检查，最后打印 `/api/version`。
+RY 在国内，常连不上 GitHub，所以它从不需要访问 GitHub：脚本通过 SSH 把提交直接送到 RY（git 增量传输，写入旁路引用 `refs/deploy/main`，不动 RY 当前分支）。部署前会先从 x1t 向 GitHub 推一份备份，失败也不影响部署。`--no-github` 跳过备份，`--via-github` 才是让 RY 自己去 GitHub 拉。
+
+脚本会：（备份推送 GitHub）→ 把提交推给 RY → RY 上 `git reset --hard refs/deploy/main`（若 RY 上有未提交的改动，会先存成 `~/bob-bot-discarded/*.patch` 再替换）→ 依赖变化时 `npm install` → 重启 `bobbot.service` → 写入构建戳（`prototype/data/build.json`）→ 本机与公网双重健康检查，最后打印 `/api/version`。
 
 **验收方式**：打开 https://ry.bobbik.org 登录后进入「设置」，底部会显示当前版本号与部署时间；`curl https://ry.bobbik.org/api/version` 也会返回同一个 commit。
 

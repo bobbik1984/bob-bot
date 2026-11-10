@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Deploy bob-bot from this machine (x1t) to the RY VPS and verify https://ry.bobbik.org.
 #
-# Flow: commit on x1t -> this script pushes main -> RY pulls, installs deps if needed,
-# restarts bobbot.service, stamps the build -> health check here and through Cloudflare.
+# RY is in mainland China and often cannot reach GitHub, so it never has to: this script sends the commit straight
+# to RY over SSH (git's own delta transfer, into a side ref that does not touch RY's checked-out branch), then RY
+# resets its checkout to that commit, installs dependencies if they changed, restarts bobbot.service and stamps
+# the build. GitHub is only a backup copy, pushed from here as a courtesy and never required.
 #
 # Usage:
-#   bash scripts/deploy-ry.sh            # push current main branch, then deploy
-#   bash scripts/deploy-ry.sh --no-push  # deploy whatever is already on GitHub
+#   bash scripts/deploy-ry.sh               # deploy the commit you are on (clean tree, branch main)
+#   bash scripts/deploy-ry.sh --no-github   # skip the backup push to GitHub
+#   bash scripts/deploy-ry.sh --via-github  # old way: RY pulls from GitHub (only if RY can reach it)
 #
 # Overrides: BOB_RY_HOST, BOB_RY_DIR, BOB_RY_SERVICE, BOB_RY_URL, BOB_RY_BRANCH
 set -euo pipefail
@@ -17,32 +20,64 @@ SERVICE="${BOB_RY_SERVICE:-bobbot}"
 URL="${BOB_RY_URL:-https://ry.bobbik.org}"
 BRANCH="${BOB_RY_BRANCH:-main}"
 
+MODE="direct"; BACKUP=1
+for arg in "$@"; do
+  case "$arg" in
+    --no-github)  BACKUP=0 ;;
+    --via-github) MODE="github" ;;
+    --no-push)    MODE="github"; BACKUP=0 ;; # the old flag: deploy what is already on GitHub
+    *) echo "unknown option: $arg" >&2; exit 2 ;;
+  esac
+done
+
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo"
+export GIT_SSH_COMMAND="ssh -o BatchMode=yes"
 
-if [[ "${1:-}" != "--no-push" ]]; then
+if [[ "$MODE" == "direct" ]]; then
   if [[ -n "$(git status --porcelain)" ]]; then
-    echo "Working tree has uncommitted changes. Commit them first, or use --no-push to deploy what is already on GitHub." >&2
+    echo "Working tree has uncommitted changes. Commit them first: only a commit is deployed." >&2
     exit 1
   fi
-  echo "==> pushing $BRANCH to GitHub"
-  git push origin "$BRANCH"
+  if [[ "$(git rev-parse --abbrev-ref HEAD)" != "$BRANCH" ]]; then
+    echo "You are not on $BRANCH. Switch to it, or set BOB_RY_BRANCH to deploy this branch." >&2
+    exit 1
+  fi
+  if [[ "$BACKUP" == "1" ]]; then
+    echo "==> backing up $BRANCH to GitHub (not required for the deploy)"
+    timeout 60 git push origin "$BRANCH" 2>&1 | sed 's/^/    /' || echo "    GitHub push failed; deploying anyway. Push again later so the backup catches up."
+  fi
+  echo "==> sending $(git rev-parse --short HEAD) to $HOST"
+  git push --force --quiet "$HOST:$APP_DIR" "HEAD:refs/deploy/$BRANCH"
+  TARGET="refs/deploy/$BRANCH"
+else
+  echo "==> RY will pull $BRANCH from GitHub"
+  TARGET="origin/$BRANCH"
 fi
 
 echo "==> deploying on $HOST ($APP_DIR)"
-ssh -o BatchMode=yes "$HOST" bash -s -- "$APP_DIR" "$SERVICE" "$BRANCH" <<'REMOTE'
+ssh -o BatchMode=yes "$HOST" bash -s -- "$APP_DIR" "$SERVICE" "$BRANCH" "$MODE" "$TARGET" <<'REMOTE'
 set -euo pipefail
-APP_DIR="$1"; SERVICE="$2"; BRANCH="$3"
+APP_DIR="$1"; SERVICE="$2"; BRANCH="$3"; MODE="$4"; TARGET="$5"
 cd "$APP_DIR"
 if [[ ! -d .git ]]; then
   echo "$APP_DIR is not a git checkout. Run the one-time setup from README (Deploy to RY)." >&2
   exit 1
 fi
 
-git fetch --prune origin
+if [[ "$MODE" == "github" ]]; then git fetch --prune origin; fi
 OLD="$(git rev-parse HEAD)"
-git reset --hard "origin/$BRANCH"
-NEW="$(git rev-parse HEAD)"
+NEW="$(git rev-parse "$TARGET")"
+
+# Resetting throws away edits made directly on RY. Keep them as a patch first, so nothing is lost silently.
+if ! git diff --quiet "$NEW" -- . ':(exclude)prototype/data'; then
+  mkdir -p "$HOME/bob-bot-discarded"
+  PATCH="$HOME/bob-bot-discarded/$(date +%Y%m%d-%H%M%S).patch"
+  git diff "$NEW" -- . ':(exclude)prototype/data' > "$PATCH"
+  echo "==> RY had changes that are not in this commit; saved as $PATCH, then replaced"
+  git diff --stat "$NEW" | tail -8 | sed 's/^/    /'
+fi
+git reset --hard "$NEW"
 CHANGED="$(git diff --name-only "$OLD" "$NEW" || true)"
 
 if [[ "$OLD" != "$NEW" ]] && grep -qE '^prototype/(package|package-lock)\.json$' <<<"$CHANGED"; then
