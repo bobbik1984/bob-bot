@@ -95,6 +95,21 @@ Every chat, WeChat conversation and scheduled task now receives what Bob remembe
 - **Dreaming** runs once a night between 03:30 and 08:00 and retries if it fails, so it works with check-ins off. Settings shows the last failure. A single dream can remove at most 3 memories, and what it removed is logged.
 - **Check-ins** are off by default. The switch controls only whether Bob may message you first. Memory, dreaming, reminders and tasks work either way. The level sets the daily message limit and tone, and adds check moments at 12:30, 15:30 and 20:30 when your own times are too few for that limit.
 
+## Bob changing himself: feature packages
+
+Ask Bob for a change to how he looks or works ("show today's weather at the top right", "add a tool that converts currencies"). He builds a feature package and it goes live at once **on trial**. A control under the header counts down three minutes with **Keep** and **Undo**. Keep makes it permanent. Undo, no answer, a crash in its code, or a server restart during the trial all put back what was there before. Settings → Features lists what is installed, removes it, or swaps to the previous version (the last 5 are kept).
+
+A package can hold server code (tools for Bob and HTTP routes), up to 4 widgets placed at a named spot (`header-right`, `home`, `clerk-top`, `settings-top`) or next to any element by its CSS id or class, a settings panel, and CSS for the app. Bob's own program files cannot be changed this way or with `write_file`.
+
+Because nobody reads the code first, the code is boxed in instead:
+
+- **Server code** runs in a separate process (`plugin-host.mjs`) started with Node's permission system and an empty environment. It can read only the feature folders, write only `data/feature-storage`, and cannot start programs. It can use the network.
+- **Widgets and panels** are served to sandboxed frames with an origin of their own: no login cookie, no access to the page around them, no network. Their only way out is `bob.call(path)`, which the page forwards to that package's own routes.
+- **Styling** is wrapped in a CSS scope that stops at approval cards, the trial control, the login screen and the browser window, and the page loads nothing from other sites.
+- Bob can only do this in a web chat with you present: not from a scheduled run and not from WeChat.
+
+What this does not cover: a package's server code can reach the internet and services on this machine's loopback address (the WeChat bridge API on 3721 trusts local callers), it can register tools Bob may then call, and its styling can still rearrange the rest of the page. `run_command` is unchanged: an approved command can do anything its user can, including to Bob's files. The boxing is done by Node and the browser, not by a separate system user.
+
 ## Installing tools by chat
 
 Ask Bob for what you need, for example "install the GitHub tool" or "teach yourself my weekly report format". Every install shows a card with exactly what will happen, and nothing happens until you confirm.
@@ -198,6 +213,7 @@ PDF, Word, Excel and images are not supported yet. For a spreadsheet, export it 
 npm run test:unit # schedules and daylight saving, clerk store, channel messages, web_fetch (no network needed)
 npm test          # server, agent loop, approvals, clerk, extensions, models, attachments, spending limit
 npm run test:browser # frames, shadow DOM, tabs, dialogs, downloads, the address guard, crash recovery (local pages, no network)
+npm run test:plugins # feature packages: the sandbox, trials, undo, earlier versions (no network)
 npm run test:ui   # drives the real page as a phone and as a PC, and clicks, hovers and types into the cloud browser
 ```
 

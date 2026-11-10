@@ -47,7 +47,8 @@
 | `cards.mjs` | 模型生成信息卡的校验 |
 | `channels.mjs` | 出站渠道（Lark/企微/Telegram/Discord/微信/手机通知） |
 | `extensions.mjs` | MCP、技能、包安装 |
-| `features.mjs` | 受控功能包加载器（`data/features/`） |
+| `features.mjs` | 功能包：安装校验、试用与回退、旧版本、与沙箱进程通信（`data/features/`、`data/feature-storage/`） |
+| `plugin-host.mjs` | 运行功能包服务器代码的受限子进程，不持有任何密钥 |
 | `memory.mjs` | 长期记忆存储与做梦结果合并 |
 | `compat-api.mjs` | bob-agent `/v1/*` 兼容 API（给微信 bridge 用） |
 | `wechat/` | 官方微信核心与 bridge（vendored，勿换成非官方方案） |
@@ -84,7 +85,7 @@ ssh ... 'ln -sfn /home/ubuntu/bob-bot/prototype/node_modules /tmp/bobtest/protot
 ssh ... 'cd /tmp/bobtest/prototype && node test/unit.mjs && node test/e2e.mjs'
 ```
 
-当前基线：`unit 34/34`、`browser 19/19`、`e2e 67/67`、`ui 8/8`。e2e 需要 Chrome 与空闲端口；跑之前 `fuser -k 8799/tcp`。
+当前基线：`unit 34/34`、`plugins 9/9`、`browser 19/19`、`e2e 70/70`、`ui 8/8`。e2e 需要 Chrome 与空闲端口；跑之前 `fuser -k 8799/tcp`。
 
 **网络故障兜底**：RY 偶尔连不上 GitHub（GnuTLS/超时）。此时用 `rsync prototype/ ubuntu@RY:/home/ubuntu/bob-bot/prototype/` 同步并 `sudo systemctl restart bobbot`；注意这不会更新 Git HEAD 与构建戳，网络恢复后执行一次正常 `deploy-ry.sh` 对齐。
 
@@ -100,7 +101,7 @@ ssh ... 'cd /tmp/bobtest/prototype && node test/unit.mjs && node test/e2e.mjs'
 
 1. 不要把微信换回 wechaty/非官方协议
 2. 不要把浏览器入口加回用户界面（只能由 agent 触发接管）
-3. 不要绕过审批门禁，或让功能包写到 `data/features/` 以外
+3. 不要绕过审批门禁，或让功能包写到 `data/features/` 以外；不要让功能包代码回到主进程里运行，也不要给页面注入功能包的脚本（只能用沙箱 iframe）
 4. 不要提交 `prototype/data/`、密钥、微信登录态
 5. 不要在 RY 上直接改代码后忘记同步回 Git（否则线上与仓库漂移）
 6. 不要在未跑 unit/e2e 的情况下部署

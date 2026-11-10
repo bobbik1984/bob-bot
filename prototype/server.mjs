@@ -47,7 +47,11 @@ const host = createHostTools(DATA_DIR)
 const writes = new WriteBehind()
 const clerk = new Clerk(DATA_DIR)
 const extensions = new Extensions(DATA_DIR)
-const features = new Features(path.join(DATA_DIR, 'features'))
+const TRIAL_MS = Number(process.env.BOBBOT_TRIAL_MS || 3 * 60 * 1000)
+const features = new Features(path.join(DATA_DIR, 'features'), {
+  // Kept, rejected, timed out or crashed: the page is told, and Bob's tool list is rebuilt.
+  onTrialEnd: ({ title, kept, reason }) => { refreshTools(); broadcast({ type: 'features' }); broadcast({ type: 'trial_done', title, kept, reason, at: Date.now() }) },
+})
 const memory = new Memory(path.join(DATA_DIR, 'memory.json'))
 let extensionsDirty = false // MCP changes load when DSH next starts
 const mcpToken = crypto.randomBytes(32).toString('hex')
@@ -276,13 +280,21 @@ const TOOLS = [
   ['memory_add', 'Remember one durable fact or preference about the user.', { text: { type: 'string' }, kind: { type: 'string', enum: ['fact', 'preference', 'pattern', 'open_loop'] } }, ['text']],
   ['memory_forget', 'Forget one memory by its id.', { id: { type: 'string' } }, ['id']],
   ['feature_list', 'List the feature packages installed on this BobBot.', {}, []],
-  ['feature_create', 'Create or update a small feature package that adds server tools, an HTTP route and an optional settings panel. The user reads the code and confirms first.', {
+  ['feature_create', 'Change or extend Bob himself with a feature package: server tools and routes, widgets anywhere on the page, a settings panel, and styling. Use the same name to update one. It goes live at once on a trial the user keeps or undoes, so only call it in a chat with the user.', {
     name: { type: 'string', description: 'lowercase-with-dashes, stable id' },
     title: { type: 'string', description: 'Short human name' },
     description: { type: 'string' },
-    code: { type: 'string', description: 'ES module: export default function setup(ctx) { ctx.registerTool(...); ctx.registerRoute(...) }' },
-    panel_html: { type: 'string', description: 'Optional small HTML panel shown in Settings' },
-  }, ['name', 'title', 'code']],
+    code: { type: 'string', description: 'Optional server code, an ES module: export default function setup(ctx) { ctx.registerTool({ name, description, inputSchema, handler: async args => text }); ctx.registerRoute({ method: "GET", path: "/today", handler: async ({ query, body }) => json }) }. ctx.storage.get/set keeps small data. It runs sandboxed: fetch works, files and commands do not.' },
+    widgets: { type: 'array', description: 'Up to 4 small HTML pieces shown on the page, each in its own sandboxed frame', items: { type: 'object', properties: {
+      id: { type: 'string', description: 'lowercase id' },
+      anchor: { type: 'string', description: 'Where: header-right (top right of every page), home, clerk-top, settings-top, or a CSS id or class of an element on the page such as #feed' },
+      place: { type: 'string', enum: ['end', 'start', 'before', 'after'], description: 'Inside the anchor at its end or start, or before or after it. Default end' },
+      html: { type: 'string', description: 'HTML with inline <style> and <script>. It cannot fetch by itself: use await bob.call("/today") to call this package\'s own routes. Also bob.resize(width, height), bob.prefill(text) to put text in the message box, bob.toast(text), bob.theme and bob.lang. The app\'s colours are available as CSS variables such as var(--text), var(--muted), var(--accent), var(--surface). Wait for the "bob-ready" event before reading bob.theme.' },
+      width: { type: 'integer' }, height: { type: 'integer', description: 'Pixels. header-right is at most 160 by 40' },
+    }, required: ['id', 'anchor', 'html'] } },
+    css: { type: 'string', description: 'Optional styling for the app itself, plain CSS. It cannot reach approval cards.' },
+    panel_html: { type: 'string', description: 'Optional HTML panel shown in Settings, with the same bob.* helpers as a widget' },
+  }, ['name', 'title']],
   ['feature_remove', 'Remove a feature package, after the user confirms.', { name: { type: 'string' } }, ['name']],
   ['show_card', 'Show organized information to the user as a card in the chat: weather advice, a comparison, a list of results. Use it instead of a long text block.', {
     title: { type: 'string' }, subtitle: { type: 'string' }, tag: { type: 'string', description: 'A short label such as Weather or Result' },
@@ -332,6 +344,7 @@ async function hostTool(name, args) {
   const where = host.classify(args.path ?? '.')
   if (where.blocked) throw new Error(BLOCKED)
   if (name === 'write_file') {
+    if (where.path === here || where.path.startsWith(here + path.sep)) throw new Error('These are Bob\'s own program files, which cannot be changed this way. To change how Bob looks or works, use feature_create.')
     const content = String(args.content ?? '')
     await requireApproval({ kind: 'write', summary: `Write file ${where.path}`, target: where.path, detail: `${args.append ? 'Append' : 'Overwrite'}, ${content.length} characters:\n${content.slice(0, 1500)}`, draft: { kind: 'write', path: where.path, content, append: Boolean(args.append) } })
     return host.writeFile(where.path, content, Boolean(args.append))
@@ -345,11 +358,7 @@ async function hostTool(name, args) {
 
 async function callTool(name, args) {
   if (budget.status().exceeded) throw new Error('The monthly spending limit has been reached. Stop and tell the user.')
-  const fromFeature = features.findTool(name)
-  if (fromFeature) {
-    const result = await fromFeature.tool.handler(args)
-    return typeof result === 'string' ? result : JSON.stringify(result ?? null)
-  }
+  if (features.findTool(name)) return features.callTool(name, args)
   if (['list_files', 'read_file', 'write_file', 'run_command'].includes(name)) return hostTool(name, args)
   if (name === 'web_fetch') return webFetch(String(args.url ?? ''))
   if (name === 'show_card') return showCard(args)
@@ -1388,6 +1397,45 @@ async function extTool(name, args) {
   throw new Error(`Unknown tool: ${name}`)
 }
 
+/** New or removed feature tools reach the model when its process next starts, which must not happen in the middle of a reply. */
+function refreshTools() {
+  if (!runningCid && !activeRun) agent.stop()
+  else extensionsDirty = true
+}
+
+// What a feature's frame may do: run its own scripts and nothing else. `sandbox` gives it an origin of its own,
+// so it carries no login and cannot reach into the page around it.
+const FRAME_CSP = "sandbox allow-scripts allow-forms; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: https:; frame-ancestors 'self'"
+const FRAME_BASE_CSS = 'html,body{margin:0;background:transparent;color:var(--text,#171c28);font:14px/1.4 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}'
+// The only way out of a frame: ask the page, which calls that feature's own routes and nothing more.
+const FRAME_SDK = `(() => {
+  const waiting = new Map(); let seq = 0
+  const send = m => parent.postMessage(m, '*')
+  addEventListener('message', e => {
+    const m = e.data
+    if (e.source !== parent || !m) return
+    if (m.bob === 'result') { const w = waiting.get(m.id); if (!w) return; waiting.delete(m.id); m.ok ? w.resolve(m.data) : w.reject(new Error(m.error || 'failed')) }
+    if (m.bob === 'init') {
+      const root = document.documentElement
+      root.dataset.theme = bob.theme = m.theme; root.lang = bob.lang = m.lang
+      for (const [k, v] of Object.entries(m.vars || {})) root.style.setProperty(k, v)
+      dispatchEvent(new Event('bob-ready'))
+    }
+  })
+  window.bob = {
+    theme: 'light', lang: 'zh',
+    call: (path, body) => new Promise((resolve, reject) => { const id = ++seq; waiting.set(id, { resolve, reject }); send({ bob: 'call', id, path, body }); setTimeout(() => { if (waiting.delete(id)) reject(new Error('timeout')) }, 20000) }),
+    resize: (width, height) => send({ bob: 'resize', width, height }),
+    prefill: text => send({ bob: 'prefill', text: String(text) }),
+    toast: text => send({ bob: 'toast', text: String(text) }),
+  }
+  send({ bob: 'ready' })
+})()`
+// Feature styling never applies inside the cards that ask for approval, the trial control or the login screen.
+const STYLE_OFF_LIMITS = '.card.ask, .card.help, #trialHost, #login, #browser'
+// The page itself loads nothing from other sites, so styling from a feature cannot send anything out through an image address.
+const PAGE_CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; frame-src 'self'; object-src 'none'; base-uri 'none'"
+
 async function featureTool(name, args) {
   if (name === 'feature_list') {
     const items = features.list()
@@ -1396,37 +1444,27 @@ async function featureTool(name, args) {
       : 'No features installed.'
   }
   if (name === 'feature_create') {
-    const featureName = String(args.name ?? '').trim()
-    if (!/^[a-z][a-z0-9-]{1,32}$/.test(featureName)) throw new Error('name must look like lowercase-with-dashes')
-    const title = String(args.title ?? '').trim()
-    const code = String(args.code ?? '')
-    if (!title) throw new Error('title is required')
-    if (!code.trim()) throw new Error('code is required')
-    await requireApproval({
-      kind: 'feature', summary: `Add feature: ${title}`, target: featureName,
-      detail: code.slice(0, 2000), extra: { action: 'add' },
-    })
+    // A change to Bob himself is only made with the owner right there to see it and take it back.
+    if (activeRun) throw new Error('A scheduled run cannot change Bob. Tell the user what you would add, so they can ask for it in a chat.')
+    if (bridgeWaiters.has(runningCid)) throw new Error('Bob can only be changed from the web app, where the owner can see the result and undo it. Tell the user to ask there.')
+    if (features.trialView()) throw new Error('Another change is still on trial. Ask the user to keep or undo it first.')
     let item
     try {
-      item = await features.install({ name: featureName, title, description: args.description, code, panelHtml: args.panel_html })
+      item = await features.install({ name: String(args.name ?? '').trim(), title: args.title, description: args.description, code: args.code, panelHtml: args.panel_html, widgets: args.widgets, css: args.css }, { trialMs: TRIAL_MS })
     } catch (error) {
-      throw new Error(`The feature did not load: ${error.message}`)
+      throw new Error(`The feature was not installed (${error.code ?? 'error'}${error.detail ? `: ${error.detail}` : ''}). Nothing was changed. Fix it and try again.`)
     }
-    if (item.status === 'error') {
-      features.remove(featureName)
-      throw new Error(`The feature did not load: ${item.error}`)
-    }
-    agent.stop() // its tools appear from the next message
+    refreshTools()
     broadcast({ type: 'features' })
     const toolNames = item.tools.map(t => t.fullName)
-    return `Installed "${item.title}"${toolNames.length ? ` with tools: ${toolNames.join(', ')}` : ''}. It is available from your next step.`
+    return `"${item.title}" is live on trial for ${Math.round(TRIAL_MS / 60000)} minutes${toolNames.length ? `, with tools ${toolNames.join(', ')} from your next reply` : ''}. The user sees Keep and Undo at the top right of the page; without an answer it is undone by itself. In one short sentence, tell them where to look and to press Keep if they like it.`
   }
   if (name === 'feature_remove') {
     const featureName = String(args.name ?? '')
     if (!features.list().some(f => f.name === featureName)) throw new Error(`No feature named "${featureName}". Call feature_list.`)
     await requireApproval({ kind: 'feature', summary: `Remove feature: ${featureName}`, target: featureName, extra: { action: 'remove' } })
-    features.remove(featureName)
-    agent.stop()
+    try { features.remove(featureName) } catch (error) { throw new Error(error.code === 'TRIAL_ACTIVE' ? 'It is on trial. Ask the user to press Undo instead.' : error.message) }
+    refreshTools()
     broadcast({ type: 'features' })
     return 'Removed.'
   }
@@ -1624,7 +1662,7 @@ const titleFrom = (text, files) => (text || files[0]?.name || '').split('\n')[0]
 async function route(req, res) {
   const { pathname } = new URL(req.url, 'http://local')
   if (req.method === 'GET' && pathname === '/') {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Frame-Options': 'DENY' })
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': PAGE_CSP })
     return res.end(fs.readFileSync(path.join(here, 'public/index.html')))
   }
   if (req.method === 'GET' && ['/manifest.webmanifest', '/sw.js', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-180.png'].includes(pathname)) {
@@ -1653,19 +1691,24 @@ async function route(req, res) {
   if (!authed(req)) return send(res, 401, { error: 'UNAUTHORIZED' })
   if (req.method === 'GET' && pathname.startsWith('/f/')) {
     const parts = pathname.split('/').filter(Boolean) // ['f', name, file]
-    const full = parts.length === 3 ? features.panelFile(parts[1], parts[2]) : null
-    if (!full) return send(res, 404, { error: 'NO_PANEL' })
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Frame-Options': 'SAMEORIGIN' })
-    return res.end(fs.readFileSync(full))
+    const text = parts.length === 3 ? features.readFile(parts[1], parts[2]) : null
+    if (text === null) return send(res, 404, { error: 'NO_FEATURE_FILE' })
+    if (parts[2] === 'style.css') {
+      res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' })
+      return res.end(`@scope (body) to (${STYLE_OFF_LIMITS}) {\n${text}\n}\n`)
+    }
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Frame-Options': 'SAMEORIGIN', 'Content-Security-Policy': FRAME_CSP })
+    return res.end(`<!doctype html><meta charset="utf-8"><style>${FRAME_BASE_CSS}</style><script>${FRAME_SDK}</script>${text}`)
   }
   if (pathname.startsWith('/api/f/')) {
     const rest = pathname.slice('/api/f/'.length)
     const [featureName, ...tail] = rest.split('/')
-    const route = features.findRoute(featureName, req.method, `/${tail.join('/')}`)
-    if (!route) return send(res, 404, { error: 'NO_FEATURE_ROUTE' })
+    const subpath = `/${tail.join('/')}`
+    if (!features.hasRoute(featureName, req.method, subpath)) return send(res, 404, { error: 'NO_FEATURE_ROUTE' })
     const body = req.method === 'GET' ? null : JSON.parse(await readBody(req) || '{}')
-    const result = await route.handler({ query: new URL(req.url, 'http://local').searchParams, body })
-    return send(res, 200, result ?? { ok: true })
+    try {
+      return send(res, 200, await features.callRoute(featureName, req.method, subpath, { query: Object.fromEntries(new URL(req.url, 'http://local').searchParams), body }))
+    } catch (error) { return send(res, 502, { error: 'FEATURE_FAILED', message: error.message }) }
   }
   if (req.method === 'POST' && pathname === '/api/logout') {
     return send(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(req, '', 0) })
@@ -1688,7 +1731,7 @@ async function route(req, res) {
     } catch { return send(res, 404, { error: 'NO_SHOT' }) }
   }
   if (req.method === 'GET' && pathname === '/api/extensions') return send(res, 200, extensionsView())
-  if (req.method === 'GET' && pathname === '/api/features') return send(res, 200, { items: features.list() })
+  if (req.method === 'GET' && pathname === '/api/features') return send(res, 200, { items: features.list(), trial: features.trialView() })
   if (req.method === 'GET' && pathname === '/api/memory') return send(res, 200, memory.list())
   if (req.method === 'GET' && pathname === '/api/proactive') return send(res, 200, { enabled: proactive.enabled, times: proactive.times, level: proactive.level })
   if (req.method === 'GET' && pathname === '/api/wechat/status') return send(res, 200, await wechatBridgeStatus())
@@ -1849,24 +1892,33 @@ async function route(req, res) {
     }
     case '/api/features/install': {
       try {
-        const item = await features.install(body)
-        if (item.status === 'error') { features.remove(item.name); return send(res, 400, { error: 'FEATURE_FAILED', message: item.error }) }
-        agent.stop()
+        await features.install(body, { trialMs: body.trial === true ? TRIAL_MS : 0 })
+        refreshTools()
         broadcast({ type: 'features' })
         return send(res, 200, { ok: true, items: features.list() })
       } catch (error) {
-        return send(res, 400, { error: 'FEATURE_FAILED', message: error.message })
+        return send(res, 400, { error: error.code ?? 'FEATURE_FAILED', message: error.detail ?? error.message })
       }
+    }
+    case '/api/features/trial': {
+      const trial = await features.endTrial(body.keep === true)
+      return trial ? send(res, 200, { ok: true, kept: body.keep === true }) : send(res, 404, { error: 'NO_TRIAL' })
+    }
+    case '/api/features/restore': {
+      try { await features.restorePrevious(String(body.name ?? '')) } catch (error) { return send(res, 400, { error: error.code ?? 'FEATURE_FAILED' }) }
+      refreshTools()
+      broadcast({ type: 'features' })
+      return send(res, 200, { ok: true, items: features.list() })
     }
     case '/api/features/remove': {
       try { features.remove(String(body.name ?? '')) } catch (error) { return send(res, 400, { error: error.code ?? 'BAD_NAME' }) }
-      agent.stop()
+      refreshTools()
       broadcast({ type: 'features' })
       return send(res, 200, { ok: true, items: features.list() })
     }
     case '/api/features/reload': {
       await features.loadAll()
-      agent.stop()
+      refreshTools()
       broadcast({ type: 'features' })
       return send(res, 200, { ok: true, items: features.list() })
     }
@@ -2071,6 +2123,8 @@ const mcpServer = http.createServer((req, res) => {
 await new Promise(resolve => mcpServer.listen(0, '127.0.0.1', resolve))
 mcpUrl = `http://127.0.0.1:${mcpServer.address().port}/mcp`
 
+const undone = features.recover()
+if (undone) console.log(`[features] undid the unanswered trial of "${undone.name}"`)
 await features.loadAll()
 
 server.listen(PORT, HOST, () => {
@@ -2098,6 +2152,7 @@ async function shutdown() {
   clearInterval(tickTimer)
   agent.stop()
   writes.flush()
+  features.stop()
   await browser.close()
   process.exit(0)
 }

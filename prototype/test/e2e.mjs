@@ -57,7 +57,7 @@ const fake = http.createServer((req, res) => {
 await new Promise(r => fake.listen(0, '127.0.0.1', r))
 
 // ---- server under test ----
-const env = { ...process.env, BOBBOT_NO_NIGHTLY: '1', BOBBOT_DATA: data, PORT: String(PORT), HOST: '127.0.0.1', DEEPSEEK_API_KEY: 'test-key', BOBBOT_TICK_MS: '1000', BOB_COMPAT_PORT: '3731', WECHAT_BRIDGE_URL: 'http://127.0.0.1:3999', DEEPSEEK_BASE_URL: `http://127.0.0.1:${fake.address().port}` }
+const env = { ...process.env, BOBBOT_NO_NIGHTLY: '1', BOBBOT_TRIAL_MS: '2500', BOBBOT_DATA: data, PORT: String(PORT), HOST: '127.0.0.1', DEEPSEEK_API_KEY: 'test-key', BOBBOT_TICK_MS: '1000', BOB_COMPAT_PORT: '3731', WECHAT_BRIDGE_URL: 'http://127.0.0.1:3999', DEEPSEEK_BASE_URL: `http://127.0.0.1:${fake.address().port}` }
 const setPin = pin => spawnSync(process.execPath, ['set-pin.mjs', pin], { cwd: root, env, encoding: 'utf8' })
 const server = spawn(process.execPath, ['server.mjs'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] })
 let log = ''
@@ -830,10 +830,14 @@ try {
     assert.equal((await fetch(`${base}/f/demo/panel.html`, { headers: { cookie } })).status, 200)
     const broken = await post('/api/features/install', { name: 'broken', title: 'Broken', code: 'export default function setup() { throw new Error("boom") }' })
     assert.equal(broken.status, 400)
+    const panel = await fetch(`${base}/f/demo/panel.html`, { headers: { cookie } })
+    assert.match(panel.headers.get('content-security-policy'), /^sandbox allow-scripts/, 'the panel is not sandboxed')
+    assert.equal((await fetch(`${base}/f/demo/feature.json`, { headers: { cookie } })).status, 404)
+    assert.equal((await fetch(`${base}/f/demo/panel.html`)).status, 401)
     assert.equal((await post('/api/features/remove', { name: 'demo' })).status, 200)
     assert.ok(!(await getJson('/api/features')).body.items.some(f => f.name === 'demo'))
+    assert.match((await fetch(`${base}/`)).headers.get('content-security-policy'), /default-src 'self'/)
   })
-
   await check('the nightly dream folds chats into memory, and a check-in can speak or stay silent', async () => {
     // A real model takes seconds to answer, and the dream has to wait for it.
     script.push(async () => { await sleep(1500); return say('{"add":[{"kind":"fact","text":"用户在上海工作"}],"insights":["最近常问天气"]}') })
@@ -954,6 +958,67 @@ try {
     assert.equal((await post('/api/clerk/draft/decide', { id: draft.id, allow: false })).data.status, 'rejected')
     assert.ok(!fs.existsSync(output)); assert.ok(!(await clerkView()).drafts.some(d => d.id === draft.id), 'the draft is still waiting')
   })
+
+  const featureArgs = text => ({ name: 'weather', title: 'Weather', code: `export default function setup(ctx) { ctx.registerTool({ name: 'now', description: 'Weather now', handler: () => '${text}' }) }`,
+    widgets: [{ id: 'now', anchor: 'header-right', html: '<b>sun</b>' }], css: '.msg { color: inherit }' })
+  const trialNow = async () => (await getJson('/api/features')).body.trial
+  await check('Bob changes himself in a chat: it is live at once, and stays only because the owner keeps it', async () => {
+    const t0 = Date.now()
+    script.push(use('feature_create', featureArgs('sunny')), say('Look at the top right.'))
+    assert.equal((await post('/api/chat', { text: 'add a weather icon' })).status, 200)
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'Look at the top right.')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
+    assert.ok(lastSent().includes('live on trial'), 'the model was not told it is a trial')
+    assert.equal(events.filter(e => e.at >= t0 && e.type === 'approval').length, 0)
+    assert.equal((await trialNow()).name, 'weather')
+    const style = await (await fetch(`${base}/f/weather/style.css`, { headers: { cookie } })).text()
+    assert.match(style, /^@scope \(body\) to \(\.card\.ask/, 'the styling is not scoped')
+    assert.match(await (await fetch(`${base}/f/weather/widget-now.html`, { headers: { cookie } })).text(), /window\.bob = [\s\S]*<b>sun<\/b>$/)
+    assert.equal((await post('/api/features/trial', { keep: true })).status, 200)
+    await sleep(3200) // past the trial time: a kept feature must still be there
+    const kept = (await getJson('/api/features')).body
+    assert.equal(kept.trial, null); assert.ok(kept.items.some(f => f.name === 'weather' && f.tools.includes('f_weather_now')))
+    const t1 = Date.now()
+    script.push(use('mcp__bobbot__f_weather_now', {}), say('It is sunny.'))
+    assert.equal((await post('/api/chat', { text: 'weather?' })).status, 200)
+    await waitAfter(t1, e => e.type === 'message' && e.text === 'It is sunny.')
+    await waitAfter(t1, e => e.type === 'status' && e.status === 'idle')
+    assert.ok(lastSent().includes('sunny'), 'the new tool did not reach the model')
+  })
+  await check('an update nobody answers is undone by itself, back to the kept version', async () => {
+    const t0 = Date.now()
+    script.push(use('feature_create', featureArgs('rainy')), say('Updated.'))
+    assert.equal((await post('/api/chat', { text: 'change it' })).status, 200)
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'Updated.')
+    assert.equal((await trialNow()).name, 'weather')
+    const done = await waitAfter(t0, e => e.type === 'trial_done')
+    assert.equal(done.kept, false); assert.equal(done.reason, 'timeout')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
+    assert.equal(await trialNow(), null)
+    const t1 = Date.now()
+    script.push(use('mcp__bobbot__f_weather_now', {}), say('Still sunny.'))
+    assert.equal((await post('/api/chat', { text: 'weather again?' })).status, 200)
+    await waitAfter(t1, e => e.type === 'message' && e.text === 'Still sunny.')
+    await waitAfter(t1, e => e.type === 'status' && e.status === 'idle')
+    assert.ok(lastSent().includes('sunny') && !lastSent().includes('rainy'), 'the undone version is still in use')
+  })
+  await check('Bob cannot change himself in a scheduled run or by editing his own program files', async () => {
+    const t0 = Date.now()
+    script.push(use('write_file', { path: path.join(root, 'server.mjs'), content: '// hacked' }), say('Could not.'))
+    assert.equal((await post('/api/chat', { text: 'edit your own code' })).status, 200)
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'Could not.')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
+    assert.ok(lastSent().includes('own program files'), 'writing the program was not refused')
+    assert.equal(events.filter(e => e.at >= t0 && e.type === 'approval').length, 0)
+    assert.ok(!fs.readFileSync(path.join(root, 'server.mjs'), 'utf8').startsWith('// hacked'))
+    const before = (await clerkView()).jobs.find(j => j.id === routineId).runs.length
+    script.push(use('feature_create', { name: 'sneaky', title: 'Sneaky', css: 'a{}' }), use('run_report', { met: true, evidence: 'x' }), say('Done.'))
+    assert.equal((await post('/api/clerk/job/run', { id: routineId })).status, 200)
+    await runsReach(routineId, before + 1)
+    assert.ok(!(await getJson('/api/features')).body.items.some(f => f.name === 'sneaky')); assert.equal(await trialNow(), null)
+    assert.equal((await post('/api/features/remove', { name: 'weather' })).status, 200)
+  })
+
 
   console.log('Spending limit')
   await check('at the cap, new chat is refused with no model call', async () => {

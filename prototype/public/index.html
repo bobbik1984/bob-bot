@@ -149,9 +149,9 @@ svg { width:1.25em; height:1.25em; flex:none; }
 .orb-btn .orb { width:100%; height:100%; --s:34px; }
 #app.hero .orb-btn .orb { --s:132px; }
 #app.hero .orb-btn { width:132px; height:132px; left:calc(50% - 66px); top:calc(env(safe-area-inset-top) + 15vh); }
-header { display:grid; grid-template-columns:56px 1fr 56px; align-items:center; padding:calc(8px + env(safe-area-inset-top)) 8px 8px; min-height:56px; }
+header { display:grid; grid-template-columns:minmax(56px,auto) 1fr minmax(56px,auto); align-items:center; padding:calc(8px + env(safe-area-inset-top)) 8px 8px; min-height:56px; }
 header .title { text-align:center; font-size:16px; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-header .right { justify-self:end; }
+header .right { justify-self:end; display:flex; align-items:center; gap:6px; padding-right:4px; }
 main { flex:1; min-height:0; position:relative; }
 .view { position:absolute; inset:0; overflow-y:auto; scrollbar-gutter:stable; padding:6px 14px 14px; }
 
@@ -467,6 +467,11 @@ html.fine .pad button:hover { border-color:var(--accent); }
 .seg button { min-height:36px; border-radius:10px; font-size:14px; font-weight:600; color:var(--muted); transition:background-color .15s, color .15s; }
 .seg button.on { background:var(--surface); color:var(--text); box-shadow:var(--shadow-1); }
 
+/* ---- feature packages on the page ---- */
+.plugin-widget { display:block; border:0; max-width:100%; background:transparent; }
+.slot:empty { display:none; }
+.slot { display:flex; flex-direction:column; align-items:center; gap:10px; width:100%; margin:8px 0; }
+
 /* ---- tabs and history ---- */
 nav button span:first-child { display:inline-flex; padding:3px 18px; border-radius:999px; transition:background-color .2s; }
 nav button.on span:first-child { background:var(--accent-soft); }
@@ -514,6 +519,7 @@ nav button.on span:first-child { background:var(--accent-soft); }
   <header>
     <span></span>
     <div class="title" id="title"></div>
+    <div class="right" id="slotHeader"></div>
   </header>
   <main>
     <div class="view" id="viewChat">
@@ -522,10 +528,12 @@ nav button.on span:first-child { background:var(--accent-soft); }
         <span class="s" data-t="welcomeSub"></span>
         <div id="glance" hidden></div>
         <div class="chips" id="chips"></div>
+        <div class="slot" id="slotHome"></div>
       </div>
       <div id="feed" aria-live="polite"></div>
     </div>
     <div class="view" id="viewClerk" hidden>
+      <div class="slot" id="slotClerk"></div>
       <div id="draftBox" hidden>
         <div class="sect-head" id="draftsHead"><h3 data-t="draftsTitle"></h3></div>
         <div id="draftList"></div>
@@ -540,6 +548,7 @@ nav button.on span:first-child { background:var(--accent-soft); }
       <div id="inboxList"></div>
     </div>
     <div class="view" id="viewSettings" hidden>
+      <div class="slot" id="slotSettings"></div>
       <div class="section">
         <h3 data-i="moon" data-t="themeTitle"></h3>
         <div class="seg" id="themeSeg"></div>
@@ -660,7 +669,7 @@ nav button.on span:first-child { background:var(--accent-soft); }
   <div id="fpModal" hidden>
     <div class="modal-card">
       <header><b id="fpTitle"></b><button class="icon-btn" id="fpClose" aria-label="close" data-i="cross"></button></header>
-      <iframe id="fpFrame" title="feature" src="about:blank"></iframe>
+      <iframe id="fpFrame" title="feature" sandbox="allow-scripts allow-forms" src="about:blank"></iframe>
     </div>
   </div>
   <input type="file" id="filePick" multiple hidden accept=".txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.log,.xml,.html,.htm,.yaml,.yml,.ini,.sql,text/*">
@@ -759,7 +768,9 @@ const I18N = {
   routineCheck:['校验','Check'], routineSteps:['步骤','Steps'], routineMissing:['缺数据时','If data is missing'], trialRunning:['正在试运行，结果会进收件箱。启用前不会定时运行。','Trial run in progress. The result goes to your inbox, and nothing is scheduled until you turn it on.'], trialDone:['试运行结束。看过结果后再启用定时。','Trial finished. Turn it on once the result looks right.'], enableRoutine:['启用定时','Turn on'],
   run_ok:['完成','Done'], run_partial:['部分完成','Partly done'], run_needs_you:['需要你','Needed you'], run_failed:['失败','Failed'], run_missed:['错过','Missed'],
   ch_wechat:['微信（官方 iLink）','WeChat (official iLink)'],
-  featuresTitle:['功能扩展','Features'], featuresHint:['Bob 可以在对话里给自己安装小型功能包（工具 + 设置面板），安装前会把代码给你确认。','Bob can install small feature packages (tools plus a settings panel) through chat; you review the code before it lands.'],
+  featuresTitle:['功能扩展','Features'], featuresHint:['Bob 可以给自己加功能：页面上的小部件、新工具、样式或设置面板。新功能先试用几分钟，你点「保留」才留下，否则自动撤销。功能代码在隔离环境里运行，碰不到密钥和登录。','Bob can add to himself: widgets on the page, new tools, styling or a settings panel. A new feature is on trial for a few minutes and stays only if you press Keep. Feature code runs isolated, away from keys and logins.'],
+  trialTitle:['试用中','On trial'], trialKeep:['保留','Keep'], trialUndo:['撤销','Undo'], trialKept:['已保留「{n}」','Kept "{n}"'], trialUndone:['已撤销「{n}」','Undid "{n}"'], trialTimeout:['没有确认，已自动撤销「{n}」','No answer, so "{n}" was undone'], trialCrashed:['「{n}」出错了，已自动撤销','"{n}" broke and was undone'],
+  featuresRestore:['换回上一版','Previous version'], featuresOnPage:['页面部件 {n} 个','{n} on the page'],
   featuresEmpty:['还没有安装功能包。','No feature packages installed yet.'], featuresOpen:['打开','Open'], featuresFailed:['加载失败','failed to load'],
   memoryTitle:['记忆','Memory'], memoryHint:['Bob 在夜里会把最近的对话整理成对你的长期记忆；你可以在谈话里让他记住或忘掉事情。','At night Bob folds recent chats into durable memory. You can ask him to remember or forget things in chat.'],
   memoryEmpty:['还没有记忆。','Nothing remembered yet.'], mem_fact:['事实','Fact'], mem_preference:['偏好','Preference'], mem_pattern:['习惯','Pattern'], mem_open_loop:['待跟进','Follow up'], memoryDreamNow:['现在整理想一次','Dream now'],
@@ -1554,7 +1565,8 @@ function connect() {
     else if (e.type === 'conversations') refreshConvs()
     else if (e.type === 'clerk') loadClerk()
     else if (e.type === 'extensions') { if (currentView === 'settings') loadExtensions() }
-    else if (e.type === 'features') { if (currentView === 'settings') loadFeatures() }
+    else if (e.type === 'features') loadFeatures()
+    else if (e.type === 'trial_done') toast(t(e.kept ? 'trialKept' : e.reason === 'timeout' ? 'trialTimeout' : e.reason === 'crashed' ? 'trialCrashed' : 'trialUndone', e.title), !e.kept && e.reason !== 'rejected')
     else if (e.type === 'memory') { if (currentView === 'settings') loadMemory() }
     else if (e.type === 'budget') showBudget(e)
     else if (e.type === 'status') {
@@ -1796,6 +1808,7 @@ function drawTheme() {
     b.onclick = () => {
       try { if (choice === 'auto') localStorage.removeItem('bobbot.theme'); else localStorage.setItem('bobbot.theme', choice) } catch { /* private mode */ }
       applyTheme(); drawTheme()
+      document.querySelectorAll('.plugin-widget').forEach(frame => frame.contentWindow?.postMessage(frameInit(), '*'))
     }
     return b
   }))
@@ -1872,32 +1885,142 @@ $('proactiveNow').onclick = async () => {
   $('proactiveMsg').textContent = data.sent ? t('proactiveSent') : data.ok ? t('proactiveSilent') : t('proactiveSkip', data.reason ?? result.status)
   loadProactive()
 }
+// ---- feature packages: widgets in sandboxed frames, scoped styling, and the trial control ----
+const SLOTS = { 'header-right': '#slotHeader', home: '#slotHome', 'clerk-top': '#slotClerk', 'settings-top': '#slotSettings' }
+const OFF_LIMITS = '.card.ask, .card.help, #trialHost, #login, #browser' // a feature never draws inside what asks for a decision
+const FRAME_VARS = ['--bg', '--surface', '--surface-2', '--surface-3', '--text', '--muted', '--line', '--accent', '--accent-text', '--accent-soft', '--accent-ink', '--danger', '--ok', '--warn']
+function frameInit() {
+  const style = getComputedStyle(document.documentElement)
+  return { bob: 'init', theme: document.documentElement.dataset.theme, lang, vars: Object.fromEntries(FRAME_VARS.map(v => [v, style.getPropertyValue(v).trim()])) }
+}
+function sizeWidget(frame, width, height) {
+  const inHeader = frame.dataset.anchor === 'header-right'
+  const fit = (value, low, high, fallback) => Math.min(high, Math.max(low, Number.isFinite(Number(value)) ? Math.round(Number(value)) : fallback))
+  frame.style.width = `${fit(width, 20, inHeader ? 160 : 1200, inHeader ? 44 : 320)}px`
+  frame.style.height = `${fit(height, 20, inHeader ? 40 : 600, inHeader ? 36 : 120)}px`
+}
+let mounted = ''
+function mountFeatures(items) {
+  const live = items.filter(f => f.status === 'ok')
+  const key = JSON.stringify(live.map(f => [f.name, f.version, f.widgets, f.style]))
+  if (key === mounted) return // nothing changed: leave running widgets alone
+  mounted = key
+  document.querySelectorAll('.plugin-widget, link[data-plugin]').forEach(node => node.remove())
+  for (const f of live) {
+    if (f.style) {
+      const link = el('link'); link.rel = 'stylesheet'; link.href = `/f/${f.name}/style.css?v=${f.version}`; link.dataset.plugin = f.name
+      document.head.append(link)
+    }
+    for (const w of f.widgets) {
+      let target = null
+      try { target = document.querySelector(SLOTS[w.anchor] ?? w.anchor) } catch { /* not a selector this page understands */ }
+      if (!target || target.closest(OFF_LIMITS)) continue
+      const frame = el('iframe', 'plugin-widget')
+      frame.setAttribute('sandbox', 'allow-scripts allow-forms')
+      frame.title = f.title; frame.dataset.plugin = f.name; frame.dataset.anchor = w.anchor
+      sizeWidget(frame, w.width, w.height)
+      frame.src = `/f/${f.name}/widget-${w.id}.html?v=${f.version}`
+      const place = target.closest('#feed') ? 'before' : w.place // the chat feed manages its own children
+      if (place === 'start') target.prepend(frame); else if (place === 'before') target.before(frame); else if (place === 'after') target.after(frame); else target.append(frame)
+    }
+  }
+}
+// A frame has no login of its own. It asks the page, and the page only ever calls that feature's own routes.
+addEventListener('message', async e => {
+  const m = e.data
+  if (!m || typeof m.bob !== 'string') return
+  const frame = [...document.querySelectorAll('.plugin-widget'), $('fpFrame')].find(f => f.contentWindow === e.source)
+  const name = frame?.dataset.plugin
+  if (!name) return
+  const reply = data => e.source.postMessage(data, '*')
+  if (m.bob === 'ready') reply(frameInit())
+  else if (m.bob === 'resize' && frame !== $('fpFrame')) sizeWidget(frame, m.width, m.height)
+  else if (m.bob === 'prefill') prefill(String(m.text ?? '').slice(0, 2000))
+  else if (m.bob === 'toast') toast(String(m.text ?? '').slice(0, 120))
+  else if (m.bob === 'call') {
+    const route = String(m.path ?? '')
+    if (!/^\/[\w\-./]*(\?[\w\-.=&%+,]*)?$/.test(route) || route.includes('..')) return reply({ bob: 'result', id: m.id, ok: false, error: 'bad path' })
+    try {
+      const res = await fetch(`/api/f/${name}${route}`, m.body === undefined || m.body === null ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(m.body) })
+      const data = await res.json().catch(() => null)
+      reply({ bob: 'result', id: m.id, ok: res.ok, data, error: res.ok ? '' : (data?.message ?? data?.error ?? String(res.status)) })
+    } catch (error) { reply({ bob: 'result', id: m.id, ok: false, error: error.message }) }
+  }
+})
+
+// The trial control lives in a closed shadow tree with its own inline styles, so no feature styling can hide,
+// move or disguise the two buttons that decide whether a change stays.
+const trialHost = el('div'); trialHost.id = 'trialHost'
+const TRIAL_BOX = 'all:initial !important; position:fixed !important; top:calc(env(safe-area-inset-top) + 60px) !important; right:10px !important; z-index:90 !important; ' // under the header, so it never covers what is being tried there
+trialHost.style.cssText = TRIAL_BOX + 'display:none !important;'
+const trialRoot = trialHost.attachShadow({ mode: 'closed' })
+const trialStyle = el('style')
+trialStyle.textContent = `.box { display:flex; align-items:center; gap:8px; padding:6px 6px 6px 12px; border-radius:999px; background:var(--surface,#fff); color:var(--text,#171c28); border:1px solid var(--line,#e4e7ee); box-shadow:var(--shadow-pop,0 12px 40px rgba(16,24,40,.16)); font:600 13px/1.2 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; max-width:calc(100vw - 20px); }
+.name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.left { color:var(--muted,#667085); font-variant-numeric:tabular-nums; flex:none; }
+button { font:inherit; border:0; cursor:pointer; min-height:32px; padding:0 14px; border-radius:999px; flex:none; background:var(--surface-2,#eef0f6); color:var(--text,#171c28); }
+button.keep { background:var(--accent,#2f6bff); color:var(--accent-text,#fff); }
+button:disabled { opacity:.5; }`
+const trialBox = el('div', 'box'), trialName = el('span', 'name'), trialLeft = el('span', 'left')
+const trialKeep = el('button', 'keep', t('trialKeep')), trialUndo = el('button', '', t('trialUndo'))
+trialKeep.type = trialUndo.type = 'button'
+trialBox.append(trialName, trialLeft, trialUndo, trialKeep)
+trialRoot.append(trialStyle, trialBox)
+document.body.append(trialHost)
+let trialEnds = 0, trialTick = null
+function drawTrial(trial) {
+  clearInterval(trialTick)
+  trialHost.style.cssText = TRIAL_BOX + (trial ? 'display:block !important;' : 'display:none !important;')
+  if (!trial) return
+  trialKeep.disabled = trialUndo.disabled = false
+  trialName.textContent = `${t('trialTitle')} · ${trial.title}`
+  trialEnds = Date.now() + trial.remainingMs // counted on this device's clock, from what the server says is left
+  const paint = () => {
+    const left = Math.max(0, Math.ceil((trialEnds - Date.now()) / 1000))
+    trialLeft.textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`
+  }
+  paint(); trialTick = setInterval(paint, 1000)
+}
+const decideTrial = async keep => { trialKeep.disabled = trialUndo.disabled = true; await post('/api/features/trial', { keep }); loadFeatures() }
+trialKeep.onclick = () => decideTrial(true)
+trialUndo.onclick = () => decideTrial(false)
+
 async function loadFeatures() {
   const data = await getJson('/api/features')
   if (!data) return
+  mountFeatures(data.items)
+  drawTrial(data.trial)
   const list = $('featureList')
   list.replaceChildren()
   if (!data.items.length) { list.append(el('p', 'hint', t('featuresEmpty'))); return }
   for (const feature of data.items) {
     const row = el('div', 'feature-row')
     const info = el('div', 'feature-info')
-    info.append(el('b', '', feature.title), el('small', '', feature.name + (feature.status === 'error' ? ' · ' + t('featuresFailed') : '')))
+    const notes = [feature.name, feature.trial ? t('trialTitle') : '', feature.status === 'error' ? t('featuresFailed') : '', feature.widgets.length ? t('featuresOnPage', feature.widgets.length) : ''].filter(Boolean)
+    info.append(el('b', '', feature.title), el('small', '', notes.join(' · ')))
     if (feature.description) info.append(el('div', 'hint', feature.description))
     if (feature.error) info.append(el('div', 'hint err', feature.error))
     const actions = el('div', 'row')
     if (feature.panel) {
       const open = el('button', 'btn small', t('featuresOpen'))
-      open.onclick = () => { $('fpTitle').textContent = feature.title; $('fpFrame').src = `/f/${feature.name}/${feature.panel}`; $('fpModal').hidden = false }
+      open.onclick = () => { $('fpTitle').textContent = feature.title; $('fpFrame').dataset.plugin = feature.name; $('fpFrame').src = `/f/${feature.name}/${feature.panel}?v=${feature.version}`; $('fpModal').hidden = false }
       actions.append(open)
     }
-    const remove = el('button', 'btn small danger', t('remove'))
-    remove.onclick = async () => { if (!confirm(t('confirmDelete', feature.title))) return; await post('/api/features/remove', { name: feature.name }); loadFeatures() }
-    actions.append(remove)
+    if (feature.hasPrevious && !data.trial) {
+      const back = el('button', 'btn small', t('featuresRestore'))
+      back.onclick = async () => { const r = await post('/api/features/restore', { name: feature.name }); if (r.status !== 200) toast(errText(r.data, r.status), true); loadFeatures() }
+      actions.append(back)
+    }
+    if (!feature.trial) {
+      const remove = el('button', 'btn small danger', t('remove'))
+      remove.onclick = async () => { if (!confirm(t('confirmDelete', feature.title))) return; await post('/api/features/remove', { name: feature.name }); loadFeatures() }
+      actions.append(remove)
+    }
     row.append(info, actions)
     list.append(row)
   }
 }
-$('fpClose').onclick = () => { $('fpModal').hidden = true; $('fpFrame').src = 'about:blank' }
+$('fpClose').onclick = () => { $('fpModal').hidden = true; $('fpFrame').src = 'about:blank'; delete $('fpFrame').dataset.plugin }
 let pushConfig = null
 const isInstalled = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
 const urlB64ToBytes = base64 => {
@@ -2389,6 +2512,7 @@ async function boot() {
   if (!s.hasKey) { $('settingsMsg').textContent = t('noKey'); show('settings') }
   connect()
   loadClerk() // the front page shows what is waiting
+  loadFeatures() // widgets and styling the owner has kept
 }
 boot()
 </script>
