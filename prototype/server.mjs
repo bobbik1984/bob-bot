@@ -292,7 +292,7 @@ const TOOLS = [
       id: { type: 'string', description: 'lowercase id' },
       anchor: { type: 'string', description: 'Where: header-right (top right of every page), home, clerk-top, settings-top, or a CSS id or class of an element on the page such as #feed' },
       place: { type: 'string', enum: ['end', 'start', 'before', 'after'], description: 'Inside the anchor at its end or start, or before or after it. Default end' },
-      html: { type: 'string', description: 'HTML with inline <style> and <script>. It cannot fetch by itself: use await bob.call("/today") to call this package\'s own routes. Also bob.resize(width, height), bob.prefill(text) to put text in the message box, bob.toast(text), bob.theme and bob.lang. The app\'s colours are available as CSS variables such as var(--text), var(--muted), var(--accent), var(--surface). Wait for the "bob-ready" event before reading bob.theme.' },
+      html: { type: 'string', description: 'HTML with inline <style> and <script>. It cannot fetch by itself: use await bob.call("/today") to call this package\'s own routes. Also bob.resize(width, height), bob.prefill(text) to put text in the message box, bob.toast(text), bob.theme and bob.lang. The app\'s colours are CSS variables such as var(--text), var(--muted), var(--accent), var(--surface), already correct for light and dark; never set color-scheme or an opaque page background. KEEP WHAT YOU SHOW: bob.state holds what you last stored with bob.save(value) (any small JSON, null the first time, and it may come from an older version of your widget, so check its shape). Draw bob.state at once, then refresh in the background and bob.save the new value, so the widget never shows an empty placeholder like "-" while loading; with nothing saved yet, stay blank until the data arrives. Start when bob.ready is true or on the "bob-ready" event (it fires once; "bob-theme" fires when the theme changes).' },
       width: { type: 'integer' }, height: { type: 'integer', description: 'Pixels. header-right is at most 160 by 40' },
     }, required: ['id', 'anchor', 'html'] } },
     css: { type: 'string', description: 'Optional styling for the app itself, plain CSS. It cannot reach approval cards.' },
@@ -1451,25 +1451,35 @@ function refreshTools() {
 // What a feature's frame may do: run its own scripts and nothing else. `sandbox` gives it an origin of its own,
 // so it carries no login and cannot reach into the page around it.
 const FRAME_CSP = "sandbox allow-scripts allow-forms; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: https:; frame-ancestors 'self'"
-const FRAME_BASE_CSS = 'html,body{margin:0;background:transparent;color:var(--text,#171c28);font:14px/1.4 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}'
+// The app's colours, so a widget that uses var(--text) and friends is right on its very first paint, before the page sends them.
+const FRAME_BASE_CSS = ':root{--bg:#f5f6fa;--surface:#fff;--surface-2:#eef0f6;--surface-3:#e2e6ef;--text:#171c28;--muted:#667085;--line:#e4e7ee;--accent:#2f6bff;--accent-text:#fff;--accent-soft:#e8efff;--accent-ink:#2152cc;--danger:#d64545;--ok:#1f9d6b;--warn:#a96a12}' +
+  'html[data-theme=dark]{--bg:#0e1117;--surface:#161a22;--surface-2:#1f242e;--surface-3:#2b313d;--text:#e8ebf2;--muted:#98a2b3;--line:#272d39;--accent:#4b7dff;--accent-soft:#1a2748;--accent-ink:#a3bcff;--danger:#f0736f;--ok:#4cc38a;--warn:#e3ad52}' +
+  'html,body{margin:0;background:transparent;color:var(--text);font:14px/1.4 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}'
 // The only way out of a frame: ask the page, which calls that feature's own routes and nothing more.
-const FRAME_SDK = `(() => {
-  const waiting = new Map(); let seq = 0
+// The frame follows the app's theme from its first instant. A frame whose colour scheme differs from the page around it
+// gets an opaque white backdrop from the browser, and a widget's own `color-scheme` would follow the phone's setting
+// instead of the app's, so the scheme is forced on the root element.
+const frameSdk = theme => `(() => {
+  const root = document.documentElement
+  const setScheme = value => { root.dataset.theme = value; root.style.setProperty('color-scheme', value, 'important') }
+  setScheme(${JSON.stringify(theme)})
+  const waiting = new Map(); let seq = 0, started = false
   const send = m => parent.postMessage(m, '*')
   addEventListener('message', e => {
     const m = e.data
     if (e.source !== parent || !m) return
     if (m.bob === 'result') { const w = waiting.get(m.id); if (!w) return; waiting.delete(m.id); m.ok ? w.resolve(m.data) : w.reject(new Error(m.error || 'failed')) }
     if (m.bob === 'init') {
-      const root = document.documentElement
-      root.dataset.theme = bob.theme = m.theme; root.lang = bob.lang = m.lang
+      bob.theme = m.theme; bob.lang = m.lang; root.lang = m.lang; setScheme(m.theme)
       for (const [k, v] of Object.entries(m.vars || {})) root.style.setProperty(k, v)
-      dispatchEvent(new Event('bob-ready'))
+      if (!started) { started = true; bob.ready = true; bob.state = m.state ?? null; dispatchEvent(new Event('bob-ready')) }
+      else dispatchEvent(new Event('bob-theme'))
     }
   })
   window.bob = {
-    theme: 'light', lang: 'zh',
+    ready: false, state: null, theme: ${JSON.stringify(theme)}, lang: 'zh',
     call: (path, body) => new Promise((resolve, reject) => { const id = ++seq; waiting.set(id, { resolve, reject }); send({ bob: 'call', id, path, body }); setTimeout(() => { if (waiting.delete(id)) reject(new Error('timeout')) }, 20000) }),
+    save: value => send({ bob: 'save', value }),
     resize: (width, height) => send({ bob: 'resize', width, height }),
     prefill: text => send({ bob: 'prefill', text: String(text) }),
     toast: text => send({ bob: 'toast', text: String(text) }),
@@ -1753,7 +1763,8 @@ async function route(req, res) {
       return res.end(`@scope (body) to (${STYLE_OFF_LIMITS}) {\n${text}\n}\n`)
     }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Frame-Options': 'SAMEORIGIN', 'Content-Security-Policy': FRAME_CSP })
-    return res.end(`<!doctype html><meta charset="utf-8"><style>${FRAME_BASE_CSS}</style><script>${FRAME_SDK}</script>${text}`)
+    const theme = new URL(req.url, 'http://local').searchParams.get('t') === 'dark' ? 'dark' : 'light'
+    return res.end(`<!doctype html><meta charset="utf-8"><style>${FRAME_BASE_CSS}</style><script>${frameSdk(theme)}</script>${text}`)
   }
   if (pathname.startsWith('/api/f/')) {
     const rest = pathname.slice('/api/f/'.length)

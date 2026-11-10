@@ -108,6 +108,8 @@ Because nobody reads the code first, the code is boxed in instead:
 - **Styling** is wrapped in a CSS scope that stops at approval cards, the trial control, the login screen and the browser window, and the page loads nothing from other sites.
 - Bob can only do this in a web chat with you present: not from a scheduled run and not from WeChat.
 
+Widgets remember what they showed. `bob.save(value)` keeps a small piece of JSON (up to 8 KB) on this device, and `bob.state` hands it back the moment the widget starts, so a widget draws its last content at once and refreshes quietly behind it instead of showing an empty placeholder while it loads. A frame is not shown until its document is ready, it follows the app's light or dark setting from its first paint (a widget cannot override that), and it receives the app's colours as CSS variables already correct for the current theme. `bob-ready` fires once when the widget may start and `bob-theme` when the theme changes.
+
 What this does not cover: a package's server code can reach the internet and services on this machine's loopback address (the WeChat bridge API on 3721 trusts local callers), it can register tools Bob may then call, and its styling can still rearrange the rest of the page. `run_command` is unchanged: an approved command can do anything its user can, including to Bob's files. The boxing is done by Node and the browser, not by a separate system user.
 
 ## Being told when Bob is done

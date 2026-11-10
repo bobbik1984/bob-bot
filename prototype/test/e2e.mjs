@@ -974,6 +974,10 @@ try {
     const style = await (await fetch(`${base}/f/weather/style.css`, { headers: { cookie } })).text()
     assert.match(style, /^@scope \(body\) to \(\.card\.ask/, 'the styling is not scoped')
     assert.match(await (await fetch(`${base}/f/weather/widget-now.html`, { headers: { cookie } })).text(), /window\.bob = [\s\S]*<b>sun<\/b>$/)
+    const dark = await (await fetch(`${base}/f/weather/widget-now.html?t=dark`, { headers: { cookie } })).text()
+    assert.match(dark, /setScheme\("dark"\)/, 'the frame does not start in the app theme'); assert.match(dark, /html\[data-theme=dark\]\{--bg:#0e1117/)
+    assert.match(await (await fetch(`${base}/f/weather/widget-now.html`, { headers: { cookie } })).text(), /setScheme\("light"\)/)
+    assert.match(dark, /save: value =>/, 'bob.save is missing'); assert.match(dark, /bob-theme/)
     assert.equal((await post('/api/features/trial', { keep: true })).status, 200)
     await sleep(3200) // past the trial time: a kept feature must still be there
     const kept = (await getJson('/api/features')).body

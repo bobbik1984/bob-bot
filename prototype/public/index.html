@@ -1872,7 +1872,6 @@ function drawTheme() {
     b.onclick = () => {
       try { if (choice === 'auto') localStorage.removeItem('bobbot.theme'); else localStorage.setItem('bobbot.theme', choice) } catch { /* private mode */ }
       applyTheme(); drawTheme()
-      document.querySelectorAll('.plugin-widget').forEach(frame => frame.contentWindow?.postMessage(frameInit(), '*'))
     }
     return b
   }))
@@ -1953,9 +1952,16 @@ $('proactiveNow').onclick = async () => {
 const SLOTS = { 'header-right': '#slotHeader', home: '#slotHome', 'clerk-top': '#slotClerk', 'settings-top': '#slotSettings' }
 const OFF_LIMITS = '.card.ask, .card.help, #trialHost, #login, #browser' // a feature never draws inside what asks for a decision
 const FRAME_VARS = ['--bg', '--surface', '--surface-2', '--surface-3', '--text', '--muted', '--line', '--accent', '--accent-text', '--accent-soft', '--accent-ink', '--danger', '--ok', '--warn']
-function frameInit() {
+const frameTheme = () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light')
+// What a widget last saved with bob.save, kept on this device, so it can draw something real the moment it loads.
+const MAX_WIDGET_STATE = 8000
+const stateKey = frame => `bobbot.w.${frame.dataset.plugin}.${frame.dataset.widget || 'panel'}`
+function widgetState(frame) {
+  try { const raw = localStorage.getItem(stateKey(frame)); return raw ? JSON.parse(raw) : null } catch { return null }
+}
+function frameInit(frame) {
   const style = getComputedStyle(document.documentElement)
-  return { bob: 'init', theme: document.documentElement.dataset.theme, lang, vars: Object.fromEntries(FRAME_VARS.map(v => [v, style.getPropertyValue(v).trim()])) }
+  return { bob: 'init', theme: frameTheme(), lang, state: widgetState(frame), vars: Object.fromEntries(FRAME_VARS.map(v => [v, style.getPropertyValue(v).trim()])) }
 }
 function sizeWidget(frame, width, height) {
   const inHeader = frame.dataset.anchor === 'header-right'
@@ -1981,14 +1987,18 @@ function mountFeatures(items) {
       if (!target || target.closest(OFF_LIMITS)) continue
       const frame = el('iframe', 'plugin-widget')
       frame.setAttribute('sandbox', 'allow-scripts allow-forms')
-      frame.title = f.title; frame.dataset.plugin = f.name; frame.dataset.anchor = w.anchor
+      frame.title = f.title; frame.dataset.plugin = f.name; frame.dataset.widget = w.id; frame.dataset.anchor = w.anchor
+      frame.style.visibility = 'hidden' // not seen until its document is up, so whatever the browser paints behind a loading frame never shows
       sizeWidget(frame, w.width, w.height)
-      frame.src = `/f/${f.name}/widget-${w.id}.html?v=${f.version}`
+      frame.src = `/f/${f.name}/widget-${w.id}.html?v=${f.version}&t=${frameTheme()}`
       const place = target.closest('#feed') ? 'before' : w.place // the chat feed manages its own children
       if (place === 'start') target.prepend(frame); else if (place === 'before') target.before(frame); else if (place === 'after') target.after(frame); else target.append(frame)
     }
   }
 }
+// When the theme changes, by the owner's choice or because the phone switched, every open frame follows at once.
+new MutationObserver(() => document.querySelectorAll('.plugin-widget, #fpFrame').forEach(frame => frame.contentWindow?.postMessage(frameInit(frame), '*')))
+  .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
 // A frame has no login of its own. It asks the page, and the page only ever calls that feature's own routes.
 addEventListener('message', async e => {
   const m = e.data
@@ -1997,7 +2007,10 @@ addEventListener('message', async e => {
   const name = frame?.dataset.plugin
   if (!name) return
   const reply = data => e.source.postMessage(data, '*')
-  if (m.bob === 'ready') reply(frameInit())
+  if (m.bob === 'ready') { reply(frameInit(frame)); frame.style.visibility = '' }
+  else if (m.bob === 'save') {
+    try { const text = JSON.stringify(m.value ?? null); if (text.length <= MAX_WIDGET_STATE) localStorage.setItem(stateKey(frame), text) } catch { /* private mode, or not serialisable */ }
+  }
   else if (m.bob === 'resize' && frame !== $('fpFrame')) sizeWidget(frame, m.width, m.height)
   else if (m.bob === 'prefill') prefill(String(m.text ?? '').slice(0, 2000))
   else if (m.bob === 'toast') toast(String(m.text ?? '').slice(0, 120))
@@ -2067,7 +2080,7 @@ async function loadFeatures() {
     const actions = el('div', 'row')
     if (feature.panel) {
       const open = el('button', 'btn small', t('featuresOpen'))
-      open.onclick = () => { $('fpTitle').textContent = feature.title; $('fpFrame').dataset.plugin = feature.name; $('fpFrame').src = `/f/${feature.name}/${feature.panel}?v=${feature.version}`; $('fpModal').hidden = false }
+      open.onclick = () => { $('fpTitle').textContent = feature.title; $('fpFrame').dataset.plugin = feature.name; $('fpFrame').dataset.widget = 'panel'; $('fpFrame').src = `/f/${feature.name}/${feature.panel}?v=${feature.version}&t=${frameTheme()}`; $('fpModal').hidden = false }
       actions.append(open)
     }
     if (feature.hasPrevious && !data.trial) {
