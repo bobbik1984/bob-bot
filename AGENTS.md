@@ -17,14 +17,14 @@
 | 了解 Router-Worker 的外部设计参考 | [docs/SUPER_AGENT_NOTES.md](docs/SUPER_AGENT_NOTES.md) |
 | 增删待办或同步看板进度 | [todo.md](todo.md)、[progress.yaml](progress.yaml) |
 
-## 2. 与上游 `bob-agent`（`bob-agent-next`）的边界规则
+## 2. 与主干 `bob-agent`（`bob-agent-next`）的分工与边界规则（2026-11-11 `BOB-D-015` 更新）
 
-1. **内核能力复用，产品体验解耦**：
-   - `bob-bot` 可参考或抽取 `bob-agent-next` 的最小模块，但不直接依赖含外部 CLI 模块的 `bob-runtime`。实际可复用范围以 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §2 为准。
-   - **严禁将面向极客的多节点 CLI 管理（Claude Code / Codex / AGY / DSH 终端附着）带入 `bob-bot` 的消费者界面与必经依赖链**。
-2. **零外部 CLI 依赖原则**：
-   - 正式版的目标仍是 `bobbot-server`（Rust 单一二进制）+ `Headless Chromium` 闭环运行，不依赖 Node.js Cordis、tmux 或第三方 Coding CLI。
-   - **测试原型例外**：`prototype/` 使用 Node.js 与 DeepSeek Harness（DSH）作为 Agent 后端，用于尽快验证产品。是否在正式版继续使用 DSH，等原型验证后再决定。可选的消息渠道与 MCP 不得进入必经依赖链。
+1. **永久原型实验室定位（Prototype Lab）**：
+   - 本仓库（`prototype/`，线上测试实例）长期作为 **Bob 轻量交互、办公自动化与自我扩展能力的快速研究原型实验室**。
+   - **不再在本仓库单独分叉建设独立的 `bobbot-server` Rust 服务端**：凡在本原型中验证成熟的优势（Jarvis 彩色球与单一交流窗口、手机桌面式沙箱小组件 3 分钟试用、云端浏览器手机虚拟窗口接管、Routine 与待批草稿、四档主动关心、Web Push / 微信桥送达，以及 61+ 项端到端/浏览器/UI 验收标准），统一迁入 **`bob-agent-next` 主干**按 `WP-J1`～`WP-J6` 正式开发（见 `bob-agent-next/docs/DECISIONS.md` `BOB-D-015`）。
+2. **体验纯净度与零外部依赖基准**：
+   - 本原型保持面向普通用户的极简 Jarvis 体验，**严禁将面向极客的多节点 CLI 管理（Claude Code / Codex / AGY 终端附着）带入本原型界面**。
+   - 原型内允许继续使用 Node.js 与 DeepSeek Harness（DSH）快速试错新交互；正式版在 `bob-agent-next` 主干采用纯 Rust `BobNativeHarness` + 内嵌 `QuickJS` 沙箱闭环运行，零 Node.js 与第三方 CLI 必经依赖。可选的消息渠道与 MCP 不得进入必经依赖链。
 
 ## 3. 安全与人机门禁（Human Gates）
 

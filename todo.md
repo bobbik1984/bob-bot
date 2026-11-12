@@ -33,7 +33,11 @@
 - [ ] 把内置能力（文员、记忆、渠道）逐步迁成功能包，核心只留登录、审批、密钥、花费上限与功能包管理
 - [ ] 微信图片/语音/文件与群聊
 
-## 🚀 BB0：内核裁剪与 3 分钟 BYOK 开箱向导
+## 🚀 正式版收敛说明（2026-11-11 `BOB-D-015`：统一迁入 `bob-agent-next` 主干施工）
+
+> 以下原 `BB0`～`BB4` 的正式版纯 Rust + Vue 实现，已统一归并至 **`bob-agent-next` 主干的 `WP-J1`～`WP-J6`**（见 `bob-agent-next/docs/CURRENT_STAGE.md`），不再在本仓库单独分叉建设 `bobbot-server`。以下条目保留为上游迁移的功能核对清单：
+
+### BB0：内核裁剪与 3 分钟 BYOK 开箱向导（已映射至上游 `WP-J1` / `WP-J2`）
 - [ ] [BB0-01] 初始化 `bob-bot` Rust Workspace 与消费者版 Vue 3 响应式前端骨架（剥离多节点 CLI 列表，保留「对话 / 日常 / 记忆与网站」三栏）
 - [ ] [BB0-02] 实现首次访问向导（服务器端设置的 4 位 PIN 登录 + DeepSeek/Gemini/OpenAI/OpenRouter 一键 API Key 填入与连通性测试）
 - [ ] [BB0-03] 实现凭据密钥库（标准 AEAD、`0600` 权限）持久化保存模型 Key，实现快慢双模型（Clerk / Maker）自动绑定

@@ -1,6 +1,7 @@
 # BobBot — Development Route（分阶段开发路线图）
 
-> **状态**：2026-11-08 制定。当前具体施工任务只看 [CURRENT_STAGE.md](CURRENT_STAGE.md)。阶段编号采用 `BB#`（BobBot Milestone），每个阶段必须通过对应的退出门（Exit Gate）实测验收后方可进入下一阶段。
+> **状态**：2026-11-11 按统一主干裁决（`BOB-D-015`）更新（原 2026-11-08 制定）。
+> **收敛说明**：本仓库原规划的独立 Rust 服务端重写（下方 `BB0 → BB4` 中的 `bobbot-server`）**已正式合并入 `bob-agent-next` 统一主干的 `WP-J1`～`WP-J6` 路线**（详见 `bob-agent-next/docs/DEVELOPMENT_ROUTE.md` 与 `CURRENT_STAGE.md`），避免维护两套 Rust 内核。本仓库持续承担 `prototype/` 线上快速试错与真实办公站点验收职责；下方 `BB0 → BB4` 的核心交付物与退出门保留为原型验证清单及上游迁移验收基准。
 
 ---
 
