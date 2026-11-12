@@ -65,67 +65,39 @@ svg { width:1.25em; height:1.25em; flex:none; }
 .link { color:var(--accent-ink); font-weight:600; padding:6px 4px; }
 .field { width:100%; min-width:0; min-height:44px; padding:0 14px; border-radius:14px; border:1px solid var(--line); background:var(--surface); }
 
-/* the Bob orb: napping, thinking, speaking */
-.orb { --s:28px; --ring:calc(var(--s) * .14); position:relative; width:var(--s); height:var(--s); flex:none; display:inline-block; font-size:var(--s); }
+/* the Bob orb: a small ball of slow colour. Napping it drifts, thinking it swirls, speaking it breathes and sends out rings. */
+.orb { --s:28px; --t:16s; position:relative; width:var(--s); height:var(--s); flex:none; display:inline-block; }
 .orb.big { --s:84px; }
-.orb i { position:absolute; inset:0; border-radius:50%; pointer-events:none; }
-/* a flat, solid ring: no gradient, no shading, no shadow */
-.orb .core { background:transparent; border:var(--ring) solid var(--accent); box-sizing:border-box; }
-.orb .ring { inset:0; opacity:0; border:var(--ring) solid transparent; border-top-color:var(--accent); border-radius:50%; }
-.orb .wave { border:calc(var(--s) * .03) solid var(--accent); opacity:0; }
-.orb[data-state=nap] .core { animation:nap 5s ease-in-out infinite; opacity:.55; }
-.orb[data-state=think] .core { opacity:.22; }
-.orb[data-state=think] .ring { opacity:1; animation:spin 1.2s linear infinite; }
-.orb[data-state=speak] .core { animation:talk .9s ease-in-out infinite; }
-.orb[data-state=speak] .wave { animation:ripple 1.5s ease-out infinite; }
-.orb[data-state=speak] .wave.w2 { animation-delay:.55s; }
-.orb.static .core { animation:none !important; filter:none; box-shadow:none; }
-
-/* the three moods are drawn around the circle itself, never as words in the header */
-.orb .fx { position:absolute; inset:0; display:none; pointer-events:none; }
-.orb .fx b { display:block; }
-.orb[data-state=nap] .fx.napfx, .orb[data-state=speak] .fx.sayfx { display:block; }
-.orb[data-state=think] .fx.thinkfx { display:flex; }
-
-/* napping: soft bubbles drift up from the circle */
-.fx.napfx b { position:absolute; left:64%; top:54%; width:.14em; height:.14em; border-radius:50%; background:var(--accent); opacity:0; animation:napb 3.4s ease-in-out infinite; }
-.fx.napfx b:nth-child(2) { width:.09em; height:.09em; animation-delay:1.15s; }
-.fx.napfx b:nth-child(3) { width:.18em; height:.18em; animation-delay:2.3s; }
-@keyframes napb { 0% { transform:translate(0,0) scale(.55); opacity:0; } 22% { opacity:.5; } 100% { transform:translate(.5em,-.78em) scale(1.25); opacity:0; } }
-
-/* thinking: a small cloud above the head, with a trail down to it */
-.fx.thinkfx { position:absolute; inset:auto; left:56%; bottom:104%; width:.62em; height:.3em; border-radius:.2em; background:var(--surface); border:1px solid var(--line); box-shadow:var(--shadow-1); align-items:center; justify-content:center; gap:.09em; animation:cloudin .5s ease-out both; }
-.fx.thinkfx::before, .fx.thinkfx::after { content:''; position:absolute; border-radius:50%; background:var(--surface); border:1px solid var(--line); }
-.fx.thinkfx::before { width:.1em; height:.1em; left:.08em; bottom:-.15em; }
-.fx.thinkfx::after { width:.06em; height:.06em; left:.02em; bottom:-.26em; }
-.fx.thinkfx b { width:.07em; height:.07em; border-radius:50%; background:var(--accent); animation:thinkdot 1.25s ease-in-out infinite; }
-.fx.thinkfx b:nth-child(2) { animation-delay:.16s; }
-.fx.thinkfx b:nth-child(3) { animation-delay:.32s; }
-@keyframes thinkdot { 0%,100% { opacity:.28; transform:translateY(0); } 40% { opacity:1; transform:translateY(-.06em); } }
-@keyframes cloudin { from { opacity:0; transform:translateY(.12em) scale(.8); } to { opacity:1; transform:none; } }
-
-#app:not(.hero) .orb-btn .fx.thinkfx { inset:auto; left:106%; bottom:2%; width:1.5em; height:.7em; }
-#app:not(.hero) .orb-btn .fx.thinkfx::before { left:-.16em; bottom:.16em; width:.16em; height:.16em; }
-#app:not(.hero) .orb-btn .fx.thinkfx::after { left:-.3em; bottom:0; width:.1em; height:.1em; }
-
-/* speaking: little words leave the mouth and fade away */
-.fx.sayfx b { position:absolute; left:48%; bottom:6%; width:.14em; height:.14em; border-radius:50%; background:var(--accent); opacity:0; animation:sayb 1.15s ease-out infinite; }
-.fx.sayfx b:nth-child(1) { --dx:.5em; }
-.fx.sayfx b:nth-child(2) { --dx:.72em; width:.11em; height:.11em; animation-delay:.22s; }
-.fx.sayfx b:nth-child(3) { --dx:.38em; animation-delay:.44s; }
-.fx.sayfx b:nth-child(4) { --dx:.9em; width:.16em; height:.16em; animation-delay:.66s; }
-@keyframes sayb { 0% { transform:translate(0,0) scale(.4); opacity:0; } 15% { opacity:.95; } 100% { transform:translate(var(--dx),-.62em) scale(1.1); opacity:0; } }
-
-@keyframes nap { 0%,100% { transform:scale(.94); opacity:.4; } 50% { transform:scale(1); opacity:.6; } }
-@keyframes think { 0%,100% { transform:scale(.92); } 50% { transform:scale(1.04); } }
-@keyframes talk { 0%,100% { transform:scale(1); } 50% { transform:scale(1.04); } }
-@keyframes ripple { 0% { transform:scale(1); opacity:.55; } 100% { transform:scale(1.9); opacity:0; } }
-@keyframes spin { to { transform:rotate(360deg); } }
+.orb i { position:absolute; display:block; pointer-events:none; }
+.orb .glow { inset:-18%; border-radius:50%; background:radial-gradient(circle, var(--accent) 0%, transparent 68%); filter:blur(calc(var(--s) * .12)); opacity:.28; transition:opacity .6s; }
+.orb .body { inset:0; border-radius:50%; overflow:hidden; isolation:isolate; -webkit-mask-image:-webkit-radial-gradient(white, black);
+  background:radial-gradient(circle at 35% 30%, #8fb4ff, var(--accent) 62%, #1f3fb8); transition:transform .6s, opacity .6s, filter .6s; }
+.orb .flow { inset:-25%; filter:blur(calc(var(--s) * .13)); }
+.orb .flow i { inset:auto; width:62%; height:62%; border-radius:50%; left:19%; top:19%; mix-blend-mode:normal; animation:orbit var(--t) linear infinite; }
+.orb .flow .b1 { background:radial-gradient(circle, #5ee0ff 0%, rgba(94,224,255,0) 70%); transform-origin:50% 130%; }
+.orb .flow .b2 { background:radial-gradient(circle, #b07bff 0%, rgba(176,123,255,0) 70%); transform-origin:-30% 60%; animation-duration:calc(var(--t) * 1.3); animation-direction:reverse; }
+.orb .flow .b3 { background:radial-gradient(circle, #ff8ac9 0%, rgba(255,138,201,0) 70%); transform-origin:60% -35%; animation-duration:calc(var(--t) * .8); }
+.orb .sheen { inset:6% 14% 52% 14%; border-radius:50%; background:linear-gradient(rgba(255,255,255,.55), rgba(255,255,255,0)); filter:blur(calc(var(--s) * .03)); opacity:.7; }
+.orb .wave { inset:0; border-radius:50%; border:calc(var(--s) * .03) solid var(--accent); opacity:0; }
+.orb[data-state=nap] { --t:20s; }
+.orb[data-state=nap] .body { opacity:.9; filter:saturate(.9); animation:breathe 5s ease-in-out infinite; }
+.orb[data-state=think] { --t:3.4s; }
+.orb[data-state=think] .body { filter:saturate(1.25); animation:breathe 1.8s ease-in-out infinite; }
+.orb[data-state=think] .glow { opacity:.5; }
+.orb[data-state=speak] { --t:7s; }
+.orb[data-state=speak] .body { animation:talk .8s ease-in-out infinite; }
+.orb[data-state=speak] .glow { opacity:.55; }
+.orb[data-state=speak] .wave { animation:ripple 1.6s ease-out infinite; }
+.orb[data-state=speak] .wave.w2 { animation-delay:.8s; }
+.orb.static .body, .orb.static .flow i, .orb.static .wave { animation:none !important; }
+.orb.static .glow { display:none; }
+@keyframes orbit { to { transform:rotate(360deg); } }
+@keyframes breathe { 0%,100% { transform:scale(.94); } 50% { transform:scale(1); } }
+@keyframes talk { 0%,100% { transform:scale(.98); } 50% { transform:scale(1.07); } }
+@keyframes ripple { 0% { transform:scale(1); opacity:.5; } 100% { transform:scale(1.8); opacity:0; } }
 @media (prefers-reduced-motion: reduce) {
-  .orb i, .orb .fx, .orb .fx b { animation:none !important; }
-  .orb .fx { display:none !important; }
-  .orb[data-state=think] .ring { opacity:.9; }
-  .orb[data-state=speak] .wave { opacity:.4; transform:scale(1.35); }
+  .orb .body, .orb .flow i, .orb .wave { animation:none !important; }
+  .orb[data-state=speak] .wave { opacity:.35; transform:scale(1.3); }
   .typing i { animation:none !important; opacity:.7 !important; }
   .orb-btn { transition:none !important; }
 }
@@ -951,10 +923,8 @@ const ICONS = {
   bookmark:'<path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
 }
 const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`
-const ORB = '<i class="core"></i><i class="ring"></i><i class="wave"></i><i class="wave w2"></i>' +
-  '<span class="fx napfx"><b></b><b></b><b></b></span>' +
-  '<span class="fx thinkfx"><b></b><b></b><b></b></span>' +
-  '<span class="fx sayfx"><b></b><b></b><b></b><b></b></span>'
+const ORB = '<i class="glow"></i><i class="body"><i class="flow"><i class="b1"></i><i class="b2"></i><i class="b3"></i></i><i class="sheen"></i></i>' +
+  '<i class="wave"></i><i class="wave w2"></i>'
 
 document.querySelectorAll('[data-t]').forEach(e => { e.textContent = t(e.dataset.t) })
 document.querySelectorAll('[data-ph]').forEach(e => { e.placeholder = t(e.dataset.ph) })
