@@ -69,15 +69,15 @@ svg { width:1.25em; height:1.25em; flex:none; }
 .orb { --s:28px; --t:16s; position:relative; width:var(--s); height:var(--s); flex:none; display:inline-block; }
 .orb.big { --s:84px; }
 .orb i { position:absolute; display:block; pointer-events:none; }
-.orb .glow { inset:-18%; border-radius:50%; background:radial-gradient(circle, var(--accent) 0%, transparent 68%); filter:blur(calc(var(--s) * .12)); opacity:.28; transition:opacity .6s; }
+.orb .glow { inset:-18%; border-radius:50%; background:radial-gradient(circle, #5aa6ff 0%, transparent 68%); filter:blur(calc(var(--s) * .12)); opacity:.28; transition:opacity .6s; }
 .orb .body { inset:0; border-radius:50%; overflow:hidden; isolation:isolate; -webkit-mask-image:-webkit-radial-gradient(white, black);
-  background:radial-gradient(circle at 35% 30%, #8fb4ff, var(--accent) 62%, #1f3fb8); transition:transform .6s, opacity .6s, filter .6s; }
-.orb .flow { inset:-25%; filter:blur(calc(var(--s) * .13)); }
+  background:linear-gradient(145deg, #19c9f5 0%, #6f8cf5 52%, #ee7fd0 100%); transition:transform .6s, opacity .6s, filter .6s; }
+.orb .flow { inset:-25%; filter:blur(calc(var(--s) * .2)); opacity:.55; }
 .orb .flow i { inset:auto; width:62%; height:62%; border-radius:50%; left:19%; top:19%; mix-blend-mode:normal; animation:orbit var(--t) linear infinite; }
 .orb .flow .b1 { background:radial-gradient(circle, #5ee0ff 0%, rgba(94,224,255,0) 70%); transform-origin:50% 130%; }
 .orb .flow .b2 { background:radial-gradient(circle, #b07bff 0%, rgba(176,123,255,0) 70%); transform-origin:-30% 60%; animation-duration:calc(var(--t) * 1.3); animation-direction:reverse; }
 .orb .flow .b3 { background:radial-gradient(circle, #ff8ac9 0%, rgba(255,138,201,0) 70%); transform-origin:60% -35%; animation-duration:calc(var(--t) * .8); }
-.orb .sheen { inset:6% 14% 52% 14%; border-radius:50%; background:linear-gradient(rgba(255,255,255,.55), rgba(255,255,255,0)); filter:blur(calc(var(--s) * .03)); opacity:.7; }
+.orb .sheen { display:none; }
 .orb .wave { inset:0; border-radius:50%; border:calc(var(--s) * .03) solid var(--accent); opacity:0; }
 .orb[data-state=nap] { --t:20s; }
 .orb[data-state=nap] .body { opacity:.9; filter:saturate(.9); animation:breathe 5s ease-in-out infinite; }
@@ -128,6 +128,8 @@ main { flex:1; min-height:0; position:relative; }
 .view { position:absolute; inset:0; overflow-y:auto; scrollbar-gutter:stable; padding:6px 14px 14px; }
 
 /* chat */
+/* the empty front page has nothing to scroll, so it reserves no scrollbar slot and stays centred */
+#app.hero #viewChat { overflow:hidden; scrollbar-gutter:auto; }
 #welcome { display:flex; flex-direction:column; align-items:center; gap:6px; padding:calc(15vh + 112px) 0 8px; text-align:center; }
 #welcome span.s { color:var(--muted); font-size:15px; }
 #welcome h1 { margin:0; font-size:26px; line-height:1.25; font-weight:700; letter-spacing:-.01em; }
@@ -136,10 +138,6 @@ main { flex:1; min-height:0; position:relative; }
 .glance-item b { font-size:16px; color:var(--text); }
 .glance-item.warn { background:var(--warn-soft); border-color:transparent; color:var(--warn); }
 .glance-item.warn b { color:var(--warn); }
-.chips { display:grid; grid-template-columns:1fr; gap:10px; width:100%; max-width:600px; margin-top:22px; }
-@media (min-width:560px) { .chips { grid-template-columns:repeat(3,1fr); } }
-.chip-btn { display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:18px; background:var(--surface); border:1px solid var(--line); font-size:14px; font-weight:600; box-shadow:var(--shadow-1); text-align:left; }
-html.fine .chip-btn:hover { border-color:var(--accent); box-shadow:var(--shadow); transform:translateY(-1px); }
 .chipicon { width:36px; height:36px; border-radius:12px; display:inline-flex; align-items:center; justify-content:center; background:var(--accent-soft); color:var(--accent-ink); flex:none; }
 .chipicon svg { width:18px; height:18px; }
 #feed { display:flex; flex-direction:column; gap:10px; }
@@ -401,7 +399,7 @@ html.fine .conv-main { padding-right:92px; }
 
 /* ---- motion and feedback ---- */
 body { -webkit-font-smoothing:antialiased; }
-.btn, .icon-btn, .chip-btn, .link, nav button, .conv-main, .inbox-item, .check, .glance-item { transition:background-color .15s, color .15s, border-color .15s, box-shadow .15s, opacity .15s, filter .15s, transform .12s var(--ease); }
+.btn, .icon-btn, .link, nav button, .conv-main, .inbox-item, .check, .glance-item { transition:background-color .15s, color .15s, border-color .15s, box-shadow .15s, opacity .15s, filter .15s, transform .12s var(--ease); }
 .btn:disabled { opacity:.5; cursor:default; }
 html.fine .btn:hover:not(:disabled) { filter:brightness(.95); }
 html.fine .icon-btn:hover { background:var(--surface-2); color:var(--text); }
@@ -518,7 +516,6 @@ nav button.on span:first-child { background:var(--accent-soft); }
         <h1 id="greet"></h1>
         <span class="s" data-t="welcomeSub"></span>
         <div id="glance" hidden></div>
-        <div class="chips" id="chips"></div>
         <div class="slot" id="slotHome"></div>
       </div>
       <div id="feed" aria-live="polite"></div>
@@ -739,9 +736,6 @@ const I18N = {
   busyOther:['Bob 正在另一个对话里工作，请稍后再试','Bob is busy in another chat. Try again in a moment'], spendLabel:['本月花费','This month'],
   needsYouIn:['Bob 在「{n}」里需要你','Bob needs you in "{n}"'],
   browser:['浏览器','Browser'], send:['发送','Send'], placeholder:['发送消息给 Bob…','Message Bob…'], close:['关闭','Close'],
-  chip1:['总结一个网页','Summarize a page'], chip1q:['帮我打开并总结这个网页：','Open and summarize this page: '],
-  chip2:['查最新资讯','Look up news'], chip2q:['帮我查一下今天的科技新闻要点','Find today\'s top tech news for me'],
-  chip3:['设一个提醒','Set a reminder'], chip3q:['今天下午 3 点提醒我给客户回电话','Remind me at 3pm today to call the client'],
   // clerk
   jobsTitle:['定时任务','Scheduled'], todosTitle:['待办','To-dos'], markDone:['标为完成','Mark done'], undo:['撤销完成','Undo'],
   jobsEmpty:['还没有定时任务。对 Bob 说「每天早上 8 点看看天气」试试。','No scheduled jobs yet. Tell Bob "every morning at 8, check the weather".'],
@@ -1616,12 +1610,6 @@ function connect() {
 }
 
 function prefill(text) { show('chat'); setText(text); $('text').focus() }
-;[['chip1', 'chip1q', 'globe'], ['chip2', 'chip2q', 'file'], ['chip3', 'chip3q', 'bell']].forEach(([label, prompt, picture]) => {
-  const b = el('button', 'chip-btn'); b.type = 'button'
-  b.append(tile(picture), el('span', '', t(label)))
-  b.onclick = () => prefill(t(prompt))
-  $('chips').append(b)
-})
 
 // ---- the clerk: scheduled tasks, reminders, inbox and channels ----
 let clerkData = null
@@ -1690,14 +1678,12 @@ function jobCard(job, tz = clerkData?.timezone, compact = false, created = false
   if (job.cid) { const see = el('button', 'link', t('openRun')); see.onclick = () => selectConv(job.cid); c.append(see) }
   return c
 }
-/** The front page says what is waiting, so nothing important hides behind a tab. */
+/** The front page stays quiet; it only says what is waiting for the owner to decide. */
 function drawGlance() {
   const d = clerkData
   const items = [
     [(d.drafts ?? []).length, 'glanceDrafts', ' warn'],
     [d.jobs.filter(j => j.assist).length, 'glanceNeeds', ' warn'],
-    [d.todos.filter(todo => !todo.done).length, 'glanceTodos', ''],
-    [d.unread, 'glanceUnread', ''],
   ].filter(([count]) => count > 0)
   $('glance').hidden = !items.length
   $('glance').replaceChildren(...items.map(([count, key, tone]) => {
