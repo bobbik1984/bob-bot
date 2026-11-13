@@ -1,9 +1,9 @@
 # BobBot — Current Stage（当前施工合同）
 
-> **当前阶段（2026-11-11 `BOB-D-015` 更新）**：
+> **当前阶段（2026-11-11 `BOB-D-015` / 2026-11-14 `BOB-D-016` 更新）**：
 > 1. **本仓库长期定位为研究原型（`prototype/`，线上实例持续运行）**，用于快速验证 Jarvis 单一窗口交互、真实办公站点浏览器接管、Routine、主动关心与小组件自改造。
-> 2. **正式版纯 Rust/Vue 统一开发已归并至 `bob-agent-next` 主干（`WP-J1`～`WP-J6`，零 Node.js 依赖）**：2026-11-11 已在 `bob-agent-next` 完成 `WP-J1`～`WP-J6`（`T01`～`T12`）全栈源码落地与本地四重门禁验证（359 项 Rust 测试 + `src-tauri` 校验 + 203 项前端单测 + `vite build` 全绿）；本仓库下方原 `WP-1` 独立 `bobbot-server` Rust 分叉不再在本仓库新建，其线上与真机终验统一见 `bob-agent-next/docs/CURRENT_STAGE.md` 与 `docs/evidence/2026-11-11-wp-j1-j6-jarvis-convergence-verification.md`。
-> **本原型当前下一步**：用 3～5 个真实办公站点和真实模型验证浏览器接管、Routine 与做梦质量，为上游 `WP-J4` / `WP-J5` 提供实测基线（见 [todo.md](../todo.md)）。
+> 2. **正式版纯 Rust/Vue 统一开发已归并至 `bob-agent-next` 主干**：`WP-J1`～`WP-J6` 全栈源码及常驻节点部署已完成（详见 `bob-agent-next/docs/CURRENT_STAGE.md` 与 `bob-agent-next/docs/evidence/2026-11-11-wp-j1-j6-jarvis-convergence-verification.md`）；**2026-11-14 上游已立项并切入 `BOB-D-016` 后 `WP-J6` 系统性进化路线（`WP-E1` 实景浏览器/快慢双模/3步开箱 → `WP-E2` 办公文档与 IM 触达 → `WP-E3` 三路径预编译安装向导 → `WP-E4` MCP 客户端与 `rquickjs` 插件沙箱）**，详细施工任务卡见 `bob-agent-next/docs/CURRENT_STAGE.md §5`。本仓库下方原 `WP-1` 独立 `bobbot-server` Rust 分叉不再在本仓库新建。
+> **本原型当前下一步**：作为快速试验场，先行配合 3～5 个真实办公站点与真实模型验证浏览器接管、白领办公文档/IM 交互原型与小组件自生长手感，将验证结论回哺上游 `WP-E1`～`WP-E4`（见 [todo.md](../todo.md)）。
 > 长期路线见 [DEVELOPMENT_ROUTE.md](DEVELOPMENT_ROUTE.md)，技术规范见 [ARCHITECTURE.md](ARCHITECTURE.md)。
 
 ---

@@ -2,16 +2,16 @@ project:
   name: bob-bot
   directory: bob-bot
   version: 0.1.0
-  status: planning
+  status: prototype_lab
   tier: Production
   tech:
-    - Rust
-    - Axum
+    - Node.js (Prototype Only)
+    - DeepSeek Harness (Prototype Only)
     - Vue 3
     - Headless Chromium (CDP)
     - SQLite
-    - Docker
-  current_task: 完成面向普通办公室白领的轻量助理立项与五大核心缺失技术细节架构设计（BYOK 开箱、手机网页内嵌 CDP 虚拟浏览器窗口、DOM AXTree 操控、内置 Router-Worker、示教转 Routine），下一步在所在地区 VPS 上进行自测 POC。
+    - Upstream Rust Convergence (bob-agent-next)
+  current_task: 本仓库作为永久轻量交互与办公能力原型实验室（prototype/ 已上线）；正式版纯 Rust 内核与 WP-J1–WP-J6 已收敛合入 bob-agent-next 主干并上线，上游已启动 BOB-D-016（WP-E1–WP-E4）系统性进化；本原型继续先行验证真实办公站点浏览器接管、小组件自生长与白领交互手感。
   development_plan: docs/CURRENT_STAGE.md
 
 prototype:
