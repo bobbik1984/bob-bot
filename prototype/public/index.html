@@ -65,39 +65,43 @@ svg { width:1.25em; height:1.25em; flex:none; }
 .link { color:var(--accent-ink); font-weight:600; padding:6px 4px; }
 .field { width:100%; min-width:0; min-height:44px; padding:0 14px; border-radius:14px; border:1px solid var(--line); background:var(--surface); }
 
-/* the Bob orb: a small ball of slow colour. Napping it drifts, thinking it swirls, speaking it breathes and sends out rings. */
-.orb { --s:28px; --t:16s; position:relative; width:var(--s); height:var(--s); flex:none; display:inline-block; }
+/* The Bob orb is a drop of water floating in zero gravity. Surface tension is its only motion: it is pressed a
+   little, springs back with less each time, and settles round again. One number k drives the shape, x = k and
+   y = 1 / k, so the drop never grows or shrinks; its area stays the same. A 2D look, not a fluid simulation. */
+@property --k { syntax:'<number>'; inherits:false; initial-value:1; }
+@property --p { syntax:'<number>'; inherits:false; initial-value:1; }
+:root {
+  --drop-fill:rgba(205,230,255,.38); --drop-mid:rgba(150,200,246,.50); --drop-edge:rgba(82,146,222,.70);
+  --drop-rim:rgba(120,176,236,.55); --drop-shade:rgba(56,118,196,.30); --drop-light:rgba(255,255,255,.92); --drop-through:rgba(255,255,255,.55);
+}
+html[data-theme=dark] {
+  --drop-fill:rgba(130,190,250,.16); --drop-mid:rgba(120,185,250,.28); --drop-edge:rgba(150,205,255,.58);
+  --drop-rim:rgba(170,215,255,.50); --drop-shade:rgba(10,30,70,.55); --drop-light:rgba(235,246,255,.85); --drop-through:rgba(180,225,255,.35);
+}
+.orb { --s:28px; --t:9s; position:relative; width:var(--s); height:var(--s); flex:none; display:inline-block; }
 .orb.big { --s:84px; }
-.orb i { position:absolute; display:block; pointer-events:none; }
-.orb .glow { inset:-18%; border-radius:50%; background:radial-gradient(circle, #5aa6ff 0%, transparent 68%); filter:blur(calc(var(--s) * .12)); opacity:.28; transition:opacity .6s; }
-.orb .body { inset:0; border-radius:50%; overflow:hidden; isolation:isolate; -webkit-mask-image:-webkit-radial-gradient(white, black);
-  background:linear-gradient(145deg, #19c9f5 0%, #6f8cf5 52%, #ee7fd0 100%); transition:transform .6s, opacity .6s, filter .6s; }
-.orb .flow { inset:-25%; filter:blur(calc(var(--s) * .2)); opacity:.55; }
-.orb .flow i { inset:auto; width:62%; height:62%; border-radius:50%; left:19%; top:19%; mix-blend-mode:normal; animation:orbit var(--t) linear infinite; }
-.orb .flow .b1 { background:radial-gradient(circle, #5ee0ff 0%, rgba(94,224,255,0) 70%); transform-origin:50% 130%; }
-.orb .flow .b2 { background:radial-gradient(circle, #b07bff 0%, rgba(176,123,255,0) 70%); transform-origin:-30% 60%; animation-duration:calc(var(--t) * 1.3); animation-direction:reverse; }
-.orb .flow .b3 { background:radial-gradient(circle, #ff8ac9 0%, rgba(255,138,201,0) 70%); transform-origin:60% -35%; animation-duration:calc(var(--t) * .8); }
-.orb .sheen { display:none; }
-.orb .wave { inset:0; border-radius:50%; border:calc(var(--s) * .03) solid var(--accent); opacity:0; }
-.orb[data-state=nap] { --t:20s; }
-.orb[data-state=nap] .body { opacity:.9; filter:saturate(.9); animation:breathe 5s ease-in-out infinite; }
-.orb[data-state=think] { --t:3.4s; }
-.orb[data-state=think] .body { filter:saturate(1.25); animation:breathe 1.8s ease-in-out infinite; }
-.orb[data-state=think] .glow { opacity:.5; }
-.orb[data-state=speak] { --t:7s; }
-.orb[data-state=speak] .body { animation:talk .8s ease-in-out infinite; }
-.orb[data-state=speak] .glow { opacity:.55; }
-.orb[data-state=speak] .wave { animation:ripple 1.6s ease-out infinite; }
-.orb[data-state=speak] .wave.w2 { animation-delay:.8s; }
-.orb.static .body, .orb.static .flow i, .orb.static .wave { animation:none !important; }
-.orb.static .glow { display:none; }
-@keyframes orbit { to { transform:rotate(360deg); } }
-@keyframes breathe { 0%,100% { transform:scale(.94); } 50% { transform:scale(1); } }
-@keyframes talk { 0%,100% { transform:scale(.98); } 50% { transform:scale(1.07); } }
-@keyframes ripple { 0% { transform:scale(1); opacity:.5; } 100% { transform:scale(1.8); opacity:0; } }
+.orb i { position:absolute; display:block; pointer-events:none; border-radius:50%; }
+.orb .drop { inset:0; transform:scale(var(--p), calc(1 / var(--p))); }
+.orb .body { inset:0; overflow:hidden; transform:scale(var(--k), calc(1 / var(--k))); animation:tension var(--t) ease-in-out infinite;
+  background:radial-gradient(circle at 50% 46%, var(--drop-fill) 0 42%, var(--drop-mid) 70%, var(--drop-edge) 100%);
+  box-shadow:inset 0 calc(var(--s) * -.07) calc(var(--s) * .14) var(--drop-shade), inset 0 calc(var(--s) * .03) calc(var(--s) * .06) var(--drop-light), inset 0 0 0 1px var(--drop-rim);
+  -webkit-backdrop-filter:blur(1.5px) saturate(1.15); backdrop-filter:blur(1.5px) saturate(1.15); }
+/* soft reflection up and to the left, and fainter light passing through at the lower right */
+.orb .hl { left:17%; top:12%; width:40%; height:28%; transform:rotate(-28deg); background:radial-gradient(closest-side, var(--drop-light), transparent); opacity:.85; transition:opacity .8s; }
+.orb .tx { right:12%; bottom:9%; width:46%; height:24%; transform:rotate(-30deg); background:radial-gradient(closest-side, var(--drop-through), transparent); opacity:.7; }
+/* waiting for the owner: a gentle amber warmth low in the drop */
+.orb .warm { left:4%; right:4%; bottom:-14%; height:52%; background:radial-gradient(closest-side, rgba(255,186,90,.42), transparent); opacity:0; transition:opacity .8s; }
+.orb[data-state=think] { --t:4s; }
+.orb[data-state=think] .hl { opacity:1; }
+.orb[data-state=speak] { --t:5s; }
+.orb[data-state=wait] .warm { opacity:1; }
+/* a tap or a sent message nudges the drop, and it rings out the same way */
+.orb.poke .drop { animation:poke 1.3s ease-in-out; }
+.orb.static .body { animation:none !important; }
+@keyframes tension { 0%,18% { --k:1; } 32% { --k:.975; } 46% { --k:1.018; } 60% { --k:.992; } 74% { --k:1.004; } 88%,100% { --k:1; } }
+@keyframes poke { 0% { --p:1; } 14% { --p:.955; } 32% { --p:1.03; } 50% { --p:.988; } 68% { --p:1.005; } 100% { --p:1; } }
 @media (prefers-reduced-motion: reduce) {
-  .orb .body, .orb .flow i, .orb .wave { animation:none !important; }
-  .orb[data-state=speak] .wave { opacity:.35; transform:scale(1.3); }
+  .orb .body, .orb .drop { animation:none !important; }
   .typing i { animation:none !important; opacity:.7 !important; }
   .orb-btn { transition:none !important; }
 }
@@ -119,8 +123,8 @@ svg { width:1.25em; height:1.25em; flex:none; }
 .orb-btn { position:absolute; z-index:2; padding:0; border-radius:50%; width:34px; height:34px; left:12px; top:calc(env(safe-area-inset-top) + 9px);
   transition:left .6s cubic-bezier(.22,.8,.2,1), top .6s cubic-bezier(.22,.8,.2,1), width .6s cubic-bezier(.22,.8,.2,1), height .6s cubic-bezier(.22,.8,.2,1); }
 .orb-btn .orb { width:100%; height:100%; --s:34px; }
-#app.hero .orb-btn .orb { --s:132px; }
-#app.hero .orb-btn { width:132px; height:132px; left:calc(50% - 66px); top:calc(env(safe-area-inset-top) + 15vh); }
+#app.hero .orb-btn .orb { --s:var(--hd, 132px); }
+#app.hero .orb-btn { width:var(--hd, 132px); height:var(--hd, 132px); left:calc(50% - var(--hd, 132px) / 2); top:var(--htop, 20%); }
 header { display:grid; grid-template-columns:minmax(56px,auto) 1fr minmax(56px,auto); align-items:center; padding:calc(8px + env(safe-area-inset-top)) 8px 8px; min-height:56px; }
 header .title { text-align:center; font-size:16px; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 header .right { justify-self:end; display:flex; align-items:center; gap:6px; padding-right:4px; }
@@ -129,8 +133,13 @@ main { flex:1; min-height:0; position:relative; }
 
 /* chat */
 /* the empty front page has nothing to scroll, so it reserves no scrollbar slot and stays centred */
-#app.hero #viewChat { overflow:hidden; scrollbar-gutter:auto; }
-#welcome { display:flex; flex-direction:column; align-items:center; gap:6px; padding:calc(15vh + 112px) 0 8px; text-align:center; }
+#app.hero #viewChat { overflow:hidden; }
+/* the chat scrolls by touch, wheel and keys, but draws no scrollbar track, so nothing pushes it off the centre line */
+#viewChat { scrollbar-gutter:auto; scrollbar-width:none; }
+#viewChat::-webkit-scrollbar { display:none; }
+#welcome { display:flex; flex-direction:column; align-items:center; gap:6px; padding:var(--wtop, 30vh) 0 0; text-align:center; }
+#app.tight #welcome span.s { display:none; }
+#app.tight #welcome h1 { font-size:20px; }
 #welcome span.s { color:var(--muted); font-size:15px; }
 #welcome h1 { margin:0; font-size:26px; line-height:1.25; font-weight:700; letter-spacing:-.01em; }
 #glance { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:14px; }
@@ -324,7 +333,7 @@ select.field { appearance:none; background-image:linear-gradient(45deg,transpare
 
 /* composer and tabs */
 #composer { display:flex; align-items:flex-end; gap:4px; margin:4px 12px 8px; padding:5px 5px 5px 6px; background:var(--surface); border:1px solid var(--line); border-radius:26px; box-shadow:var(--shadow); transition:border-color .15s, box-shadow .15s; }
-#composer textarea { flex:1; min-width:0; border:0; background:none; resize:none; height:42px; max-height:160px; padding:10px 2px; line-height:22px; outline:0; }
+#composer textarea { font-size:16px; flex:1; min-width:0; border:0; background:none; resize:none; height:42px; max-height:160px; padding:10px 2px; line-height:22px; outline:0; }
 #composer:focus-within { border-color:var(--accent); box-shadow:var(--shadow), 0 0 0 3px var(--accent-soft); }
 #composer .send { width:42px; height:42px; border-radius:50%; background:var(--accent); color:var(--accent-text); display:inline-flex; align-items:center; justify-content:center; flex:none; transition:background-color .15s, color .15s, transform .12s var(--ease); }
 #composer .send:active { transform:scale(.94); }
@@ -487,7 +496,7 @@ nav button.on span:first-child { background:var(--accent-soft); }
   #banner, #attachRow, #composer { width:min(760px, calc(100% - 48px)); margin-left:auto; margin-right:auto; }
   .view { padding-left:max(24px, calc((100% - 760px) / 2)); padding-right:max(24px, calc((100% - 760px) / 2)); }
   .orb-btn { left:316px; pointer-events:none; }
-  #app.hero .orb-btn { left:calc(300px + (100% - 300px) / 2 - 66px); }
+  #app.hero .orb-btn { left:calc(300px + (100% - 300px) / 2 - var(--hd, 132px) / 2); }
 }
 @media (prefers-reduced-motion: reduce) {
   #feed > .in, .view, .dots.shake, .check.on, #toast, #jump { animation:none !important; }
@@ -730,7 +739,7 @@ const I18N = {
   loginSub:['输入 PIN 进入','Enter your PIN'], welcomeSub:['今天想让我做点什么？','What can I do for you today?'],
   tabChat:['对话','Chat'], tabClerk:['文员','Clerk'], tabSettings:['设置','Settings'],
   clerkTitle:['文员','Clerk'], settingsTitle:['设置','Settings'],
-  stateNap:['休息中','Napping'], stateThink:['思考中…','Thinking…'], stateSpeak:['回复中','Replying'],
+  stateNap:['休息中','Napping'], stateThink:['思考中…','Thinking…'], stateSpeak:['回复中','Replying'], stateWait:['等你确认','Waiting for you'],
   menu:['历史对话','History'], history:['历史对话','History'], newChat:['新对话','New chat'], noChats:['还没有对话','No chats yet'],
   delChat:['删除对话','Delete chat'], renameChat:['重命名','Rename'], voiceInput:['语音输入','Voice input'], micDenied:['无法使用麦克风，请检查权限','Cannot use the microphone; check permissions'], cantDelete:['Bob 正在这个对话里工作，暂时不能删除','Bob is working in this chat, so it can\'t be deleted yet'],
   busyOther:['Bob 正在另一个对话里工作，请稍后再试','Bob is busy in another chat. Try again in a moment'], spendLabel:['本月花费','This month'],
@@ -917,8 +926,7 @@ const ICONS = {
   bookmark:'<path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
 }
 const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`
-const ORB = '<i class="glow"></i><i class="body"><i class="flow"><i class="b1"></i><i class="b2"></i><i class="b3"></i></i><i class="sheen"></i></i>' +
-  '<i class="wave"></i><i class="wave w2"></i>'
+const ORB = '<i class="drop"><i class="body"><i class="hl"></i><i class="tx"></i><i class="warm"></i></i></i>'
 
 document.querySelectorAll('[data-t]').forEach(e => { e.textContent = t(e.dataset.t) })
 document.querySelectorAll('[data-ph]').forEach(e => { e.placeholder = t(e.dataset.ph) })
@@ -982,6 +990,44 @@ function show(view) {
 }
 document.querySelectorAll('nav button').forEach(b => { b.onclick = () => show(b.dataset.view) })
 
+/** Nudge the drop: it gives a little and springs back, like water touched in zero gravity. */
+function poke() {
+  for (const orb of document.querySelectorAll('[data-orb]:not(.static)')) {
+    orb.classList.remove('poke'); void orb.offsetWidth; orb.classList.add('poke')
+  }
+}
+document.addEventListener('animationend', e => { if (e.animationName === 'poke') e.target.closest('.orb')?.classList.remove('poke') })
+
+// The empty page is laid out from the space really left between the header and the composer (which shrinks when the
+// phone keyboard opens): the drop is sized from that height, and the drop with its words sits centred in it.
+function layoutHero() {
+  const app = $('app'), view = $('viewChat'), H = view.clientHeight
+  if (!H) return
+  const tight = H < 240
+  app.classList.toggle('tight', tight)
+  const D = Math.round(Math.max(28, Math.min(144, H * 0.38)))
+  const gap = tight ? 10 : 22
+  const words = [...$('welcome').children].filter(c => !c.hidden && c.offsetHeight).reduce((sum, c) => sum + c.offsetHeight + 6, 0)
+  const top = Math.max(tight ? 4 : 12, (H - (D + gap + words)) / 2)
+  app.style.setProperty('--hd', D + 'px')
+  app.style.setProperty('--htop', (view.offsetTop + view.parentElement.offsetTop + top) + 'px')
+  app.style.setProperty('--wtop', (top + D + gap) + 'px')
+}
+new ResizeObserver(layoutHero).observe($('viewChat'))
+// On a phone the keyboard covers the page without resizing it, so the app follows the visible part of the screen.
+;(() => {
+  const vv = window.visualViewport
+  if (!vv) return
+  const fit = () => {
+    const app = $('app')
+    const covered = Math.round(window.innerHeight - vv.height) > 0
+    app.style.height = covered ? vv.height + 'px' : ''
+    app.style.transform = covered && vv.offsetTop ? `translateY(${vv.offsetTop}px)` : ''
+  }
+  vv.addEventListener('resize', fit)
+  vv.addEventListener('scroll', fit)
+})()
+
 // The orb is large in the middle of a new chat, and moves to the top left, small, once there is something to read.
 function setHero() {
   const hero = currentView === 'chat' && feed.children.length <= 1
@@ -990,15 +1036,17 @@ function setHero() {
   if (hero) {
     const hour = new Date().getHours()
     $('greet').textContent = t(hour < 5 ? 'greetNight' : hour < 11 ? 'greetMorning' : hour < 13 ? 'greetNoon' : hour < 18 ? 'greetAfternoon' : 'greetEvening')
+    layoutHero()
   }
 }
 
-// ---- the orb: napping, thinking, speaking ----
+// ---- the orb: napping, thinking, speaking, waiting ----
+const cards = new Map(), open = new Map() // approval and takeover cards, and the ones still waiting for an answer
 let runningCid = null, speakUntil = 0, speakTimer = null
 function refreshOrb() {
   const mine = Boolean(runningCid) && runningCid === activeCid
-  const state = Date.now() < speakUntil ? 'speak' : mine ? 'think' : 'nap'
-  const mood = t(state === 'nap' ? 'stateNap' : state === 'think' ? 'stateThink' : 'stateSpeak')
+  const state = Date.now() < speakUntil ? 'speak' : open.size ? 'wait' : mine ? 'think' : 'nap'
+  const mood = t({ nap: 'stateNap', think: 'stateThink', speak: 'stateSpeak', wait: 'stateWait' }[state])
   document.querySelectorAll('[data-orb]').forEach(orb => { orb.dataset.state = state; orb.setAttribute('aria-label', mood) })
   // The mood is drawn by the orb itself, so the header stays quiet.
   $('title').textContent = currentView === 'chat' ? '' : t(currentView === 'clerk' ? 'clerkTitle' : 'settingsTitle')
@@ -1043,7 +1091,6 @@ function stamp(at) {
   }
   lastStamp = at
 }
-const cards = new Map(), open = new Map()
 let activeCid // undefined: not chosen yet. null: a new chat that has no messages yet.
 const updateWelcome = () => { setHero(); refreshOrb() }
 function add(node, kind) {
@@ -1320,11 +1367,11 @@ function track(e) { // approvals and takeovers belong to every conversation, bec
   if (e.type === 'approval' || e.type === 'takeover') {
     open.set(e.id, { e, kind: e.type })
     if (e.type === 'takeover') { activeTakeover = e.id; $('handBack').hidden = false; openBrowser() }
-    refreshBanner()
+    refreshBanner(); refreshOrb()
   } else if (e.type === 'approval_done' || e.type === 'takeover_done') {
     open.delete(e.id)
     if (e.type === 'takeover_done' && activeTakeover === e.id) { activeTakeover = null; $('handBack').hidden = true; closeBrowser() }
-    refreshBanner()
+    refreshBanner(); refreshOrb()
   }
 }
 function render(e) {
@@ -1564,6 +1611,7 @@ function closeDrawer() {
 $('drawer').inert = !wide.matches
 wide.addEventListener('change', () => { closeDrawer(); drawConvs() })
 $('orbBtn').onclick = openDrawer
+$('orbBtn').addEventListener('pointerdown', () => poke())
 $('closeDrawer').onclick = closeDrawer
 $('scrim').onclick = closeDrawer
 $('newChat').onclick = newChat
@@ -2337,6 +2385,7 @@ $('composer').onsubmit = async e => {
   e.preventDefault()
   const text = $('text').value.trim()
   if (!text && !attachments.length) return
+  poke()
   const files = attachments
   setText('')
   attachments = []; drawAttachments()
