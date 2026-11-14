@@ -93,7 +93,7 @@ When a scheduled run reaches something that needs approval (a command, writing a
 Every chat, WeChat conversation and scheduled task now receives what Bob remembers: unfinished work and preferences first, then whatever the message mentions, up to about 1500 characters. A new chat also gets open to-dos, scheduled jobs and what the last few chats were about. Memory supplies facts such as your city. Weather is always fetched fresh.
 
 - **Dreaming** runs once a night between 03:30 and 08:00 and retries if it fails, so it works with check-ins off. Settings shows the last failure. A single dream can remove at most 3 memories, and what it removed is logged.
-- **Check-ins** are off by default. The switch controls only whether Bob may message you first. Memory, dreaming, reminders and tasks work either way. The level sets the daily message limit and tone, and adds check moments at 12:30, 15:30 and 20:30 when your own times are too few for that limit.
+- **Check-ins** are off by default. The switch controls only whether Bob may message you first. Memory, dreaming, reminders and tasks work either way. The level sets the daily message limit and tone, and adds check moments at 12:30, 15:30 and 20:30 when your own times are too few for that limit. A check-in is written to one "提醒" chat and sent as a phone notification; it is not added to the Clerk inbox, which holds scheduled reminders and task results.
 
 ## Bob changing himself: feature packages
 

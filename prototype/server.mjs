@@ -705,6 +705,21 @@ const proactive = Object.assign(
   readJson(PROACTIVE_FILE, {}),
 )
 const saveProactive = () => writeAtomic(PROACTIVE_FILE, JSON.stringify(proactive))
+
+/**
+ * Check-ins used to be copied into the Clerk inbox. They now live only in the 提醒 chat, with a phone notification,
+ * so the old copies are cleared once at startup and the chat that holds them gets its new name.
+ */
+function migrateCheckIns() {
+  const conv = proactive.cid ? convOf(proactive.cid) : null
+  if (conv?.title === '主动关心') {
+    conv.title = '提醒'
+    saveConvs()
+  }
+  const dropped = clerk.pruneInbox(entry => entry.title === '主动关心' && !entry.jobId)
+  if (dropped) console.log(`[clerk] dropped ${dropped} old check-in(s) from the inbox`)
+}
+
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 const QUIET_FROM = 22
 const QUIET_TO = 8
@@ -816,7 +831,7 @@ async function runProactive({ test = false, slot = null } = {}) {
   }
   let cid = proactive.cid && convOf(proactive.cid) ? proactive.cid : null
   if (!cid) {
-    const conv = createConversation('主动关心')
+    const conv = createConversation('提醒')
     cid = conv.id
     proactive.cid = cid
     saveProactive()
@@ -851,8 +866,6 @@ async function runProactive({ test = false, slot = null } = {}) {
   remember(silent ? 'silent' : 'sent')
   if (silent) return { ok: true, sent: false }
   push({ type: 'message', role: 'assistant', text }, true, cid)
-  clerk.addInbox({ title: '主动关心', text })
-  broadcast({ type: 'clerk' })
   sendPush({ title: '主动关心', body: text.slice(0, 300), url: chatLink(cid) }).catch(() => {})
   return { ok: true, sent: true, text, cid }
 }
@@ -2222,6 +2235,7 @@ mcpUrl = `http://127.0.0.1:${mcpServer.address().port}/mcp`
 const undone = features.recover()
 if (undone) console.log(`[features] undid the unanswered trial of "${undone.name}"`)
 await features.loadAll()
+migrateCheckIns()
 
 server.listen(PORT, HOST, () => {
   // bob-agent's wechat-bot-bridge speaks this contract, so it can talk to BobBot without changes.

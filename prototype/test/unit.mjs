@@ -137,6 +137,17 @@ await check('the inbox keeps the newest 100 and counts unread', () => {
   assert.equal(c.inbox.length, 100); assert.equal(c.inbox[0].text, '104'); assert.equal(c.unread(), 100)
   c.markAllRead(); assert.equal(c.unread(), 0)
 })
+await check('inbox entries that no longer belong there can be dropped, and the change is saved', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clerk-'))
+  const c = new Clerk(dir, { serverTimezone: SH })
+  c.addInbox({ title: '主动关心', text: 'old check-in' })
+  c.addInbox({ title: '主动关心', text: 'a job result', jobId: 'j1' })
+  c.addInbox({ title: 'Weather', text: 'forecast', jobId: 'j2' })
+  assert.equal(c.pruneInbox(n => n.title === '主动关心' && !n.jobId), 1)
+  assert.deepEqual(c.inbox.map(n => n.text), ['forecast', 'a job result'])
+  assert.equal(c.unread(), 2)
+  assert.deepEqual(new Clerk(dir, { serverTimezone: SH }).inbox.map(n => n.text), ['forecast', 'a job result'])
+})
 
 console.log('Channels')
 const lark = validateChannel({ type: 'lark', name: 'Lark', webhook: 'https://open.feishu.cn/open-apis/bot/v2/hook/abc-123', secret: 'shh' })

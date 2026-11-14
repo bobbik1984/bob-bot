@@ -858,7 +858,11 @@ try {
     script.push(async () => { await sleep(1500); return say('你今天有两个待办，要我帮你排一下吗？') })
     const sent = await post('/api/proactive/run', {})
     assert.equal(sent.data.sent, true)
-    assert.ok((await clerkView()).inbox.some(n => n.title === '主动关心'), 'the check-in did not reach the inbox')
+    // A check-in lives in its chat, not in the Clerk inbox: that panel is for reminders and task results.
+    assert.ok(!(await clerkView()).inbox.some(n => n.title === '主动关心'), 'the check-in reached the Clerk inbox')
+    const conv = (await getJson(`/api/conversations/${sent.data.cid}`)).body
+    assert.ok(conv.events.some(e => e.type === 'message' && e.role === 'assistant' && e.text.includes('待办')), 'the check-in was not kept in its chat')
+    assert.equal((await getJson('/api/conversations')).body.items.find(c => c.id === sent.data.cid)?.title, '提醒')
     script.push(say('[SILENT]'))
     const quiet = await post('/api/proactive/run', {})
     assert.equal(quiet.data.sent, false)

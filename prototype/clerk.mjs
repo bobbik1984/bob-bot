@@ -272,6 +272,13 @@ export class Clerk {
     const entry = this.inbox.find(n => n.id === id)
     if (entry) { entry.delivery = delivery; this.#saveInbox() }
   }
+  /** Drops entries that no longer belong in the inbox, such as old check-in copies. Returns how many went. */
+  pruneInbox(test) {
+    const before = this.inbox.length
+    this.inbox = this.inbox.filter(entry => !test(entry))
+    if (this.inbox.length !== before) this.#saveInbox()
+    return before - this.inbox.length
+  }
   markAllRead() { for (const n of this.inbox) n.read = true; this.#saveInbox() }
   unread() { return this.inbox.filter(n => !n.read).length }
 }
