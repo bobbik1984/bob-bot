@@ -173,6 +173,18 @@ try {
     assert.equal(fields.price, true); assert.equal(fields.base, true); assert.equal(fields.model, 'gpt-4.1-mini')
     await phone.evaluate("document.getElementById('cancelProvider').click()")
   })
+  await check('a published page card embeds a sandboxed frame and a link', async () => {
+    const r = await phone.evaluate("(() => { const n=pageCard({title:'chart',url:'/a/abcdefabcdef',height:300}); const f=n.querySelector('iframe'); return { sandbox:f.getAttribute('sandbox'), h:f.style.height, href:n.querySelector('a')?.getAttribute('href') } })()")
+    assert.equal(r.sandbox, 'allow-scripts'); assert.equal(r.h, '300px'); assert.equal(r.href, '/a/abcdefabcdef')
+  })
+  await check('a published page actually renders inside its sandboxed frame', async () => {
+    const id = 'abcdefabcdef'
+    fs.mkdirSync(path.join(data, 'pages'), { recursive: true })
+    fs.writeFileSync(path.join(data, 'pages', `${id}.html`), '<!doctype html><meta charset="utf-8"><h1>page-ok</h1><script>document.title="page-ok"</script>')
+    await phone.evaluate("show('chat')")
+    await phone.evaluate(`(() => { window.__pageLoaded=false; const n=pageCard({title:'chart',url:'/a/${id}',height:300}); n.querySelector('iframe').addEventListener('load',()=>window.__pageLoaded=true); document.getElementById('feed').append(n) })()`)
+    await waitFor(() => phone.evaluate('window.__pageLoaded'), 8000)
+  })
   cloud.close(); phone.close()
 } catch (error) {
   results.push(false)

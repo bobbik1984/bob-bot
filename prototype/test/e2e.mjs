@@ -184,6 +184,7 @@ try {
     approval = await waitEvent(e => e.type === 'approval')
     assert.equal(approval.summary, 'Click "Post"')
     assert.ok(approval.screenshot?.length > 100)
+    assert.equal(approval.allowTask, false, 'a risky click must not offer a task-wide grant')
   })
   await check('non-risky click ran without approval', () => {
     assert.ok(requests.length >= 5)
@@ -312,6 +313,12 @@ try {
     assert.equal((await post('/api/approve', { id: ask.id, allow })).status, 200)
     return ask
   }
+  const decideTask = async (match = () => true) => {
+    const ask = await waitEvent(e => e.type === 'approval' && !answered.has(e.id) && match(e))
+    answered.add(ask.id)
+    assert.equal((await post('/api/approve', { id: ask.id, allow: true, scope: 'task' })).status, 200)
+    return ask
+  }
   const outside = path.join(os.tmpdir(), `bobbot-outside-${Date.now()}.txt`)
   fs.writeFileSync(outside, 'outside-content')
   let toolCid
@@ -360,6 +367,43 @@ try {
     const seen = JSON.stringify(requests.at(-1).messages)
     assert.ok(!seen.includes('test-key') && !seen.includes('DEEPSEEK_API_KEY'), 'a key leaked into the command environment')
     await waitAfter(t0, e => e.type === 'status' && e.status === 'idle' && e.cid === toolCid)
+  })
+  await check('allowing commands for the task stops the same prompt repeating', async () => {
+    const t0 = Date.now()
+    script.push(
+      use('run_command', { command: 'echo grant-one' }),
+      use('run_command', { command: 'echo grant-two' }),
+      say('grants done'),
+    )
+    assert.equal((await post('/api/chat', { cid: toolCid, text: 'run two commands' })).status, 200)
+    const first = await decideTask(e => e.kind === 'command' && e.detail === 'echo grant-one')
+    assert.equal(first.allowTask, true)
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'grants done')
+    const asked = events.filter(e => e.at >= t0 && e.type === 'approval')
+    assert.equal(asked.length, 1, 'the second command asked for approval again')
+    const seen = JSON.stringify(requests.at(-1).messages)
+    assert.ok(seen.includes('grant-one') && seen.includes('grant-two'), 'not every command ran')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle' && e.cid === toolCid)
+  })
+  await check('a chart page is published into the chat with a link and sandbox headers', async () => {
+    const t0 = Date.now()
+    script.push(
+      use('publish_page', {
+        title: 'Test chart', height: 300,
+        html: '<!doctype html><meta charset="utf-8"><h1>chart-ok</h1><svg width="10" height="10"><rect width="10" height="10"/></svg>',
+      }),
+      say('chart ready'),
+    )
+    assert.equal((await post('/api/chat', { text: 'make a chart page' })).status, 200)
+    const card = await waitAfter(t0, e => e.type === 'card' && e.card.kind === 'page')
+    assert.match(card.card.page.url, /^\/a\/[a-f0-9]{12}$/)
+    assert.equal(card.card.page.height, 300)
+    const page = await fetch(base + card.card.page.url, { headers: { cookie } })
+    assert.equal(page.status, 200)
+    assert.match(await page.text(), /chart-ok/)
+    assert.match(page.headers.get('content-security-policy'), /default-src 'none'/)
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'chart ready')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
   })
   await check('a chat keeps its memory after the agent restarts', async () => {
     const first = Date.now()

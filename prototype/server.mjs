@@ -18,6 +18,7 @@ import { webFetch } from './web-fetch.mjs'
 import { startCompatApi } from './compat-api.mjs'
 import { Features } from './features.mjs'
 import { Memory } from './memory.mjs'
+import { Pages, checkPage } from './pages.mjs'
 import { Providers, PRESETS, checkProfile } from './providers.mjs'
 import { WriteBehind, writeAtomic } from './store.mjs'
 import QRCode from 'qrcode'
@@ -49,6 +50,7 @@ const writes = new WriteBehind()
 const clerk = new Clerk(DATA_DIR)
 const extensions = new Extensions(DATA_DIR)
 const providers = new Providers(path.join(DATA_DIR, 'providers.json'))
+const pages = new Pages(path.join(DATA_DIR, 'pages'))
 const TEST_ENDPOINTS = process.env.BOBBOT_TEST_ENDPOINTS === '1' // lets the test suite use a fake provider on loopback
 const TRIAL_MS = Number(process.env.BOBBOT_TRIAL_MS || 3 * 60 * 1000)
 const features = new Features(path.join(DATA_DIR, 'features'), {
@@ -148,6 +150,9 @@ const publishBudget = () => push({ type: 'budget', ...budget.status() }, false, 
 
 // ---- shared-control gates ----
 const approvals = new Map()
+const taskGrants = new Set() // "allow similar actions for this task", cleared when the turn ends
+const taskGrantKey = kind => `${runningCid ?? lastPromptCid ?? ''}\n${kind}`
+const clearTaskGrants = () => taskGrants.clear()
 let takeover = null
 let viewer = null
 
@@ -172,17 +177,27 @@ async function requireApproval({ kind, summary, target = '', detail = '', screen
     activeRun.skipped.push(summary)
     throw new Error('This is a scheduled run, so nobody is there to approve this action. Do not try another way: finish what you can and report what you skipped.')
   }
+  // A grant covers only low-risk, repetitive work in this turn: commands, reading, listing and writes inside the
+  // workspace. Clicks, typing, uploads, installs and settings changes always ask again.
+  let inWorkspace = false
+  if (kind === 'write') { try { inWorkspace = host.classify(target).inWorkspace } catch { inWorkspace = false } }
+  const grantable = kind === 'command' || kind === 'read' || kind === 'list' || (kind === 'write' && inWorkspace)
+  const grantKey = taskGrantKey(kind)
+  if (grantable && taskGrants.has(grantKey)) return
   const id = crypto.randomUUID()
   const shot = screenshot ? await browser.screenshot().catch(() => null) : null
-  const payload = push({ type: 'approval', id, kind, summary, target, detail: detail.slice(0, 2000), screenshot: shot, ...extra })
+  const payload = push({ type: 'approval', id, kind, summary, target, detail: detail.slice(0, 2000), screenshot: shot, allowTask: grantable, ...extra })
   pending.set(id, payload)
   notifyOwner('Bob 需要你确认', kind === 'type' ? '确认一次网页输入' : summary.slice(0, 80), chatLink(payload.cid)) // typed text stays out of the notification
+  let decision = false
   const allowed = await new Promise(resolve => {
     const timer = setTimeout(() => { approvals.delete(id); resolve(false) }, APPROVAL_TIMEOUT_MS)
-    approvals.set(id, value => { clearTimeout(timer); approvals.delete(id); resolve(value) })
+    approvals.set(id, value => { clearTimeout(timer); approvals.delete(id); decision = value; resolve(value === true || value === 'task') })
   })
   pending.delete(id)
-  push({ type: 'approval_done', id, allowed })
+  const scope = decision === 'task' && grantable ? 'task' : 'once'
+  if (scope === 'task') taskGrants.add(grantKey)
+  push({ type: 'approval_done', id, allowed, scope })
   if (!allowed) throw new Error(`The user did not approve this action: ${summary}`)
 }
 
@@ -308,6 +323,11 @@ const TOOLS = [
     items: { type: 'array', items: { type: 'string' }, description: 'Up to 12 short bullet points' },
     note: { type: 'string' },
   }, ['title']],
+  ['publish_page', 'Publish a self-contained HTML page (a chart, visual report or dashboard) into this chat. It appears with a preview and an Open link. Use inline CSS, SVG and JavaScript only: external scripts, fonts, images and network requests are blocked. Do not try to host pages with commands or by writing program files.', {
+    title: { type: 'string', description: 'Short name for the page' },
+    html: { type: 'string', description: 'A complete HTML document that renders without the internet' },
+    height: { type: 'integer', description: 'Preview height in pixels, 160 to 800; default 360' },
+  }, ['title', 'html']],
   ['ext_list', 'List the MCP servers and skills that are installed.', {}, []],
   ['install_package', 'Install packages on the server with npm (global), pip (in BobBot\'s own virtualenv) or apt (needs sudo), after the user confirms the exact command. Package names only.', { manager: { type: 'string', enum: ['npm', 'pip', 'apt'] }, packages: { type: 'array', items: { type: 'string' } } }, ['manager', 'packages']],
   ['mcp_add', 'Add an MCP server so you gain its tools, after the user confirms. Give command and args for a local server (for example npx with ["-y", "<package>"]), or url for a remote https one. env_names lists secrets it needs, which the user enters in Settings, never in chat. You get the tools after this reply, when Bob restarts.', {
@@ -368,6 +388,7 @@ async function callTool(name, args) {
   if (['list_files', 'read_file', 'write_file', 'run_command'].includes(name)) return hostTool(name, args)
   if (name === 'web_fetch') return webFetch(String(args.url ?? ''))
   if (name === 'show_card') return showCard(args)
+  if (name === 'publish_page') return publishPage(args)
   if (name === 'routine_steps') return (tracesOf(runningCid).map(s => `${s.ok ? 'ok' : 'FAILED'}: ${s.line}`).join('\n')) || 'No tool steps in this chat yet.'
   if (name === 'routine_save') return routineSave(args)
   if (name === 'run_report') {
@@ -971,6 +992,14 @@ function showCard(args) {
   return 'The card is shown to the user. Add at most one short line of text.'
 }
 
+/** A chart or report page in the chat, with its own Open link. Nothing from it can read the app or the network. */
+function publishPage(args) {
+  let page
+  try { page = pages.save(checkPage(args)) } catch (error) { throw new Error(`Bad page: ${error.code ?? error.message}`) }
+  push({ type: 'card', card: { kind: 'page', page: { ...page, url: `/a/${page.id}` } } })
+  return 'The page is shown in the chat with an Open link. Reply with one short line.'
+}
+
 function clerkView() {
   return {
     timezone: clerk.timezone, timezoneChosen: clerk.timezoneChosen, busy: Boolean(runningCid),
@@ -1506,6 +1535,8 @@ const frameSdk = theme => `(() => {
 const STYLE_OFF_LIMITS = '.card.ask, .card.help, #trialHost, #login, #browser'
 // The page itself loads nothing from other sites, so styling from a feature cannot send anything out through an image address.
 const PAGE_CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; frame-src 'self'; object-src 'none'; base-uri 'none'"
+// Published pages are self-contained: inline CSS/SVG/JS, data: images only, and no way to call the network.
+const PAGE_ARTIFACT_CSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'"
 
 async function featureTool(name, args) {
   if (name === 'feature_list') {
@@ -1611,6 +1642,7 @@ agent.on('status', (cid, status) => {
     if (!waiter && activeRun?.cid !== cid && !bridgeWaiters.has(cid) && !turns.has(cid)) turns.set(cid, { startedAt: Date.now(), steps: 0, text: '' })
   } else {
     if (runningCid === cid) runningCid = null
+    clearTaskGrants()
     finishTurn(cid)
     if (waiter?.started) waiter.finish()
     bridgeWaiters.get(cid)?.finish()
@@ -1627,6 +1659,7 @@ agent.on('exit', code => {
   for (const waiter of [...turnWaiters.values()]) waiter.finish()
   const cid = runningCid ?? lastPromptCid
   runningCid = null
+  clearTaskGrants()
   if (cid && turns.has(cid)) finishTurn(cid, 'Bob 中断了，请回来看看')
   if (cid && convOf(cid)) push({ type: 'error', text: `Agent stopped unexpectedly (${code}). Send a message to restart it.` }, true, cid)
   if (cid) push({ type: 'status', status: 'idle' }, false, cid)
@@ -1869,6 +1902,15 @@ async function route(req, res) {
     return send(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(req, session.value, session.maxAge) })
   }
   if (!authed(req)) return send(res, 401, { error: 'UNAUTHORIZED' })
+  if (req.method === 'GET' && pathname.startsWith('/a/')) {
+    const html = pages.read(pathname.slice(3))
+    if (html === null) return send(res, 404, { error: 'NO_PAGE' })
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'SAMEORIGIN', 'Content-Security-Policy': PAGE_ARTIFACT_CSP,
+    })
+    return res.end(html)
+  }
   if (req.method === 'GET' && pathname === '/api/providers') return send(res, 200, providersView())
   if (req.method === 'GET' && pathname.startsWith('/f/')) {
     const parts = pathname.split('/').filter(Boolean) // ['f', name, file]
@@ -1971,6 +2013,7 @@ async function route(req, res) {
       if (runningCid && runningCid !== cid) return send(res, 409, { error: 'BUSY_OTHER' })
       const conv = convOf(cid)
       if (!conv.title) conv.title = titleFrom(text, files)
+      clearTaskGrants()
       lastPromptCid = cid
       runningCid = cid
       const prior = priorContext(cid)
@@ -2093,7 +2136,7 @@ async function route(req, res) {
     case '/api/approve': {
       const resolve = approvals.get(body.id)
       if (!resolve) return send(res, 404, { error: 'EXPIRED' })
-      resolve(body.allow === true)
+      resolve(body.scope === 'task' && body.allow !== false ? 'task' : body.allow === true)
       return send(res, 200, { ok: true })
     }
     case '/api/takeover/done':

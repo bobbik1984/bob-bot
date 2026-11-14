@@ -198,6 +198,11 @@ main { flex:1; min-height:0; position:relative; }
 .card img { width:100%; max-height:240px; object-fit:contain; border-radius:12px; background:var(--stage); }
 .card .actions { display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:10px; }
 .card .actions .btn { width:100%; min-height:42px; border-radius:14px; }
+/* a chart or report Bob publishes: its own frame and an Open link, never script access to the app */
+.page-card { background:var(--surface); border:1px solid var(--line); border-radius:20px; overflow:hidden; box-shadow:var(--shadow); }
+.page-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 14px; border-bottom:1px solid var(--line); }
+.page-head b { font-size:15px; overflow-wrap:anywhere; }
+.page-card iframe { display:block; width:100%; border:0; background:var(--surface); }
 .card .actions .link { justify-self:start; }
 .card .done { display:flex; align-items:center; gap:6px; color:var(--ok); font-weight:600; font-size:14px; }
 .card .done.no { color:var(--muted); }
@@ -804,6 +809,7 @@ const I18N = {
   langTitle:['语言','Language'], langAuto:['跟随系统','Automatic'],
   today:['今天','Today'], tomorrow:['明天','Tomorrow'], dayAfter:['后天','In two days'],
   cancel:['取消','Cancel'], confirm:['确认','Confirm'], confirmAdd:['确认添加','Add it'], confirmDeleteBtn:['确认删除','Delete'], askDelete:['删除','Delete'], askPause:['暂停','Pause'], askResume:['恢复','Resume'],
+  openPage:['打开链接','Open'],
   firstAt:['首次 {n}','First {n}'], alsoTo:['同时发到 {n}','Also to {n}'],
   inboxSent:['已发送至 {n}','Sent to {n}'], inboxNotSent:['未送达','not delivered'],
   inboxTitle:['收件箱','Inbox'], inboxEmpty:['提醒和任务结果会出现在这里。','Reminders and task results show up here.'], markRead:['全部已读','Mark all read'],
@@ -875,6 +881,10 @@ const I18N = {
   secretSet:['已设置','set'], secretNeeded:['需要填写','needed'], secretPh:['{n} 的值','Value for {n}'], setSecret:['保存','Set'], secretSaved:['已保存，Bob 会重启后生效','Saved. Bob restarts to use it'],
   // approvals
   allow:['允许','Allow'], reject:['拒绝','Reject'], approved:['已允许','Allowed'], rejected:['已拒绝','Rejected'], expired:['已过期','Expired'],
+  allowTask:['本任务内同类操作都允许','Allow similar actions for this task'],
+  allowTaskHint:['只在完全信任本轮任务时使用：之后的命令不再逐条确认，仍以你的用户权限运行，本轮结束自动失效。','Only if you trust this whole task: later commands run without another prompt, as your user, until this turn ends.'],
+  allowTaskWriteHint:['本轮对话内，工作区里的写入不再逐条确认。','Writes inside the workspace will not ask again this turn.'],
+  approvedTask:['已允许（本任务）','Allowed (this task)'],
   tagApprove:['待确认','Needs approval'], tagHelp:['待处理','Needs you'],
   needsApproval:['Bob 想执行这个操作','Bob wants to do this'], needsYou:['Bob 需要你帮忙','Bob needs your help'],
   actCommand:['运行命令','Run a command'], actRead:['读取文件','Read file'], actList:['查看文件夹','List folder'], actWrite:['写入文件','Write file'], inFolder:['运行位置：{n}','Runs in: {n}'],
@@ -1427,6 +1437,28 @@ function infoCard(card) {
   return c
 }
 
+/** A page Bob published: a sandboxed preview with no access to the app, plus a plain link to open it. */
+function pageCard(page) {
+  const c = el('div', 'page-card')
+  const head = el('div', 'page-head')
+  head.append(el('b', '', page.title))
+  const open = el('a', 'link', t('openPage'))
+  open.href = page.url
+  open.target = '_blank'
+  open.rel = 'noopener noreferrer'
+  head.append(open)
+  c.append(head)
+  const frame = document.createElement('iframe')
+  frame.src = page.url
+  frame.loading = 'lazy'
+  frame.setAttribute('sandbox', 'allow-scripts')
+  frame.setAttribute('referrerpolicy', 'no-referrer')
+  frame.title = page.title
+  frame.style.height = `${Math.min(800, Math.max(160, Number(page.height) || 360))}px`
+  c.append(frame)
+  return c
+}
+
 // ---- cards ----
 const ACTIONS = { command:'actCommand', read:'actRead', list:'actList', write:'actWrite' }
 const baseName = p => String(p).split('/').filter(Boolean).pop() ?? p
@@ -1497,20 +1529,28 @@ function buildCard(e, kind) {
   if (detail) c.append(el('pre', 'detail' + (e.kind === 'command' ? '' : ' soft'), detail))
   if (e.screenshot) { const img = new Image(); img.alt = ''; img.src = 'data:image/jpeg;base64,' + e.screenshot; c.append(img) }
   const row = el('div', 'actions')
+  let decide = null
   if (kind === 'approval') {
-    const go = async allow => {
-      const { status } = await post('/api/approve', { id: e.id, allow })
+    decide = async decision => {
+      const { status } = await post('/api/approve', { id: e.id, allow: decision !== 'task', scope: decision === 'task' ? 'task' : 'once' })
       if (status === 404) closeCard(e.id, t('expired'), false)
     }
-    const no = el('button', 'btn', t('cancel')); no.onclick = () => go(false)
+    const no = el('button', 'btn', t('cancel')); no.onclick = () => decide(false)
     const yesLabel = e.kind === 'clerk' ? (e.action === 'create' ? t('confirmAdd') : e.action === 'delete' ? t('confirmDeleteBtn') : t('confirm')) : t('allow')
-    const yes = el('button', 'btn primary', yesLabel); yes.onclick = () => go(true)
+    const yes = el('button', 'btn primary', yesLabel); yes.onclick = () => decide(true)
     row.append(no, yes)
   } else {
     const openBtn = el('button', 'btn primary', t('openWindow')); openBtn.onclick = openBrowser
     row.append(openBtn)
   }
   c.append(row)
+  if (kind === 'approval' && e.allowTask) {
+    const task = el('button', 'btn block', t('allowTask'))
+    task.onclick = () => decide('task')
+    c.append(task)
+    if (e.kind === 'command') c.append(el('p', 'hint', t('allowTaskHint')))
+    if (e.kind === 'write') c.append(el('p', 'hint', t('allowTaskWriteHint')))
+  }
   const list = cards.get(e.id) ?? []
   list.push({ c, row }); cards.set(e.id, list)
   return c
@@ -1557,12 +1597,12 @@ function render(e) {
   else if (e.type === 'step') step(e.name)
   else if (e.type === 'error') notice(e.text, true)
   else if (e.type === 'notice') notice(t(e.code === 'BUDGET_NEAR' ? 'budgetNear' : e.code === 'EXTENSIONS_BROKEN' ? 'extensionsBroken' : 'budgetExceeded'), true)
-  else if (e.type === 'card') add(e.card.kind === 'job' ? jobCard(e.card.job, e.card.timezone, true, e.card.created) : e.card.kind === 'todo' ? todoCard(e.card.todo, e.card.timezone, e.card.created) : infoCard(e.card), 'card')
+  else if (e.type === 'card') add(e.card.kind === 'job' ? jobCard(e.card.job, e.card.timezone, true, e.card.created) : e.card.kind === 'todo' ? todoCard(e.card.todo, e.card.timezone, e.card.created) : e.card.kind === 'page' ? pageCard(e.card.page) : infoCard(e.card), 'card')
   else if (e.type === 'approval' || e.type === 'takeover') {
     add(buildCard(e, e.type), 'card')
     if (!open.has(e.id)) closeCard(e.id, t('expired'), false) // an old request nobody can answer any more
   }
-  else if (e.type === 'approval_done') closeCard(e.id, t(e.allowed ? 'approved' : 'rejected'), e.allowed)
+  else if (e.type === 'approval_done') closeCard(e.id, t(e.allowed ? (e.scope === 'task' ? 'approvedTask' : 'approved') : 'rejected'), e.allowed)
   else if (e.type === 'takeover_done') closeCard(e.id, t('doneTakeover'))
 }
 let workSteps = 0 // real work done in this turn, which is what makes a turn worth saving as a routine

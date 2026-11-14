@@ -10,6 +10,7 @@ import { buildRequest, findTelegramChat, publicChannel, sendToChannel, validateC
 import { CATCH_UP_MS, Clerk, describeSchedule, formatLocal, nextRun, normalizeSchedule, zonedToUtc } from '../clerk.mjs'
 import { htmlToText, webFetch } from '../web-fetch.mjs'
 import { Memory } from '../memory.mjs'
+import { checkPage, Pages } from '../pages.mjs'
 import { checkProfile, Providers } from '../providers.mjs'
 
 const results = []
@@ -191,6 +192,27 @@ await check('a broken legacy profile does not leave an empty store behind', () =
   const p = new Providers(path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'providers-')), 'providers.json'))
   assert.throws(() => p.seed([{ kind: 'custom', baseUrl: 'http://example.com/v1', model: 'm', inputUsd: 1, outputUsd: 2 }]), /HTTPS_REQUIRED/)
   assert.equal(p.exists, false)
+})
+
+console.log('Published pages')
+const pageError = input => { try { checkPage(input); return 'ok' } catch (e) { return e.code } }
+await check('a page needs a title, content and a bounded preview height', () => {
+  assert.equal(pageError({ title: '', html: '<p>x</p>' }), 'BAD_TITLE')
+  assert.equal(pageError({ title: 'x', html: '' }), 'EMPTY_PAGE')
+  assert.equal(pageError({ title: 'x', html: 'x'.repeat(300001) }), 'PAGE_TOO_LARGE')
+  const p = checkPage({ title: '  My  chart ', html: '<h1>x</h1>', height: 900 })
+  assert.equal(p.title, 'My chart'); assert.equal(p.height, 800)
+  assert.equal(checkPage({ title: 'x', html: '<h1>x</h1>' }).height, 360)
+})
+await check('a published page is stored with a safe id and can be read back', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pages-'))
+  const pages = new Pages(dir)
+  const p = pages.save(checkPage({ title: 'Chart', html: '<h1>ok</h1>', height: 300 }))
+  assert.match(p.id, /^[a-f0-9]{12}$/)
+  assert.equal(pages.read(p.id), '<h1>ok</h1>')
+  assert.equal(pages.read('../etc/passwd'), null)
+  assert.equal(pages.read('zzzzzzzzzzzz'), null)
+  assert.deepEqual(new Pages(dir).list().map(x => x.id), [p.id])
 })
 
 console.log('Channels')

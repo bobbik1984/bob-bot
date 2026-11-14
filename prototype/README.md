@@ -154,6 +154,12 @@ Commands run as the user who started BobBot, with API keys and tokens removed fr
 
 Read each command before you allow it. A command can do anything its user can do, and the file block does not apply to commands. If that user has passwordless `sudo`, an approved command can act as root, and text from a web page or a file could try to talk Bob into asking for something harmful.
 
+When a command, read, list or workspace write would repeat, the card offers **Allow similar actions for this task**. It lasts only until the turn ends, and the card says what it covers. Web clicks and typing, uploads, package installs, MCP/skill changes and schedule changes still ask every time.
+
+## Charts and pages in the chat
+
+Ask for a chart, a visual report or a dashboard and Bob builds a self-contained HTML page and calls `publish_page`. The page appears in the chat in a sandboxed preview with an **Open** link to `/a/<id>`. It may use inline CSS, SVG and JavaScript, but no external scripts, fonts or images and no network; it cannot read the app or its login. The link needs your login, so it is not a public address. Bob is told to use this instead of trying to host a page with shell commands or by writing program files.
+
 ## The browser window
 
 The cloud browser takes the shape of the device that opens it. On a phone it is a phone: a phone-sized page, a mobile user agent and touch, so sites such as ctrip.com serve their mobile version, readable at your screen's scale. On a PC it is a PC: a desktop page as wide as the window, a mouse that can hover, the wheel, and your keyboard typing straight into the page (use the box below the page for Chinese). Rotating the phone or resizing the window fits the page again.

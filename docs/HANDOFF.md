@@ -42,6 +42,7 @@
 | `public/index.html` | 单页前端（无构建）：聊天、文员、分组设置、浏览器接管窗口、卡片、Orb、i18n、语音 |
 | `agent.mjs` | DSH 子进程管理、模型调用（直连 DeepSeek 或 pi-ai 供应商）、预算 |
 | `providers.mjs` | 已保存的模型供应商：校验、保存、切换、删除；旧单模型配置迁移 |
+| `pages.mjs` | 对话内发布的图表/报告页：校验、保存、读取；页面走沙箱与独立 CSP |
 | `browser.mjs` | 共享 Headless Chromium、CDP、截图/推流；页面快照（框架与 Shadow DOM）、标签页、下载、地址检查、崩溃恢复 |
 | `store.mjs` | 状态文件原子写入与合并写入 |
 | `clerk.mjs` | 待办、定时任务、收件箱、渠道数据模型 |
@@ -58,7 +59,7 @@
 
 ## 4. 数据、密钥与不可提交项
 
-RY 上 `prototype/data/` 包含：`pin.json`、`secrets.json`、`providers.json`、`provider.patch.yml`、`conversations/`、`memory.json`、`proactive.json`、`features/`、`vapid.json`、`push-subscriptions.json`、`wechat/`、`browser_profile/`。`provider.patch.yml` 是启动时按当前供应商生成的 DSH 补丁，不含 Key；供应商 Key 仍在 `secrets.json` 的 `p:<id>` 下。
+RY 上 `prototype/data/` 包含：`pin.json`、`secrets.json`、`providers.json`、`provider.patch.yml`、`pages/`、`conversations/`、`memory.json`、`proactive.json`、`features/`、`vapid.json`、`push-subscriptions.json`、`wechat/`、`browser_profile/`。`provider.patch.yml` 是启动时按当前供应商生成的 DSH 补丁，不含 Key；供应商 Key 仍在 `secrets.json` 的 `p:<id>` 下。`pages/` 存对话里发布的页面（`index.json` + `<id>.html`），只通过登录后的 `/a/<id>` 访问。
 
 - 已被 `.gitignore` 覆盖（`prototype/data/`、`node_modules/`、`.env`、日志、`debug/ui-shots/`）
 - **不要**把任何 data 文件提交到 Git，也不要为了“干净”删除 RY 上的 data
@@ -86,7 +87,7 @@ ssh ... 'ln -sfn /home/ubuntu/bob-bot/prototype/node_modules /tmp/bobtest/protot
 ssh ... 'cd /tmp/bobtest/prototype && node test/unit.mjs && node test/e2e.mjs'
 ```
 
-当前基线：`unit 42/42`、`plugins 9/9`、`browser 20/20`、`e2e 74/74`、`ui 10/10`。e2e 需要 Chrome 与空闲端口；跑之前 `fuser -k 8799/tcp`。
+当前基线：`unit 44/44`、`plugins 9/9`、`browser 20/20`、`e2e 76/76`、`ui 12/12`。e2e 需要 Chrome 与空闲端口；跑之前 `fuser -k 8799/tcp`。
 
 **部署不依赖 GitHub**：RY 在国内，常连不上 GitHub。`deploy-ry.sh` 通过 SSH 把当前提交直接推给 RY（旁路引用 `refs/deploy/main`），RY 再 `git reset --hard` 到它；GitHub 备份在 x1t 上尽力推送，失败只警告。只部署已提交的内容，且必须在 `main` 上。`--via-github` 才让 RY 自己拉 GitHub。
 
