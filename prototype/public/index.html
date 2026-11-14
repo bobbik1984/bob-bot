@@ -95,6 +95,12 @@ html[data-theme=dark] {
 .orb[data-state=think] .hl { opacity:1; }
 .orb[data-state=speak] { --t:5s; }
 .orb[data-state=wait] .warm { opacity:1; }
+/* On the empty page the big drop is drawn by the GPU (refraction, Fresnel edge, moving highlights); the CSS drop
+   stays underneath as the fallback and takes over, small, once the chat starts. */
+.orb-btn .drop-gl { position:absolute; left:-5%; top:-5%; width:110%; height:110%; pointer-events:none; opacity:0; transition:opacity .35s; }
+#app.hero .orb-btn .drop-gl { opacity:1; }
+.orb .drop { transition:opacity .35s; }
+#app.hero .orb.gl .drop { opacity:0; }
 /* a tap or a sent message nudges the drop, and it rings out the same way */
 .orb.poke .drop { animation:poke 1.3s ease-in-out; }
 .orb.static .body { animation:none !important; }
@@ -995,6 +1001,7 @@ function poke() {
   for (const orb of document.querySelectorAll('[data-orb]:not(.static)')) {
     orb.classList.remove('poke'); void orb.offsetWidth; orb.classList.add('poke')
   }
+  dropGL.poke()
 }
 document.addEventListener('animationend', e => { if (e.animationName === 'poke') e.target.closest('.orb')?.classList.remove('poke') })
 
@@ -1014,6 +1021,123 @@ function layoutHero() {
   app.style.setProperty('--wtop', (top + D + gap) + 'px')
 }
 new ResizeObserver(layoutHero).observe($('viewChat'))
+
+// The big drop on the empty page, drawn with WebGL. The shape follows the same rule as the CSS drop: one value k,
+// x = k and y = 1 / k, so its area never changes. Light comes from a made-up studio around it (the page behind is
+// a flat colour, so there is nothing real to refract): a soft window up and to the left, seen upright in the
+// surface and upside down through the water, a Fresnel edge, and a highlight that slides as the drop deforms.
+// Cost is kept small: at most 30 frames a second, nothing drawn while the shape holds still, and no frames at all
+// once the chat starts, while the page is hidden, or with reduced motion (one still frame then).
+const dropGL = (() => {
+  const stub = { poke() {}, wake() {} }
+  const btn = $('orbBtn'), orb = $('hOrb'), app = $('app')
+  const cv = document.createElement('canvas')
+  cv.className = 'drop-gl'; cv.setAttribute('aria-hidden', 'true')
+  let gl = null
+  try { gl = cv.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: false, powerPreference: 'low-power' }) } catch { /* no WebGL */ }
+  if (!gl) return stub
+  const VS = 'attribute vec2 a; varying vec2 v; void main() { v = a; gl_Position = vec4(a, 0.0, 1.0); }'
+  const FS = `precision highp float;
+varying vec2 v;
+uniform float uK, uPad, uEdge, uDark, uThink, uWait;
+vec3 env(vec2 d) {
+  float y = d.y;
+  vec3 top = mix(vec3(0.94, 0.97, 1.0), vec3(0.34, 0.45, 0.64), uDark);
+  vec3 hor = mix(vec3(0.80, 0.88, 0.97), vec3(0.16, 0.22, 0.34), uDark);
+  vec3 bot = mix(vec3(0.60, 0.72, 0.87), vec3(0.06, 0.08, 0.13), uDark);
+  vec3 c = mix(mix(bot, hor, smoothstep(-1.0, 0.0, y)), top, smoothstep(0.0, 1.0, y));
+  vec2 w = (d - vec2(-0.42, 0.50)) * vec2(1.0, 1.5);
+  float win = exp(-pow(length(w) / 0.27, 4.0));
+  c += win * mix(vec3(1.0), vec3(0.82, 0.92, 1.0), uDark) * (1.2 + 0.5 * uThink);
+  c += smoothstep(0.55, 0.0, length(d - vec2(0.62, -0.42))) * mix(vec3(0.30, 0.42, 0.55), vec3(0.20, 0.35, 0.60), uDark);
+  return c;
+}
+void main() {
+  vec2 p = v * uPad;
+  vec2 q = vec2(p.x / uK, p.y * uK);
+  float r = length(q);
+  float mask = 1.0 - smoothstep(1.0 - uEdge, 1.0, r);
+  if (mask <= 0.0) { gl_FragColor = vec4(0.0); return; }
+  float z = sqrt(max(0.0, 1.0 - min(r * r, 1.0)));
+  vec3 N = normalize(vec3(q, z));
+  vec3 R = reflect(vec3(0.0, 0.0, -1.0), N);
+  float fres = 0.03 + 0.97 * pow(1.0 - z, 4.0);
+  vec3 water = mix(vec3(0.80, 0.90, 1.0), vec3(0.55, 0.76, 1.0), uDark);
+  vec3 trans = env(-q * 1.15) * mix(vec3(1.0), water, 0.55);
+  vec3 col = mix(trans, env(R.xy), fres);
+  vec3 L = normalize(vec3(-0.5, 0.62, 0.62));
+  float spec = pow(max(dot(R, L), 0.0), 140.0) * (1.5 + 0.8 * uThink);
+  spec += pow(max(dot(R, normalize(vec3(0.55, -0.5, 0.67))), 0.0), 60.0) * 0.25;
+  col += spec;
+  col *= 1.0 - 0.16 * smoothstep(0.72, 1.0, r);
+  col += smoothstep(0.6, 0.0, length(q - vec2(0.33, -0.48))) * 0.22 * mix(vec3(1.0), vec3(0.6, 0.8, 1.0), uDark);
+  float low = smoothstep(0.2, -0.95, q.y);
+  col = mix(col, col * vec3(1.06, 0.94, 0.78) + vec3(0.30, 0.16, 0.0), uWait * low * 0.75);
+  float alpha = mix(mix(0.58, 0.55, uDark), 0.96, fres);
+  alpha = clamp(alpha + spec, 0.0, 1.0) * mask;
+  gl_FragColor = vec4(min(col, 1.0) * alpha, alpha);
+}`
+  const shader = (type, src) => { const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh); return gl.getShaderParameter(sh, gl.COMPILE_STATUS) ? sh : null }
+  const vs = shader(gl.VERTEX_SHADER, VS), fs = shader(gl.FRAGMENT_SHADER, FS)
+  if (!vs || !fs) return stub
+  const prog = gl.createProgram(); gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog)
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return stub
+  gl.useProgram(prog)
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer())
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
+  const loc = gl.getAttribLocation(prog, 'a'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
+  const u = Object.fromEntries(['uK', 'uPad', 'uEdge', 'uDark', 'uThink', 'uWait'].map(n => [n, gl.getUniformLocation(prog, n)]))
+  const PAD = 1.1 // the canvas reaches past the drop, so a stretched drop is never clipped
+  btn.append(cv); orb.classList.add('gl')
+
+  // the same keyframes as the CSS drop, eased in and out between each pair
+  const curve = (frames, f) => {
+    for (let i = 1; i < frames.length; i++) {
+      const [f1, v1] = frames[i]
+      if (f <= f1) { const [f0, v0] = frames[i - 1]; const x = (f - f0) / (f1 - f0 || 1); return v0 + (v1 - v0) * x * x * (3 - 2 * x) }
+    }
+    return frames[frames.length - 1][1]
+  }
+  const TENSION = [[0, 1], [.18, 1], [.32, .975], [.46, 1.018], [.60, .992], [.74, 1.004], [.88, 1], [1, 1]]
+  const POKE = [[0, 1], [.14, .955], [.32, 1.03], [.50, .988], [.68, 1.005], [1, 1]]
+  const PERIOD = { nap: 9, think: 4, speak: 5, wait: 9 }
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)')
+  let raf = 0, lastT = 0, lastDraw = 0, phase = 0, pokeAt = -1e9, wait = 0, think = 0, drawn = ''
+
+  function frame(now) {
+    raf = 0
+    if (!app.classList.contains('hero') || app.hidden || document.hidden) return // wake() starts it again
+    raf = requestAnimationFrame(frame)
+    if (now - lastDraw < 32) return
+    const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now; lastDraw = now
+    const still = reduce.matches, state = orb.dataset.state
+    if (!still) phase = (phase + dt / (PERIOD[state] ?? 9)) % 1
+    const k = still ? 1 : curve(TENSION, phase) * curve(POKE, Math.min(1, (now - pokeAt) / 1300))
+    const ease = still ? 1 : Math.min(1, dt * 3)
+    wait += ((state === 'wait' ? 1 : 0) - wait) * ease
+    think += ((state === 'think' ? 1 : 0) - think) * ease
+    const dark = document.documentElement.dataset.theme === 'dark' ? 1 : 0
+    const dpr = Math.min(3, window.devicePixelRatio || 1)
+    const size = Math.max(2, Math.round(btn.clientWidth * PAD * dpr))
+    const key = [k.toFixed(4), wait.toFixed(3), think.toFixed(3), dark, size].join()
+    if (key === drawn) return // the shape is holding still: nothing to draw
+    drawn = key
+    if (cv.width !== size) { cv.width = cv.height = size }
+    gl.viewport(0, 0, size, size)
+    gl.uniform1f(u.uK, k); gl.uniform1f(u.uPad, PAD); gl.uniform1f(u.uEdge, 2.4 * PAD / size)
+    gl.uniform1f(u.uDark, dark); gl.uniform1f(u.uThink, think); gl.uniform1f(u.uWait, wait)
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT)
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+  }
+  function wake() { if (!raf) { lastT = performance.now(); drawn = ''; raf = requestAnimationFrame(frame) } }
+  document.addEventListener('visibilitychange', wake)
+  new MutationObserver(wake).observe(app, { attributes: true, attributeFilter: ['class', 'hidden'] })
+  new MutationObserver(wake).observe(orb, { attributes: true, attributeFilter: ['data-state'] })
+  new MutationObserver(wake).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+  cv.addEventListener('webglcontextlost', e => { e.preventDefault(); orb.classList.remove('gl'); cv.remove() })
+  wake()
+  return { poke() { pokeAt = performance.now(); wake() }, wake }
+})()
 // On a phone the keyboard covers the page without resizing it, so the app follows the visible part of the screen.
 ;(() => {
   const vv = window.visualViewport
