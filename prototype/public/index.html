@@ -283,6 +283,7 @@ main { flex:1; min-height:0; position:relative; }
 .inbox-item .title { flex:1; min-width:0; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .inbox-item .top time { flex:none; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
 .inbox-item .body { margin-top:3px; color:var(--muted); font-size:14px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.inbox-item .body.compact { -webkit-line-clamp:2; }
 .inbox-item.unread .title { font-weight:700; }
 .inbox-item.unread .title::after { content:''; display:inline-block; width:6px; height:6px; margin-left:7px; border-radius:50%; background:var(--accent); vertical-align:middle; }
 .inbox-item.unread .body { color:var(--text); }
@@ -558,6 +559,7 @@ nav button.on span:first-child { background:var(--accent-soft); }
     </div>
     <div class="view" id="viewClerk" hidden>
       <div class="slot" id="slotClerk"></div>
+      <p class="hint" data-t="clerkIntro"></p>
       <div id="draftBox" hidden>
         <div class="sect-head" id="draftsHead"><h3 data-t="draftsTitle"></h3></div>
         <div id="draftList"></div>
@@ -569,6 +571,7 @@ nav button.on span:first-child { background:var(--accent-soft); }
       <div id="jobList"></div>
       <p class="hint empty-note" id="jobEmpty" data-t="jobsEmpty" hidden></p>
       <div class="sect-head" id="inboxHead"><h3 data-t="inboxTitle"></h3><button class="link" id="markRead" data-t="markRead"></button></div>
+      <p class="hint" data-t="inboxHint"></p>
       <div id="inboxList"></div>
     </div>
     <div class="view" id="viewSettings" hidden>
@@ -788,7 +791,7 @@ const I18N = {
   themeTitle:['外观','Appearance'], theme_auto:['跟随系统','System'], theme_light:['浅色','Light'], theme_dark:['深色','Dark'],
   actClick:['点击「{n}」','Click "{n}"'], actTypeEnter:['输入「{n}」并回车','Enter "{n}" and press Enter'], actPressEnter:['在此页面按回车','Press Enter on this page'],
   pagePrefix:['页面：','Page: '], textPrefix:['文字：','Text: '],
-  draftDone:['已按草稿执行','Done as drafted'], draftFailed:['没能执行，详情在收件箱','Could not finish. See the inbox'], draftDiscarded:['草稿已放弃','Draft discarded'],
+  draftDone:['已按草稿执行','Done as drafted'], draftFailed:['没能执行，详情在对应的对话里','Could not finish. See its conversation'], draftDiscarded:['草稿已放弃','Draft discarded'],
   ch_webpush:['手机通知','Phone notifications'],
   loginSub:['输入 PIN 进入','Enter your PIN'], welcomeSub:['今天想让我做点什么？','What can I do for you today?'],
   tabChat:['对话','Chat'], tabClerk:['文员','Clerk'], tabSettings:['设置','Settings'],
@@ -812,7 +815,9 @@ const I18N = {
   openPage:['打开链接','Open'],
   firstAt:['首次 {n}','First {n}'], alsoTo:['同时发到 {n}','Also to {n}'],
   inboxSent:['已发送至 {n}','Sent to {n}'], inboxNotSent:['未送达','not delivered'],
-  inboxTitle:['收件箱','Inbox'], inboxEmpty:['提醒和任务结果会出现在这里。','Reminders and task results show up here.'], markRead:['全部已读','Mark all read'],
+  clerkIntro:['这里放待办、定时任务和等你处理的事；任务说了什么、做了什么，都在对应的对话里。','To-dos, schedules and things waiting for you live here; what a task said and did is in the matching chat.'],
+  inboxTitle:['最近结果','Recent results'], inboxEmpty:['定时任务和提醒的结果会显示在这里；完整内容在对应对话里。','Results from scheduled tasks and reminders appear here; the full content is in the conversation.'], markRead:['全部已读','Mark all read'],
+  inboxHint:['点一条打开对应的对话，完整内容和卡片都在那里。','Open a row to see the full result and cards in its conversation.'], openConversation:['打开对话','Open chat'],
   channelsTitle:['消息渠道','Channels'], channelsHint:['提醒和结果除了应用内，还可以发到这些渠道。密钥只保存在服务器上。','Reminders and results can also go to these channels. Secrets stay on the server.'],
   addChannel:['添加渠道','Add a channel'], zoneTitle:['时区','Time zone'],
   kindTask:['任务','Task'], kindReminder:['提醒','Reminder'], nextRun:['下次：{n}','Next: {n}'], paused:['已暂停','Paused'], neverRun:['还没运行过','Not run yet'],
@@ -825,7 +830,7 @@ const I18N = {
   draftsTitle:['待批草稿','Waiting for approval'], tagDraft:['草稿','Draft'], draftApprove:['批准并执行','Approve and run'], draftReject:['放弃','Discard'], draftBusy:['Bob 正在忙，请稍后再批准。','Bob is busy. Approve this in a moment.'],
   lastDrafted:['上次待批准：','Waiting for approval: '], run_drafted:['待批准','Waiting'], runTrial:['试运行','Trial'],
   saveRoutine:['存为日常任务','Save as a routine'], saveRoutinePrompt:['把刚才做成功的步骤存为日常任务。','Save the steps that just worked as a routine.'],
-  routineCheck:['校验','Check'], routineSteps:['步骤','Steps'], routineMissing:['缺数据时','If data is missing'], trialRunning:['正在试运行，结果会进收件箱。启用前不会定时运行。','Trial run in progress. The result goes to your inbox, and nothing is scheduled until you turn it on.'], trialDone:['试运行结束。看过结果后再启用定时。','Trial finished. Turn it on once the result looks right.'], enableRoutine:['启用定时','Turn on'],
+  routineCheck:['校验','Check'], routineSteps:['步骤','Steps'], routineMissing:['缺数据时','If data is missing'], trialRunning:['正在试运行；结果会出现在文员的最近结果里，完整内容在对话中。启用前不会定时运行。','Trial run in progress; the result appears under Recent results in the Clerk tab, with the full content in its chat. Nothing is scheduled until you turn it on.'], trialDone:['试运行结束。看过结果后再启用定时。','Trial finished. Turn it on once the result looks right.'], enableRoutine:['启用定时','Turn on'],
   run_ok:['完成','Done'], run_partial:['部分完成','Partly done'], run_needs_you:['需要你','Needed you'], run_failed:['失败','Failed'], run_missed:['错过','Missed'],
   ch_wechat:['微信（官方 iLink）','WeChat (official iLink)'],
   featuresTitle:['功能扩展','Features'], featuresHint:['Bob 可以给自己加功能：页面上的小部件、新工具、样式或设置面板。新功能先试用几分钟，你点「保留」才留下，否则自动撤销。功能代码在隔离环境里运行，碰不到密钥和登录。','Bob can add to himself: widgets on the page, new tools, styling or a settings panel. A new feature is on trial for a few minutes and stays only if you press Keep. Feature code runs isolated, away from keys and logins.'],
@@ -840,7 +845,7 @@ const I18N = {
   proactiveHint:['在设定的时间，以及主动性档位增加的时间点，Bob 会看一眼你的待办和任务，只有确实值得提醒时才开口；高冷每天最多 1 条，粘人最多 4 条，22:00–08:00 不打扰。','At your set times, plus extra moments at higher levels, Bob checks your to-dos and tasks and speaks only when it is worth it: from 1 message a day (Reserved) to 4 (Clingy), never between 22:00 and 08:00.'],
   proactiveOff:['已关闭','Off'], proactiveOn:['已开启','On'], proactiveNow:['现在试一次','Try now'],
   proactiveLevel:['主动性','Proactivity'], levelReserved:['高冷','Reserved'], levelBalanced:['得体','Balanced'], levelActive:['积极','Active'], levelClingy:['粘人','Clingy'],
-  proactiveSent:['已经发了一条主动消息，去对话或收件箱看看。','Sent a check-in; see the chat or inbox.'],
+  proactiveSent:['已经发了一条主动消息，去「提醒」对话看看。','Sent a check-in; see the reminders chat.'],
   proactiveSilent:['这次没有值得打扰你的内容。','Nothing worth interrupting you this time.'],
   proactiveSkip:['暂时跳过：{n}','Skipped: {n}'],
   pushTitle:['手机通知','Phone notifications'],
@@ -2027,15 +2032,24 @@ function inboxItem(n) {
   const top = el('div', 'top')
   top.append(el('span', 'title', n.title), el('time', '', fmtWhen(n.at, clerkData.timezone)))
   item.append(top)
-  if (n.text) item.append(el('div', 'body', n.text))
-  for (const card of n.cards ?? []) item.append(infoCard(card))
+  // The Clerk page shows a short result; the full text and cards live in the job's own conversation.
+  if (n.text) item.append(el('div', 'body' + (n.cid ? ' compact' : ''), n.text))
+  if (!n.cid) for (const card of n.cards ?? []) item.append(infoCard(card))
   // Where it went, in one quiet line; only a failure gets its own line and colour.
   const delivery = n.delivery ?? []
   const reached = delivery.filter(d => d.ok).map(d => d.channel)
   const note = (text, bad) => { const line = el('div', 'sent' + (bad ? ' bad' : '')); line.insertAdjacentHTML('afterbegin', icon(bad ? 'cross' : 'tick')); line.append(el('span', '', text)); item.append(line) }
   if (reached.length) note(t('inboxSent', reached.join('、')), false)
   for (const d of delivery.filter(x => !x.ok)) note(`${d.channel} ${t('inboxNotSent')}${d.error ? `：${d.error}` : ''}`, true)
-  item.onclick = () => item.classList.toggle('open')
+  if (n.cid) {
+    const open = el('div', 'sent')
+    open.append(el('span', '', `${t('openConversation')} ›`))
+    item.append(open)
+    item.onclick = () => {
+      if (!n.read) post('/api/clerk/inbox/read', { id: n.id }).then(() => loadClerk()).catch(() => {})
+      selectConv(n.cid)
+    }
+  } else item.onclick = () => item.classList.toggle('open')
   return item
 }
 const CHANNEL_TYPES = ['wechat', 'lark', 'wecom', 'telegram', 'discord']

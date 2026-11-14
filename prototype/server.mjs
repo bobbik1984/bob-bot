@@ -1000,11 +1000,33 @@ function publishPage(args) {
   return 'The page is shown in the chat with an Open link. Reply with one short line.'
 }
 
+/** One chat holds reminders and check-ins, so a delivered reminder has a place in the conversation list. */
+function reminderConversation() {
+  if (proactive.cid) {
+    const existing = convOf(proactive.cid)
+    if (existing) return existing
+  }
+  const conv = createConversation('提醒')
+  proactive.cid = conv.id
+  saveProactive()
+  broadcast({ type: 'conversations' })
+  return conv
+}
+
+/** The conversation a Clerk result row opens: the job's own chat, or the shared reminder chat for reminders. */
+function inboxCid(entry) {
+  const job = entry.jobId ? clerk.job(entry.jobId) : null
+  if (job?.cid && convOf(job.cid)) return job.cid
+  if (job?.kind === 'reminder' && proactive.cid && convOf(proactive.cid)) return proactive.cid
+  return null
+}
+
 function clerkView() {
   return {
     timezone: clerk.timezone, timezoneChosen: clerk.timezoneChosen, busy: Boolean(runningCid),
     jobs: clerk.jobs.filter(j => !j.todoId).map(jobView), todos: clerk.todos,
-    inbox: clerk.inbox, channels: clerk.channels.map(publicChannel), unread: clerk.unread(),
+    inbox: clerk.inbox.map(entry => ({ ...entry, cid: inboxCid(entry) })),
+    channels: clerk.channels.map(publicChannel), unread: clerk.unread(),
     drafts: clerk.pendingDrafts().map(({ action, ...rest }) => rest),
   }
 }
@@ -1044,6 +1066,7 @@ const runMeta = run => run ? { ms: Date.now() - run.startedAt, costUsd: Math.max
 
 async function reportFailure(job, reason, run = null) {
   const text = `This task could not run: ${reason}`
+  if (job.cid && convOf(job.cid)) push({ type: 'message', role: 'assistant', text }, true, job.cid)
   const delivery = await deliver(job, text)
   recordRun(job, 'failed', text, { ...runMeta(run), delivery })
 }
@@ -1072,6 +1095,8 @@ async function startAssist(job) {
 /** @returns {'started'|'done'|'busy'} Reminders finish at once; tasks start Bob and finish later in finishRun. */
 async function startJob(job) {
   if (job.kind === 'reminder') {
+    const conv = reminderConversation()
+    push({ type: 'message', role: 'assistant', text: job.text }, true, conv.id)
     await deliver(job, job.text)
     recordRun(job, 'ok', job.text)
     return 'done'
@@ -1108,6 +1133,7 @@ async function finishRun(status, detail = '', { stop = false } = {}) {
   if (!text && !run.cards.length) return reportFailure(job, 'it finished without producing a result.', run)
   const summary = text || cardText(run.cards[0])
   if (run.needsHuman) {
+    push({ type: 'message', role: 'assistant', text: `Needs you: ${run.needsHuman.reason}` }, true, run.cid)
     const delivery = await deliver(job, `${text}\n\nNeeds you: ${run.needsHuman.reason}. Open this job in the Clerk tab to finish it, and Bob will run it again.`.trim(), run.cards)
     if (!job.channels.some(id => clerk.channel(id)?.type === 'webpush')) notifyOwner('Bob 需要你帮忙', job.title, CLERK_LINK)
     return recordRun(job, 'needs_you', summary, { ...runMeta(run), delivery, assist: { ...run.needsHuman, at: Date.now() } })
@@ -1125,6 +1151,7 @@ async function finishRun(status, detail = '', { stop = false } = {}) {
     else if (report.missing_data) { outcome = 'partial'; notes.push(`The source data was missing: ${report.evidence}`) }
     else if (!report.met) { outcome = 'failed'; notes.push(`The success check was not met: ${report.evidence}`) }
   }
+  if (notes.length) push({ type: 'message', role: 'assistant', text: notes.join('\n') }, true, run.cid)
   const delivery = await deliver(job, [text, ...notes].filter(Boolean).join('\n\n'), run.cards)
   recordRun(job, outcome, notes.length && outcome !== 'drafted' ? notes.at(-1) : summary, { ...runMeta(run), delivery, skipped: run.skipped.slice(0, 5), ...(report ? { check: report } : {}) })
 }
@@ -2315,10 +2342,13 @@ async function route(req, res) {
       if (result === 'busy') return send(res, 409, { error: 'BUSY' })
       return send(res, 200, { ok: true, result })
     }
-    case '/api/clerk/inbox/read':
-      clerk.markAllRead()
+    case '/api/clerk/inbox/read': {
+      if (body.id) {
+        if (!clerk.markRead(String(body.id))) return send(res, 404, { error: 'NO_ENTRY' })
+      } else clerk.markAllRead()
       broadcast({ type: 'clerk' })
       return send(res, 200, { ok: true })
+    }
     case '/api/extensions/secret': {
       try { extensions.setSecret(String(body.server ?? ''), String(body.name ?? ''), body.value) } catch (error) { return send(res, 400, { error: error.message }) }
       extensionsChanged()

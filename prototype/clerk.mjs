@@ -279,6 +279,12 @@ export class Clerk {
     if (this.inbox.length !== before) this.#saveInbox()
     return before - this.inbox.length
   }
+  markRead(id) {
+    const entry = this.inbox.find(n => n.id === id)
+    if (!entry) return false
+    if (!entry.read) { entry.read = true; this.#saveInbox() }
+    return true
+  }
   markAllRead() { for (const n of this.inbox) n.read = true; this.#saveInbox() }
   unread() { return this.inbox.filter(n => !n.read).length }
 }

@@ -139,6 +139,13 @@ await check('the inbox keeps the newest 100 and counts unread', () => {
   assert.equal(c.inbox.length, 100); assert.equal(c.inbox[0].text, '104'); assert.equal(c.unread(), 100)
   c.markAllRead(); assert.equal(c.unread(), 0)
 })
+await check('one inbox result can be marked read when it is opened', () => {
+  const c = newClerk()
+  const entry = c.addInbox({ title: 'Weather', text: 'Sunny' })
+  assert.equal(c.markRead(entry.id), true)
+  assert.equal(c.unread(), 0)
+  assert.equal(c.markRead('missing'), false)
+})
 await check('inbox entries that no longer belong there can be dropped, and the change is saved', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clerk-'))
   const c = new Clerk(dir, { serverTimezone: SH })

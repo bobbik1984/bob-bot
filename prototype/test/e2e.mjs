@@ -464,6 +464,9 @@ try {
     assert.equal(run.status, 200); assert.equal(run.data.result, 'done')
     const view = await clerkView()
     assert.equal(view.inbox[0].text, 'Call mom now'); assert.equal(view.unread, 1); assert.equal(view.jobs[0].lastStatus, 'ok')
+    assert.ok(view.inbox[0].cid, 'the reminder has no conversation to open')
+    const conv = (await getJson(`/api/conversations/${view.inbox[0].cid}`)).body
+    assert.ok(conv.events.some(e => e.type === 'message' && e.text === 'Call mom now'), 'the reminder is not in its chat')
     assert.equal((await getJson('/api/state')).body.unread, 1)
     assert.equal((await post('/api/clerk/inbox/read')).status, 200)
     assert.equal((await clerkView()).unread, 0)
@@ -554,6 +557,7 @@ try {
     const view = await clerkView()
     assert.equal(view.inbox[0].cards.length, 1); assert.equal(view.inbox[0].cards[0].title, 'Shanghai today')
     const task = view.jobs.find(j => j.id === taskId)
+    assert.equal(view.inbox[0].cid, task.cid, 'the result row does not open its task conversation')
     const saved = (await getJson(`/api/conversations/${task.cid}`)).body.events
     assert.ok(saved.some(e => e.type === 'card' && e.card.title === 'Shanghai today'), 'the card is not saved with the conversation')
   })
