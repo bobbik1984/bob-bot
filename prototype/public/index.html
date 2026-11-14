@@ -2607,6 +2607,7 @@ function showSettingsGroup(name, persist = true) {
     const on = b.dataset.panel === name
     b.classList.toggle('on', on)
     b.setAttribute('aria-selected', String(on))
+    if (on) b.scrollIntoView({ block: 'nearest', inline: 'center' })
   }
   for (const panel of document.querySelectorAll('#viewSettings .settings-panel')) panel.hidden = panel.dataset.panel !== name
   if (persist) { try { localStorage.setItem(SAVE_GROUP_KEY, name) } catch { /* private mode */ } }
@@ -2664,7 +2665,7 @@ function providerRow(p) {
     row.append(el('div', 'prov-price', t('providerPrice', { n: p.inputUsd, m: p.outputUsd })))
   }
   const actions = el('div', 'prov-actions')
-  if (!p.active) {
+  if (!p.active && p.hasKey) {
     const use = el('button', 'btn', t('providerUse')); use.type = 'button'
     use.onclick = async () => {
       const r = await post('/api/providers/activate', { id: p.id })

@@ -1744,7 +1744,8 @@ function migrateProviders() {
 let modelListCache = { at: 0, ids: null }
 async function deepseekModels() {
   const known = Object.keys(registryPrices)
-  const key = loadKey('deepseek')
+  // Use the saved DeepSeek profile's key, so editing it in Settings also refreshes the model list.
+  const key = loadKey(providers.items.find(p => p.kind === 'deepseek') ?? 'deepseek')
   if (!key || process.env.DEEPSEEK_BASE_URL) return known
   if (Date.now() - modelListCache.at < 10 * 60 * 1000 && modelListCache.ids) return modelListCache.ids
   try {
