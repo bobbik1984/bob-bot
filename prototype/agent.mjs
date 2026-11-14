@@ -112,7 +112,7 @@ export class Agent extends EventEmitter {
     return this.ready
   }
 
-  async #launch({ apiKey, mcpUrl, mcpToken, model = DEFAULT_MODEL, baseUrl, patches = [], extraEnv = {} }) {
+  async #launch({ apiKey, mcpUrl, mcpToken, model = DEFAULT_MODEL, baseUrl, provider = 'deepseek-official', patches = [], extraEnv = {} }) {
     this.model = model
     this.run = Date.now().toString(36)
     this.started = new Set()
@@ -127,6 +127,8 @@ export class Agent extends EventEmitter {
       env: {
         ...process.env, DEEPSEEK_API_KEY: apiKey, DSH_HOME: home, DSH_SYSTEM_PROMPT: SYSTEM_PROMPT,
         BOBBOT_MCP_URL: mcpUrl, BOBBOT_MCP_TOKEN: mcpToken,
+        // The pi-ai route (mounted only for a non-direct provider) reads its key from here.
+        BOBBOT_PROVIDER_KEY: apiKey,
         ...baseUrl ? { DEEPSEEK_BASE_URL: baseUrl } : {},
         ...extraEnv,
       },
@@ -150,7 +152,7 @@ export class Agent extends EventEmitter {
       this.#reset(new Error(`DSH exited (${code})`))
       this.emit('exit', code)
     })
-    await this.#request('initialize', { cwd, provider: 'deepseek-official', model }, 180000)
+    await this.#request('initialize', { cwd, provider, model }, 180000)
   }
 
   #reset(error) {

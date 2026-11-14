@@ -10,6 +10,7 @@ import { buildRequest, findTelegramChat, publicChannel, sendToChannel, validateC
 import { CATCH_UP_MS, Clerk, describeSchedule, formatLocal, nextRun, normalizeSchedule, zonedToUtc } from '../clerk.mjs'
 import { htmlToText, webFetch } from '../web-fetch.mjs'
 import { Memory } from '../memory.mjs'
+import { checkProfile, Providers } from '../providers.mjs'
 
 const results = []
 const check = async (name, fn) => {
@@ -147,6 +148,49 @@ await check('inbox entries that no longer belong there can be dropped, and the c
   assert.deepEqual(c.inbox.map(n => n.text), ['forecast', 'a job result'])
   assert.equal(c.unread(), 2)
   assert.deepEqual(new Clerk(dir, { serverTimezone: SH }).inbox.map(n => n.text), ['forecast', 'a job result'])
+})
+
+console.log('Model providers')
+const profileError = (input, options) => { try { checkProfile(input, options); return 'ok' } catch (e) { return e.code } }
+await check('a DeepSeek profile uses the direct Messages endpoint and the registry price', () => {
+  const p = checkProfile({ kind: 'deepseek', model: 'deepseek-flash' })
+  assert.equal(p.api, 'anthropic-messages'); assert.equal(p.baseUrl, 'https://api.deepseek.com/anthropic')
+  assert.equal(p.inputUsd, null); assert.equal(p.outputUsd, null)
+})
+await check('a custom profile needs https, a model and a real price', () => {
+  assert.equal(profileError({ kind: 'custom', baseUrl: 'http://example.com/v1', model: 'm', inputUsd: 1, outputUsd: 2 }), 'HTTPS_REQUIRED')
+  assert.equal(profileError({ kind: 'custom', baseUrl: 'https://example.com/v1', model: 'm', inputUsd: 0, outputUsd: 0 }), 'BAD_PRICE')
+  assert.equal(profileError({ kind: 'custom', baseUrl: 'https://example.com/v1', model: 'has space', inputUsd: 1, outputUsd: 2 }), 'BAD_MODEL')
+  assert.equal(profileError({ kind: 'custom', baseUrl: 'http://127.0.0.1:1234/v1', model: 'm', inputUsd: 1, outputUsd: 2 }), 'HTTPS_REQUIRED')
+  assert.equal(profileError({ kind: 'custom', baseUrl: 'http://127.0.0.1:1234/v1', model: 'm', inputUsd: 1, outputUsd: 2 }, { allowHttp: true }), 'ok')
+  assert.equal(checkProfile({ kind: 'custom', baseUrl: 'https://example.com/v1/', model: 'm', inputUsd: 1, outputUsd: 2 }).baseUrl, 'https://example.com/v1')
+  assert.equal(profileError({ kind: 'nope' }), 'BAD_KIND')
+})
+await check('a preset takes the vendor defaults but keeps the owner\'s model and price', () => {
+  const p = checkProfile({ kind: 'anthropic', model: 'claude-sonnet-4-5', inputUsd: 3, outputUsd: 15 })
+  assert.equal(p.api, 'anthropic-messages'); assert.equal(p.baseUrl, 'https://api.anthropic.com')
+  assert.equal(p.contextWindow, 200000); assert.equal(p.maxTokens, 8192)
+  assert.equal(p.inputUsd, 3); assert.equal(p.outputUsd, 15)
+})
+await check('profiles save, switch, survive a reload and can be removed', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'providers-'))
+  const file = path.join(dir, 'providers.json')
+  const p = new Providers(file)
+  assert.equal(p.exists, false)
+  assert.equal(p.seed([{ kind: 'deepseek', model: 'deepseek-flash', legacyKey: 'deepseek' }]), true)
+  assert.equal(p.active().kind, 'deepseek'); assert.equal(p.active().legacyKey, 'deepseek')
+  const claude = p.add({ name: 'Claude', kind: 'anthropic', model: 'claude-sonnet-4-5', inputUsd: 3, outputUsd: 15 })
+  p.activate(claude.id)
+  assert.equal(p.active().name, 'Claude')
+  const again = new Providers(file)
+  assert.equal(again.active().name, 'Claude'); assert.equal(again.items.length, 2)
+  p.remove(claude.id)
+  assert.equal(p.active().kind, 'deepseek'); assert.equal(new Providers(file).active().kind, 'deepseek')
+})
+await check('a broken legacy profile does not leave an empty store behind', () => {
+  const p = new Providers(path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'providers-')), 'providers.json'))
+  assert.throws(() => p.seed([{ kind: 'custom', baseUrl: 'http://example.com/v1', model: 'm', inputUsd: 1, outputUsd: 2 }]), /HTTPS_REQUIRED/)
+  assert.equal(p.exists, false)
 })
 
 console.log('Channels')

@@ -173,9 +173,11 @@ Bob reads the visible page as numbered elements, including iframes, open shadow 
 
 ## Models and keys
 
-Settings shows whether a key is saved (as `sk-••••1234`, never the full key) and lets you replace it. The model dropdown lists the DeepSeek models your key can use.
+Settings → Model & cost keeps a list of saved providers. Each card has its own name, endpoint, model, key and prices, so a DeepSeek key and a Claude key can stay saved at the same time; press Use to switch. Keys are shown only as `sk-••••1234`, never in full, and changing the active provider starts a fresh conversation.
 
-**Other model (experimental):** choose "Other model" to enter your own endpoint, model name, key and prices. DeepSeek Harness speaks the Anthropic Messages protocol, so the service must support it, and requests go to `<endpoint>/v1/messages`. The endpoint must be https and public, and the prices (USD per 1M tokens) are what the monthly limit counts. This path is not verified against any real service yet, so treat it as a trial. Changing the model starts a fresh conversation.
+Presets are DeepSeek, OpenAI, Anthropic, Google Gemini, OpenRouter and a custom endpoint. DeepSeek and an Anthropic Messages-compatible custom endpoint use DSH's direct DeepSeek adapter. The other vendors are mounted through DSH's pi-ai adapter as one route for the active provider; switching writes a small patch in `data/provider.patch.yml` without any key and restarts Bob. Custom endpoints must be https and public.
+
+Prices are in USD per 1M tokens and drive the monthly limit. DeepSeek uses the prices in `prices.json`; every other provider needs the input and output prices you enter, and the two cannot both be zero. Only the active provider is counted. A saved provider with no key shows "No key yet" and cannot answer until you edit it. The native presets are wired and covered by a fake OpenAI-compatible endpoint in the test suite, but no real OpenAI/Gemini/OpenRouter key has been verified here, so check the model id and prices yourself. Existing single-model installations are migrated into the first saved provider on startup.
 
 ## Attachments
 
@@ -184,6 +186,8 @@ The paperclip next to the message box attaches up to 5 text files (txt, md, csv,
 PDF, Word, Excel and images are not supported yet. For a spreadsheet, export it as CSV first.
 
 ## Settings
+
+The page is split into five tabs: **Model & cost** (saved providers, monthly limit), **Assistant** (check-ins, memory, features), **Connect** (message channels, phone notifications), **General** (theme, language, time zone) and **System** (extensions, PIN, build).
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -195,6 +199,7 @@ PDF, Word, Excel and images are not supported yet. For a spreadsheet, export it 
 | `BOBBOT_CHROME_NO_SANDBOX` | off | Set to `1` only when running Chromium as root in a container |
 | `BOBBOT_DATA` | `./data` | Login, key, browser profile and chat history |
 | `BOBBOT_DEBUG` | off | Print DSH logs and events |
+| `BOBBOT_TEST_ENDPOINTS` | off | Tests only: lets a saved provider point at a loopback fake server |
 
 ## How it works
 

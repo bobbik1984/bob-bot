@@ -18,6 +18,7 @@ import { webFetch } from './web-fetch.mjs'
 import { startCompatApi } from './compat-api.mjs'
 import { Features } from './features.mjs'
 import { Memory } from './memory.mjs'
+import { Providers, PRESETS, checkProfile } from './providers.mjs'
 import { WriteBehind, writeAtomic } from './store.mjs'
 import QRCode from 'qrcode'
 import * as webpush from 'web-push'
@@ -47,6 +48,8 @@ const host = createHostTools(DATA_DIR)
 const writes = new WriteBehind()
 const clerk = new Clerk(DATA_DIR)
 const extensions = new Extensions(DATA_DIR)
+const providers = new Providers(path.join(DATA_DIR, 'providers.json'))
+const TEST_ENDPOINTS = process.env.BOBBOT_TEST_ENDPOINTS === '1' // lets the test suite use a fake provider on loopback
 const TRIAL_MS = Number(process.env.BOBBOT_TRIAL_MS || 3 * 60 * 1000)
 const features = new Features(path.join(DATA_DIR, 'features'), {
   // Kept, rejected, timed out or crashed: the page is told, and Bob's tool list is rebuilt.
@@ -638,7 +641,7 @@ async function dream({ test = false } = {}) {
   if (runningCid || activeRun || takeover) return { ok: false, reason: 'busy' }
   if (budget.status().exceeded) return { ok: false, reason: 'the monthly spending limit has been reached' }
   const cfg = modelConfig()
-  const apiKey = loadKey(cfg.kind)
+  const apiKey = loadKey(cfg)
   if (!apiKey) return { ok: false, reason: 'no key' }
   const since = memory.state.lastDreamAt || Date.now() - 24 * 3600 * 1000
   const sources = convs.filter(c => c.title && c.updatedAt > since && !c.job && c.id !== proactive.cid).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 8)
@@ -817,7 +820,7 @@ async function runProactive({ test = false, slot = null } = {}) {
   if (runningCid || activeRun || takeover) return { ok: false, reason: 'busy' }
   if (budget.status().exceeded) return { ok: false, reason: 'the monthly spending limit has been reached' }
   const cfg = modelConfig()
-  const apiKey = loadKey(cfg.kind)
+  const apiKey = loadKey(cfg)
   if (!apiKey) return { ok: false, reason: 'no key' }
   const now = Date.now()
   if (!test) {
@@ -930,7 +933,7 @@ function waitBridgeReply(cid, ms = 180_000) {
 
 async function askFromBridge({ from, name, text, conversationId }) {
   const cfg = modelConfig()
-  const apiKey = loadKey(cfg.kind)
+  const apiKey = loadKey(cfg)
   if (!apiKey) return { reply: 'Bob 还没有设置模型的 API Key，请先在网页版 bob-bot 里配置。', cid: '' }
   if (!priceOf(cfg)) return { reply: '这个模型没有设置价格，无法统计花费。', cid: '' }
   if (budget.status().exceeded) return { reply: '本月的花费额度已经用完，暂时不能回复。', cid: '' }
@@ -1047,7 +1050,7 @@ async function startJob(job) {
   if (runningCid || activeRun) return 'busy'
   if (budget.status().exceeded) { await reportFailure(job, 'the monthly spending limit has been reached.'); return 'done' }
   const cfg = modelConfig()
-  const apiKey = loadKey(cfg.kind)
+  const apiKey = loadKey(cfg)
   if (!apiKey || !priceOf(cfg)) { await reportFailure(job, 'no model is set up.'); return 'done' }
   if (!job.cid || !convOf(job.cid)) clerk.update(job, { cid: createConversation(job.title, { job: true }).id })
   const cid = job.cid
@@ -1541,14 +1544,46 @@ async function featureTool(name, args) {
 
 async function ensureAgent(cfg, apiKey) {
   const extras = extensions.launchExtras()
-  const base = { apiKey, mcpUrl, mcpToken, model: cfg.model, baseUrl: cfg.kind === 'custom' ? cfg.baseUrl : undefined }
+  // DeepSeek and Anthropic-compatible endpoints keep the direct DeepSeek Messages adapter. Other providers are
+  // mounted as one pi-ai route named "bob", in a patch written for this launch, so the direct route stays untouched.
+  const direct = cfg.kind === 'deepseek' || (cfg.kind === 'custom' && cfg.api === 'anthropic-messages')
+  let providerPatch = null
+  if (!direct) {
+    providerPatch = path.join(DATA_DIR, 'provider.patch.yml')
+    const yaml = [
+      '- insert:',
+      '    - id: llm-pi-ai',
+      "      name: '@deepseek-ai/dsh-llm-pi-ai'",
+      '      config:',
+      '        providers:',
+      '          bob:',
+      `            displayName: ${JSON.stringify(cfg.name || 'Model')}`,
+      `            api: ${JSON.stringify(cfg.api || 'openai-completions')}`,
+      `            baseURL: ${JSON.stringify(cfg.baseUrl || '')}`,
+      '            apiKeyEnv: BOBBOT_PROVIDER_KEY',
+      `            defaultContextWindow: ${Number(cfg.contextWindow) || 1000000}`,
+      `            defaultMaxTokens: ${Number(cfg.maxTokens) || 8192}`,
+      '            models:',
+      `              - id: ${JSON.stringify(cfg.model)}`,
+      '',
+    ].join('\n')
+    writeAtomic(providerPatch, yaml)
+  }
+  const base = {
+    apiKey, mcpUrl, mcpToken, model: cfg.model,
+    provider: direct ? 'deepseek-official' : 'bob',
+    // The official DeepSeek route keeps its default (or DEEPSEEK_BASE_URL from the environment); only a custom
+    // Messages-compatible endpoint needs an explicit base URL.
+    baseUrl: direct && cfg.kind === 'custom' ? cfg.baseUrl : undefined,
+  }
+  const patches = providerPatch ? [...extras.patches, providerPatch] : extras.patches
   try {
-    await agent.ensure({ ...base, patches: extras.patches, extraEnv: extras.env })
+    await agent.ensure({ ...base, patches, extraEnv: extras.env })
   } catch (error) {
     if (!extras.patches.length) throw error
     // An installed extension stopped DSH from starting. Keep Bob alive without extensions rather than locking him out.
     agent.stop()
-    await agent.ensure({ ...base, patches: [], extraEnv: { BOBBOT_SKILLS_DIR: extensions.skillsDir } })
+    await agent.ensure({ ...base, patches: providerPatch ? [providerPatch] : [], extraEnv: { BOBBOT_SKILLS_DIR: extensions.skillsDir } })
     push({ type: 'notice', code: 'EXTENSIONS_BROKEN' }, false, runningCid ?? lastPromptCid)
     console.error(`[bobbot] extensions disabled after a startup error: ${error.message}`)
   }
@@ -1615,30 +1650,96 @@ agent.on('usage', (cid, model, usage) => {
 })
 
 // ---- model settings ----
-// 'deepseek' uses DeepSeek's own endpoint. 'custom' is any Anthropic Messages-compatible endpoint the owner enters.
+// The active saved provider is the model. Older installs kept one model in model.json; migrateProviders() turns it
+// into the first profile, so upgrading does not ask for the key again.
 function modelConfig() {
-  const saved = readJson(MODEL_FILE, null)
-  if (saved?.kind === 'custom' || saved?.kind === 'deepseek') return saved
-  return { kind: 'deepseek', model: DEFAULT_MODEL }
+  return providers.active() ?? {
+    id: null, name: 'DeepSeek', kind: 'deepseek', api: 'anthropic-messages',
+    baseUrl: PRESETS.deepseek.baseUrl, model: DEFAULT_MODEL, inputUsd: null, outputUsd: null,
+    contextWindow: PRESETS.deepseek.contextWindow, maxTokens: PRESETS.deepseek.maxTokens,
+  }
 }
-const priceOf = cfg => cfg.kind === 'custom'
-  ? { input: cfg.inputUsd, output: cfg.outputUsd, currency: 'USD' }
-  : registryPrices[cfg.model]
+const priceOf = cfg => cfg.kind === 'deepseek'
+  ? registryPrices[cfg.model]
+  : { input: cfg.inputUsd ?? 0, output: cfg.outputUsd ?? 0, currency: 'USD' }
 
 const readKeys = () => readJson(KEY_FILE, {})
 function writeKey(kind, key) {
   writeAtomic(KEY_FILE, JSON.stringify({ ...readKeys(), [kind]: key }))
 }
-const loadKey = (kind = modelConfig().kind) => {
+const providerKeyName = id => `p:${id}`
+function writeProviderKey(id, key) {
+  if (!id) return
+  writeAtomic(KEY_FILE, JSON.stringify({ ...readKeys(), [providerKeyName(id)]: key }))
+}
+function deleteProviderKey(id) {
+  const all = readKeys()
+  if (!all[providerKeyName(id)]) return
+  delete all[providerKeyName(id)]
+  writeAtomic(KEY_FILE, JSON.stringify(all))
+}
+const legacyKey = kind => {
   if (kind === 'deepseek' && process.env.DEEPSEEK_API_KEY) return process.env.DEEPSEEK_API_KEY
   return readKeys()[kind] ?? null
 }
-const keyHint = kind => {
-  if (kind === 'deepseek' && process.env.DEEPSEEK_API_KEY) return 'env'
-  const key = readKeys()[kind]
-  return key ? (key.length > 12 ? `${key.slice(0, 3)}••••${key.slice(-4)}` : '••••') : null
+/** Accepts a profile, or a legacy kind string for the old single-model paths. */
+const loadKey = (profile = modelConfig()) => {
+  if (typeof profile === 'string') return legacyKey(profile)
+  if (!profile) return null
+  if (profile.kind === 'deepseek' && process.env.DEEPSEEK_API_KEY) return process.env.DEEPSEEK_API_KEY
+  return readKeys()[providerKeyName(profile.id)] ??
+    (profile.legacyKey ? readKeys()[profile.legacyKey] : null) ??
+    (profile.kind === 'deepseek' ? readKeys().deepseek : null) ??
+    (profile.kind === 'custom' && profile.api === 'anthropic-messages' ? readKeys().custom : null) ?? null
 }
-const publicModel = cfg => ({ kind: cfg.kind, model: cfg.model, baseUrl: cfg.baseUrl ?? null, inputUsd: cfg.inputUsd ?? null, outputUsd: cfg.outputUsd ?? null })
+const maskKey = key => key ? (key.length > 12 ? `${key.slice(0, 3)}••••${key.slice(-4)}` : '••••') : null
+const keyHint = profile => {
+  if (typeof profile === 'string') {
+    if (profile === 'deepseek' && process.env.DEEPSEEK_API_KEY) return 'env'
+    return maskKey(readKeys()[profile])
+  }
+  if (profile?.kind === 'deepseek' && process.env.DEEPSEEK_API_KEY) return 'env'
+  return maskKey(loadKey(profile))
+}
+const publicModel = cfg => ({
+  id: cfg.id ?? null, name: cfg.name ?? 'DeepSeek', kind: cfg.kind ?? 'deepseek', api: cfg.api ?? 'anthropic-messages',
+  model: cfg.model, baseUrl: cfg.baseUrl ?? null, inputUsd: cfg.inputUsd ?? null, outputUsd: cfg.outputUsd ?? null,
+  contextWindow: cfg.contextWindow ?? null, maxTokens: cfg.maxTokens ?? null,
+})
+function providersView() {
+  const activeId = providers.activeId ?? providers.active()?.id ?? null
+  return {
+    activeId,
+    items: providers.items.map(p => ({
+      ...publicModel(p), active: p.id === activeId, hasKey: Boolean(loadKey(p)), keyHint: keyHint(p),
+      createdAt: p.createdAt ?? null, updatedAt: p.updatedAt ?? null,
+    })),
+    presets: Object.entries(PRESETS).map(([kind, p]) => ({
+      kind, label: p.label, api: p.api, baseUrl: p.baseUrl, model: p.model,
+      contextWindow: p.contextWindow, maxTokens: p.maxTokens, registryPrices: Boolean(p.registryPrices),
+    })),
+  }
+}
+
+/** Turns the old single model.json into the first profile, keeping the key it already had. */
+function migrateProviders() {
+  if (providers.exists) return
+  const legacy = readJson(MODEL_FILE, null)
+  const keys = readKeys()
+  let input
+  try {
+    input = legacy?.kind === 'custom' && legacy.baseUrl && legacy.model
+      ? { name: '自定义模型', kind: 'custom', api: 'anthropic-messages', baseUrl: legacy.baseUrl, model: legacy.model, inputUsd: legacy.inputUsd, outputUsd: legacy.outputUsd, legacyKey: 'custom' }
+      : { name: 'DeepSeek', kind: 'deepseek', model: legacy?.kind === 'deepseek' && registryPrices[legacy.model] ? legacy.model : DEFAULT_MODEL, legacyKey: 'deepseek' }
+    providers.seed([input])
+  } catch (error) {
+    console.error(`[providers] could not migrate the old model settings (${error.code ?? error.message}); starting with DeepSeek`)
+    providers.seed([{ name: 'DeepSeek', kind: 'deepseek', model: DEFAULT_MODEL, legacyKey: 'deepseek' }])
+  }
+  const profile = providers.active()
+  if (profile?.legacyKey && keys[profile.legacyKey]) writeProviderKey(profile.id, keys[profile.legacyKey])
+  if (profile) console.log(`[providers] migrated "${profile.name}"`)
+}
 
 let modelListCache = { at: 0, ids: null }
 async function deepseekModels() {
@@ -1754,7 +1855,7 @@ async function route(req, res) {
     const cfg = modelConfig()
     return send(res, 200, {
       authed: ok, pinSet: hasPin(),
-      ...(ok ? { hasKey: Boolean(loadKey(cfg.kind)), keyHint: keyHint(cfg.kind), model: publicModel(cfg), budget: budget.status(), unread: clerk.unread(), build: readBuild() } : {}),
+      ...(ok ? { hasKey: Boolean(loadKey(cfg)), keyHint: keyHint(cfg), model: publicModel(cfg), budget: budget.status(), unread: clerk.unread(), build: readBuild() } : {}),
     })
   }
   if (req.method === 'GET' && pathname === '/api/version') {
@@ -1767,6 +1868,7 @@ async function route(req, res) {
     return send(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(req, session.value, session.maxAge) })
   }
   if (!authed(req)) return send(res, 401, { error: 'UNAUTHORIZED' })
+  if (req.method === 'GET' && pathname === '/api/providers') return send(res, 200, providersView())
   if (req.method === 'GET' && pathname.startsWith('/f/')) {
     const parts = pathname.split('/').filter(Boolean) // ['f', name, file]
     const text = parts.length === 3 ? features.readFile(parts[1], parts[2]) : null
@@ -1860,7 +1962,7 @@ async function route(req, res) {
       if (!text && !files.length) return send(res, 400, { error: 'EMPTY' })
       if (body.cid !== undefined && body.cid !== null && !convOf(body.cid)) return send(res, 404, { error: 'NO_CONVERSATION' })
       const cfg = modelConfig()
-      const apiKey = loadKey(cfg.kind)
+      const apiKey = loadKey(cfg)
       if (!apiKey) return send(res, 400, { error: 'NO_KEY' })
       if (!priceOf(cfg)) return send(res, 400, { error: 'NO_PRICE' })
       if (budget.status().exceeded) return send(res, 402, { error: 'BUDGET_EXCEEDED' })
@@ -1887,6 +1989,10 @@ async function route(req, res) {
       if (!key) return send(res, 400, { error: 'EMPTY' })
       await checkKey(key)
       writeKey('deepseek', key)
+      let profile = providers.items.find(p => p.kind === 'deepseek' && p.id === providers.activeId) ?? providers.items.find(p => p.kind === 'deepseek')
+      if (!profile) profile = providers.add({ name: 'DeepSeek', kind: 'deepseek', model: DEFAULT_MODEL })
+      writeProviderKey(profile.id, key)
+      providers.activate(profile.id)
       modelListCache = { at: 0, ids: null }
       agent.stop()
       runningCid = null
@@ -1894,32 +2000,87 @@ async function route(req, res) {
     }
     case '/api/models':
       return send(res, 200, { deepseek: await deepseekModels(), current: publicModel(modelConfig()) })
+    case '/api/providers': {
+      if (runningCid || activeRun || takeover) return send(res, 409, { error: 'BUSY' })
+      const id = String(body.id ?? '')
+      const kind = String(body.kind ?? 'custom')
+      const preset = PRESETS[kind]
+      if (!preset) return send(res, 400, { error: 'BAD_KIND' })
+      const input = {
+        name: body.name, kind, api: body.api,
+        baseUrl: String(body.baseUrl ?? preset.baseUrl ?? '').trim(),
+        model: body.model, inputUsd: body.inputUsd, outputUsd: body.outputUsd,
+        contextWindow: body.contextWindow, maxTokens: body.maxTokens,
+      }
+      let clean
+      try { clean = checkProfile(input, { allowHttp: TEST_ENDPOINTS }) } catch (error) { return send(res, 400, { error: error.code ?? 'BAD_PROVIDER' }) }
+      if (clean.kind === 'deepseek' && !registryPrices[clean.model]) return send(res, 400, { error: 'UNKNOWN_MODEL' })
+      if (clean.kind !== 'deepseek' && !TEST_ENDPOINTS) {
+        try { await assertPublicUrl(clean.baseUrl) } catch { return send(res, 400, { error: 'BAD_ENDPOINT' }) }
+      }
+      const key = typeof body.key === 'string' ? body.key.trim() : ''
+      const existing = id ? providers.get(id) : null
+      if (id && !existing) return send(res, 404, { error: 'NO_PROVIDER' })
+      if (existing && existing.kind !== clean.kind) return send(res, 400, { error: 'BAD_KIND' }) // add a new profile to change vendor
+      if (clean.kind !== 'deepseek' && !key && !(existing && loadKey(existing))) return send(res, 400, { error: 'NO_KEY' })
+      if (key && clean.kind === 'deepseek') {
+        try { await checkKey(key) } catch (error) { return send(res, 400, { error: error.message }) }
+      }
+      let profile
+      try { profile = existing ? providers.update(existing.id, clean, { allowHttp: TEST_ENDPOINTS }) : providers.add(clean, { allowHttp: TEST_ENDPOINTS }) } catch (error) { return send(res, 400, { error: error.code ?? 'BAD_PROVIDER' }) }
+      if (key) writeProviderKey(profile.id, key)
+      if (body.activate === true || !providers.activeId) providers.activate(profile.id)
+      if (providers.activeId === profile.id) { agent.stop(); runningCid = null }
+      const view = providersView()
+      return send(res, 200, { ok: true, item: view.items.find(p => p.id === profile.id), ...view })
+    }
+    case '/api/providers/activate': {
+      if (runningCid || activeRun || takeover) return send(res, 409, { error: 'BUSY' })
+      try { providers.activate(String(body.id ?? '')) } catch (error) { return send(res, 404, { error: error.code ?? 'NO_PROVIDER' }) }
+      agent.stop()
+      runningCid = null
+      return send(res, 200, { ok: true, ...providersView() })
+    }
+    case '/api/providers/delete': {
+      if (runningCid || activeRun || takeover) return send(res, 409, { error: 'BUSY' })
+      const id = String(body.id ?? '')
+      const item = providers.get(id)
+      if (!item) return send(res, 404, { error: 'NO_PROVIDER' })
+      providers.remove(id)
+      deleteProviderKey(id)
+      agent.stop()
+      runningCid = null
+      return send(res, 200, { ok: true, ...providersView() })
+    }
     case '/api/model': {
+      // The older single-model form still works: it updates or creates the matching saved profile.
       const kind = body.kind
       const key = typeof body.key === 'string' ? body.key.trim() : ''
-      let cfg
+      let input, existing
       if (kind === 'deepseek') {
         const model = String(body.model ?? '')
         if (!registryPrices[model]) return send(res, 400, { error: 'UNKNOWN_MODEL' })
-        cfg = { kind, model }
         if (key) await checkKey(key)
+        input = { name: 'DeepSeek', kind: 'deepseek', model }
+        existing = providers.items.find(p => p.kind === 'deepseek' && p.legacyKey === 'deepseek') ?? providers.items.find(p => p.kind === 'deepseek')
       } else if (kind === 'custom') {
-        const model = String(body.model ?? '').trim()
-        const inputUsd = Number(body.inputUsd), outputUsd = Number(body.outputUsd)
-        if (!model || model.length > 100 || /[\s\u0000-\u001f]/.test(model)) return send(res, 400, { error: 'BAD_MODEL' })
-        if (![inputUsd, outputUsd].every(n => Number.isFinite(n) && n >= 0 && n <= 10000)) return send(res, 400, { error: 'BAD_PRICE' })
-        const baseUrl = String(body.baseUrl ?? '').trim()
-        if (!/^https:\/\//i.test(baseUrl)) return send(res, 400, { error: 'HTTPS_REQUIRED' })
-        try { await assertPublicUrl(baseUrl) } catch { return send(res, 400, { error: 'BAD_ENDPOINT' }) }
-        if (!key && !readKeys().custom) return send(res, 400, { error: 'NO_KEY' })
-        cfg = { kind, model, baseUrl, inputUsd, outputUsd }
+        try {
+          input = checkProfile({ name: '自定义模型', kind: 'custom', api: 'anthropic-messages', baseUrl: body.baseUrl, model: body.model, inputUsd: body.inputUsd, outputUsd: body.outputUsd }, { allowHttp: TEST_ENDPOINTS })
+        } catch (error) { return send(res, 400, { error: error.code ?? 'BAD_PROVIDER' }) }
+        // The legacy form is public-only even under the test endpoint switch; only the saved-provider API uses it.
+        try { await assertPublicUrl(input.baseUrl) } catch { return send(res, 400, { error: 'BAD_ENDPOINT' }) }
+        existing = providers.items.find(p => p.kind === 'custom' && p.api === 'anthropic-messages' && p.legacyKey === 'custom') ?? providers.items.find(p => p.kind === 'custom' && p.api === 'anthropic-messages')
+        if (!key && !(existing && loadKey(existing)) && !readKeys().custom) return send(res, 400, { error: 'NO_KEY' })
       } else return send(res, 400, { error: 'BAD_KIND' })
-      if (key) writeKey(kind, key)
-      writeAtomic(MODEL_FILE, JSON.stringify(cfg))
+      let profile
+      try { profile = existing ? providers.update(existing.id, input, { allowHttp: TEST_ENDPOINTS }) : providers.add(input, { allowHttp: TEST_ENDPOINTS }) } catch (error) { return send(res, 400, { error: error.code ?? 'BAD_PROVIDER' }) }
+      if (key) { writeKey(kind, key); writeProviderKey(profile.id, key) }
+      providers.activate(profile.id)
+      writeAtomic(MODEL_FILE, JSON.stringify({ kind: profile.kind, model: profile.model, baseUrl: profile.baseUrl, inputUsd: profile.inputUsd, outputUsd: profile.outputUsd }))
       modelListCache = { at: 0, ids: null }
       agent.stop()
       runningCid = null
-      return send(res, 200, { ok: true, model: publicModel(cfg), hasKey: Boolean(loadKey(kind)), keyHint: keyHint(kind) })
+      return send(res, 200, { ok: true, model: publicModel(profile), hasKey: Boolean(loadKey(profile)), keyHint: keyHint(profile) })
     }
     case '/api/budget': {
       const cap = Number(body.capUsd)
@@ -2235,6 +2396,7 @@ mcpUrl = `http://127.0.0.1:${mcpServer.address().port}/mcp`
 const undone = features.recover()
 if (undone) console.log(`[features] undid the unanswered trial of "${undone.name}"`)
 await features.loadAll()
+migrateProviders()
 migrateCheckIns()
 
 server.listen(PORT, HOST, () => {

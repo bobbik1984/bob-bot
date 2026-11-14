@@ -56,8 +56,25 @@ const fake = http.createServer((req, res) => {
 })
 await new Promise(r => fake.listen(0, '127.0.0.1', r))
 
+// A second fake, this time OpenAI-compatible, so the saved-provider path through pi-ai is exercised for real.
+const openaiRequests = []
+const openai = http.createServer((req, res) => {
+  let raw = ''
+  req.on('data', c => { raw += c })
+  req.on('end', () => {
+    if (req.method !== 'POST' || !req.url.includes('/chat/completions')) return res.writeHead(404).end('{}')
+    openaiRequests.push(JSON.parse(raw))
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    const chunk = extra => `data: ${JSON.stringify({ id: 'chatcmpl-e2e', object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: 'fake-openai', ...extra })}\n\n`
+    res.write(chunk({ choices: [{ index: 0, delta: { role: 'assistant', content: 'Hello from the fake OpenAI provider.' }, finish_reason: null }] }))
+    res.write(chunk({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 1000, completion_tokens: 500, total_tokens: 1500 } }))
+    res.end('data: [DONE]\n\n')
+  })
+})
+await new Promise(r => openai.listen(0, '127.0.0.1', r))
+
 // ---- server under test ----
-const env = { ...process.env, BOBBOT_NO_NIGHTLY: '1', BOBBOT_TRIAL_MS: '2500', BOBBOT_DATA: data, PORT: String(PORT), HOST: '127.0.0.1', DEEPSEEK_API_KEY: 'test-key', BOBBOT_TICK_MS: '1000', BOB_COMPAT_PORT: '3731', WECHAT_BRIDGE_URL: 'http://127.0.0.1:3999', DEEPSEEK_BASE_URL: `http://127.0.0.1:${fake.address().port}` }
+const env = { ...process.env, BOBBOT_NO_NIGHTLY: '1', BOBBOT_TRIAL_MS: '2500', BOBBOT_DATA: data, PORT: String(PORT), HOST: '127.0.0.1', DEEPSEEK_API_KEY: 'test-key', BOBBOT_TICK_MS: '1000', BOB_COMPAT_PORT: '3731', WECHAT_BRIDGE_URL: 'http://127.0.0.1:3999', DEEPSEEK_BASE_URL: `http://127.0.0.1:${fake.address().port}`, BOBBOT_TEST_ENDPOINTS: '1' }
 const setPin = pin => spawnSync(process.execPath, ['set-pin.mjs', pin], { cwd: root, env, encoding: 'utf8' })
 const server = spawn(process.execPath, ['server.mjs'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] })
 let log = ''
@@ -1079,10 +1096,38 @@ try {
     await sleep(500)
     assert.equal(requests.length, count)
   })
+
+  console.log('Saved providers')
+  await check('a second provider is saved, used through pi-ai, and switched back without losing the first', async () => {
+    await post('/api/budget', { capUsd: 10 })
+    const added = await post('/api/providers', {
+      name: 'Fake OpenAI', kind: 'custom', api: 'openai-completions',
+      baseUrl: `http://127.0.0.1:${openai.address().port}/v1`, model: 'fake-openai',
+      key: 'fake-key', inputUsd: 1, outputUsd: 2, activate: true,
+    })
+    assert.equal(added.status, 200)
+    const view = await getJson('/api/providers')
+    assert.ok(view.body.items.length >= 2, 'both providers should be saved')
+    assert.ok(view.body.items.some(p => p.kind === 'deepseek'))
+    assert.equal(view.body.items.find(p => p.active).name, 'Fake OpenAI')
+    const t0 = Date.now()
+    assert.equal((await post('/api/chat', { text: 'which provider?' })).status, 200)
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'Hello from the fake OpenAI provider.')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
+    assert.equal(openaiRequests.length, 1, 'the fake OpenAI provider was not called')
+    assert.equal(openaiRequests[0].model, 'fake-openai')
+    const deepseek = view.body.items.find(p => p.kind === 'deepseek')
+    assert.equal((await post('/api/providers/activate', { id: deepseek.id })).status, 200)
+    const after = await getJson('/api/providers')
+    assert.equal(after.body.items.find(p => p.active).kind, 'deepseek')
+    assert.equal(after.body.items.length, view.body.items.length)
+  })
 } finally {
   server.kill()
   fake.close()
   fake.closeAllConnections()
+  openai.close()
+  openai.closeAllConnections()
 }
 
 const failed = results.filter(r => !r).length

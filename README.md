@@ -71,7 +71,7 @@ RY 在国内，常连不上 GitHub，所以它从不需要访问 GitHub：脚本
 
 脚本会：（备份推送 GitHub）→ 把提交推给 RY → RY 上 `git reset --hard refs/deploy/main`（若 RY 上有未提交的改动，会先存成 `~/bob-bot-discarded/*.patch` 再替换）→ 依赖变化时 `npm install` → 重启 `bobbot.service` → 写入构建戳（`prototype/data/build.json`）→ 本机与公网双重健康检查，最后打印 `/api/version`。
 
-**验收方式**：打开 https://ry.bobbik.org 登录后进入「设置」，底部会显示当前版本号与部署时间；`curl https://ry.bobbik.org/api/version` 也会返回同一个 commit。
+**验收方式**：打开 https://ry.bobbik.org 登录后进入「设置 → 系统」，会显示当前版本号与部署时间；`curl https://ry.bobbik.org/api/version` 也会返回同一个 commit。
 
 `prototype/data/`（对话、浏览器登录态、密钥）和 `prototype/node_modules/` 不进仓库，部署时不会被覆盖。
 

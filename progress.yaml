@@ -106,3 +106,5 @@ phases:
         status: done
       - text: 受控功能包（工具/路由/面板，审批与失败隔离）
         status: done
+      - text: 多供应商模型档案（DeepSeek/OpenAI/Anthropic/Gemini/OpenRouter/自定义）与设置页五组导航
+        status: done

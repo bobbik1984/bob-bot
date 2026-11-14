@@ -152,6 +152,27 @@ try {
     }
     await waitFor(async () => (await cloud.evaluate('document.getElementById("i").value')) === 'hi', 5000)
   })
+
+  console.log('Settings')
+  await check('the five settings groups switch, and the saved provider is shown', async () => {
+    await phone.evaluate("show('settings')")
+    await waitFor(() => phone.evaluate("document.getElementById('providerList').children.length > 0"), 10000)
+    for (const group of ['model', 'assistant', 'connect', 'general', 'system']) {
+      await phone.evaluate(`showSettingsGroup('${group}')`)
+      const shown = await phone.evaluate("[...document.querySelectorAll('#viewSettings .settings-panel')].filter(p => !p.hidden).map(p => p.dataset.panel)")
+      assert.deepEqual(shown, [group])
+    }
+    assert.equal(await phone.evaluate("document.querySelector('#providerList .prov b')?.textContent || ''"), 'DeepSeek')
+  })
+  await check('the add-provider form adapts to the chosen vendor', async () => {
+    await phone.evaluate("showSettingsGroup('model'); document.getElementById('addProvider').click()")
+    await waitFor(() => phone.evaluate("!document.getElementById('providerForm').hidden"), 5000)
+    assert.equal(await phone.evaluate("!document.getElementById('pPriceRow').hidden"), false)
+    await phone.evaluate("const s=document.getElementById('pKind'); s.value='openai'; s.dispatchEvent(new Event('change'))")
+    const fields = await phone.evaluate("({ price: !document.getElementById('pPriceRow').hidden, base: document.getElementById('pBase').hidden, model: document.getElementById('pModel').value })")
+    assert.equal(fields.price, true); assert.equal(fields.base, true); assert.equal(fields.model, 'gpt-4.1-mini')
+    await phone.evaluate("document.getElementById('cancelProvider').click()")
+  })
   cloud.close(); phone.close()
 } catch (error) {
   results.push(false)

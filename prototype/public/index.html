@@ -470,6 +470,22 @@ html.fine .pad button:hover { border-color:var(--accent); }
 .seg { display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:4px; padding:4px; border-radius:14px; background:var(--surface-2); }
 .seg button { min-height:36px; border-radius:10px; font-size:14px; font-weight:600; color:var(--muted); transition:background-color .15s, color .15s; }
 .seg button.on { background:var(--surface); color:var(--text); box-shadow:var(--shadow-1); }
+/* settings groups: one short page at a time instead of a long scroll */
+.settings-nav { position:sticky; top:0; z-index:6; display:flex; gap:8px; overflow-x:auto; padding:6px 0 12px; background:var(--bg); scrollbar-width:none; }
+.settings-nav::-webkit-scrollbar { display:none; }
+.settings-nav button { flex:none; min-height:34px; padding:0 14px; border-radius:999px; background:var(--surface-2); color:var(--muted); font-size:14px; font-weight:600; white-space:nowrap; }
+.settings-nav button.on { background:var(--accent-soft); color:var(--accent-ink); }
+.settings-panel[hidden] { display:none; }
+.provider-form { margin-top:12px; padding:14px; border-radius:18px; background:var(--surface-2); display:flex; flex-direction:column; gap:10px; }
+.prov { padding:14px; border-radius:18px; background:var(--surface); border:1px solid var(--line); box-shadow:var(--shadow-1); }
+.prov.on { border-color:var(--accent); }
+.prov-head { display:flex; align-items:center; gap:8px; justify-content:space-between; }
+.prov-head b { font-size:15px; overflow-wrap:anywhere; }
+.prov-meta, .prov-price { margin-top:3px; font-size:13px; color:var(--muted); overflow-wrap:anywhere; }
+.prov-price { font-size:12px; }
+.prov-actions { display:flex; gap:8px; margin-top:10px; }
+.prov-actions .btn { flex:1; min-height:36px; font-size:14px; }
+.prov-actions .link { font-size:14px; }
 
 /* ---- feature packages on the page ---- */
 .plugin-widget { display:block; border:0; max-width:100%; background:transparent; }
@@ -552,115 +568,142 @@ nav button.on span:first-child { background:var(--accent-soft); }
     </div>
     <div class="view" id="viewSettings" hidden>
       <div class="slot" id="slotSettings"></div>
-      <div class="section">
-        <h3 data-i="moon" data-t="themeTitle"></h3>
-        <div class="seg" id="themeSeg"></div>
-      </div>
-      <div class="section">
-        <h3 data-i="globe" data-t="langTitle"></h3>
-        <select class="field" id="langSel" data-al="langTitle"></select>
-      </div>
-      <div class="section">
-        <h3 data-i="chat" data-t="channelsTitle"></h3>
-        <div id="channelList" class="stack"></div>
-        <details class="add" id="addChannel">
-          <summary data-t="addChannel"></summary>
-          <div class="stack">
-            <select class="field" id="chType" data-al="chType"></select>
-            <p class="hint" id="chHelp"></p>
-            <div class="stack" id="wxLoginBox" hidden>
-              <p class="hint" id="wxLoginMsg"></p>
-              <img id="wxLoginQr" alt="" hidden style="width:220px;height:220px;align-self:center;border-radius:16px;background:var(--canvas)">
-              <button class="btn block" id="wxLoginBtn" data-t="wxLoginBtn"></button>
-            </div>
-            <input class="field" id="chName" autocomplete="off" data-ph="chName" data-al="chName">
-            <input class="field" id="chWebhook" inputmode="url" autocapitalize="off" autocomplete="off" data-ph="chWebhook" data-al="chWebhook">
-            <input class="field" id="chSecret" type="password" autocomplete="off" data-ph="chSecret" data-al="chSecret">
-            <input class="field" id="chToken" type="password" autocomplete="off" data-ph="chToken" data-al="chToken" hidden>
-            <input class="field" id="chChat" autocapitalize="off" autocomplete="off" data-ph="chChat" data-al="chChat" hidden>
-            <button class="btn primary block" id="saveChannel" data-t="save"></button>
-            <p class="hint" id="chMsg" role="status"></p>
-          </div>
-        </details>
-      </div>
-      <div class="section">
-        <h3 data-i="box" data-t="featuresTitle"></h3>
-        <p class="hint" data-t="featuresHint"></p>
-        <div id="featureList" class="stack"></div>
-      </div>
-      <div class="section">
-        <h3 data-i="bookmark" data-t="memoryTitle"></h3>
-        <p class="hint" data-t="memoryHint"></p>
-        <div id="memoryList" class="stack"></div>
-        <p class="hint" id="memoryInsights" hidden></p>
-        <div class="row"><button class="btn" id="memoryDream" data-t="memoryDreamNow"></button><span class="hint" id="memoryLastDream"></span></div>
-        <p class="hint" id="memoryMsg" role="status"></p>
-      </div>
-      <div class="section">
-        <div class="sect-row"><h3 data-i="heart" data-t="proactiveTitle"></h3><button class="switch" type="button" id="toggleProactive" role="switch" aria-checked="false" data-al="proactiveTitle"></button></div>
-        <p class="hint" data-t="proactiveHint"></p>
-        <label class="hint" for="proactiveLevel" data-t="proactiveLevel"></label>
-        <input type="range" id="proactiveLevel" min="0" max="1" step="0.05" style="width:100%;accent-color:var(--accent)">
-        <div class="row" style="justify-content:space-between"><span class="mini" data-t="levelReserved"></span><span class="mini" data-t="levelBalanced"></span><span class="mini" data-t="levelActive"></span><span class="mini" data-t="levelClingy"></span></div>
-        <p class="hint" id="proactiveLevelText"></p>
-        <div class="row"><input class="field" id="proactiveTimes" placeholder="09:00, 18:30" autocapitalize="off" autocomplete="off"><button class="btn" id="saveProactive" data-t="save"></button></div>
-        <div class="row"><button class="btn" id="proactiveNow" data-t="proactiveNow"></button></div>
-        <p class="hint" id="proactiveMsg" role="status"></p>
-      </div>
-      <div class="section">
-        <h3 data-i="phone" data-t="pushTitle"></h3>
-        <div class="keystate none" id="pushState"></div>
-        <p class="hint" id="pushHint" data-t="pushHint"></p>
-        <label class="hint" for="pushChatMode" data-t="pushChatTitle"></label>
-        <select class="field" id="pushChatMode"></select>
-        <p class="hint" data-t="pushChatHint"></p>
-        <p class="hint" id="pushLast"></p>
-        <p class="hint" id="pushDiag" hidden></p>
-        <div class="row">
-          <button class="btn primary" id="pushEnable" data-t="pushEnable"></button>
-          <button class="btn" id="pushTest" data-t="pushTest" hidden></button>
-        </div>
-      </div>
-      <div class="section">
-        <h3 data-i="clock" data-t="zoneTitle"></h3>
-        <div class="row"><input class="field" id="zone" autocapitalize="off" autocomplete="off" aria-label="Time zone"><button class="btn" id="saveZone" data-t="save"></button></div>
-        <p class="hint" id="zoneMsg" role="status"></p>
-      </div>
-      <div class="section">
-        <h3 data-i="cpu" data-t="modelTitle"></h3>
-        <label class="hint" for="modelSel" data-t="modelLabel"></label>
-        <select class="field" id="modelSel"></select>
-        <div class="keystate" id="keyState"></div>
-        <input class="field" id="key" type="password" autocomplete="off" placeholder="sk-..." aria-label="API key" hidden>
-        <div class="stack" id="customBox" hidden>
-          <p class="hint" data-t="customHint"></p>
-          <input class="field" id="cEndpoint" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="https://api.example.com/anthropic" data-al="cEndpoint">
-          <input class="field" id="cModel" autocapitalize="off" autocomplete="off" data-ph="cModel" data-al="cModel">
-          <input class="field" id="cKey" type="password" autocomplete="off" data-ph="cKey" data-al="cKey">
-          <p class="hint" data-t="priceWhy"></p>
-          <div class="row"><input class="field" id="cIn" type="number" inputmode="decimal" min="0" step="any" data-ph="cIn" data-al="cIn"><input class="field" id="cOut" type="number" inputmode="decimal" min="0" step="any" data-ph="cOut" data-al="cOut"></div>
-        </div>
-        <button class="btn primary block" id="saveModel" data-t="save"></button>
-      </div>
-      <div class="section">
-        <h3 data-i="wallet" data-t="capTitle"></h3>
-        <div class="big-n" id="spentBig"></div>
-        <div class="bar" id="capBar"><i></i></div>
-        <p class="hint" data-t="capLabel"></p>
-        <div class="row"><input class="field" id="cap" type="number" inputmode="decimal" min="0.01" step="0.5" aria-label="Monthly limit"><button class="btn" id="saveCap" data-t="save"></button></div>
-      </div>
-      <div class="section">
-        <h3 data-i="terminal" data-t="extTitle"></h3>
-        <p class="hint" data-t="extHint"></p>
-        <div id="extList"></div>
-        <p class="hint" id="extEmpty" data-t="extEmpty"></p>
+      <div class="settings-nav" id="settingsNav" role="tablist">
+        <button class="on" type="button" data-panel="model" role="tab" data-t="setGroupModel"></button>
+        <button type="button" data-panel="assistant" role="tab" data-t="setGroupAssistant"></button>
+        <button type="button" data-panel="connect" role="tab" data-t="setGroupConnect"></button>
+        <button type="button" data-panel="general" role="tab" data-t="setGroupGeneral"></button>
+        <button type="button" data-panel="system" role="tab" data-t="setGroupSystem"></button>
       </div>
       <p class="hint" id="settingsMsg" role="status"></p>
-      <p class="hint" id="buildInfo"></p>
-      <div class="section">
-        <h3 data-i="lock" data-t="pinTitle"></h3>
-        <p class="hint" data-t="pinHint"></p>
-        <button class="btn danger block" id="logout" data-t="logout"></button>
+
+      <div class="settings-panel" data-panel="model">
+        <div class="section">
+          <h3 data-i="cpu" data-t="modelTitle"></h3>
+          <p class="hint" data-t="providersHint"></p>
+          <div id="providerList" class="stack"></div>
+          <p class="hint empty-note" id="providerEmpty" data-t="providersEmpty" hidden></p>
+          <button class="btn block" id="addProvider" data-t="addProvider"></button>
+          <div class="provider-form" id="providerForm" hidden>
+            <div class="sect-row"><b data-t="providerFormTitle"></b><button class="link" type="button" id="cancelProvider" data-t="cancel"></button></div>
+            <select class="field" id="pKind" data-al="pKind"></select>
+            <input class="field" id="pName" autocomplete="off" data-ph="pName" data-al="pName">
+            <select class="field" id="pApi" data-al="pApi"></select>
+            <input class="field" id="pBase" inputmode="url" autocapitalize="off" autocomplete="off" data-ph="pBase" data-al="pBase">
+            <input class="field" id="pModel" list="modelHints" autocapitalize="off" autocomplete="off" data-ph="pModel" data-al="pModel">
+            <datalist id="modelHints"></datalist>
+            <input class="field" id="pKey" type="password" autocomplete="off" data-ph="pKey" data-al="pKey">
+            <div class="row" id="pPriceRow"><input class="field" id="pIn" type="number" inputmode="decimal" min="0" step="any" data-ph="cIn" data-al="cIn"><input class="field" id="pOut" type="number" inputmode="decimal" min="0" step="any" data-ph="cOut" data-al="cOut"></div>
+            <p class="hint" data-t="priceWhy"></p>
+            <p class="hint" id="pMsg" role="status"></p>
+            <button class="btn primary block" id="saveProvider" data-t="save"></button>
+          </div>
+        </div>
+        <div class="section">
+          <h3 data-i="wallet" data-t="capTitle"></h3>
+          <div class="big-n" id="spentBig"></div>
+          <div class="bar" id="capBar"><i></i></div>
+          <p class="hint" data-t="capLabel"></p>
+          <div class="row"><input class="field" id="cap" type="number" inputmode="decimal" min="0.01" step="0.5" aria-label="Monthly limit"><button class="btn" id="saveCap" data-t="save"></button></div>
+        </div>
+      </div>
+
+      <div class="settings-panel" data-panel="assistant" hidden>
+        <div class="section">
+          <div class="sect-row"><h3 data-i="heart" data-t="proactiveTitle"></h3><button class="switch" type="button" id="toggleProactive" role="switch" aria-checked="false" data-al="proactiveTitle"></button></div>
+          <p class="hint" data-t="proactiveHint"></p>
+          <label class="hint" for="proactiveLevel" data-t="proactiveLevel"></label>
+          <input type="range" id="proactiveLevel" min="0" max="1" step="0.05" style="width:100%;accent-color:var(--accent)">
+          <div class="row" style="justify-content:space-between"><span class="mini" data-t="levelReserved"></span><span class="mini" data-t="levelBalanced"></span><span class="mini" data-t="levelActive"></span><span class="mini" data-t="levelClingy"></span></div>
+          <p class="hint" id="proactiveLevelText"></p>
+          <div class="row"><input class="field" id="proactiveTimes" placeholder="09:00, 18:30" autocapitalize="off" autocomplete="off"><button class="btn" id="saveProactive" data-t="save"></button></div>
+          <div class="row"><button class="btn" id="proactiveNow" data-t="proactiveNow"></button></div>
+          <p class="hint" id="proactiveMsg" role="status"></p>
+        </div>
+        <div class="section">
+          <h3 data-i="bookmark" data-t="memoryTitle"></h3>
+          <p class="hint" data-t="memoryHint"></p>
+          <div id="memoryList" class="stack"></div>
+          <p class="hint" id="memoryInsights" hidden></p>
+          <div class="row"><button class="btn" id="memoryDream" data-t="memoryDreamNow"></button><span class="hint" id="memoryLastDream"></span></div>
+          <p class="hint" id="memoryMsg" role="status"></p>
+        </div>
+        <div class="section">
+          <h3 data-i="box" data-t="featuresTitle"></h3>
+          <p class="hint" data-t="featuresHint"></p>
+          <div id="featureList" class="stack"></div>
+        </div>
+      </div>
+
+      <div class="settings-panel" data-panel="connect" hidden>
+        <div class="section">
+          <h3 data-i="chat" data-t="channelsTitle"></h3>
+          <div id="channelList" class="stack"></div>
+          <details class="add" id="addChannel">
+            <summary data-t="addChannel"></summary>
+            <div class="stack">
+              <select class="field" id="chType" data-al="chType"></select>
+              <p class="hint" id="chHelp"></p>
+              <div class="stack" id="wxLoginBox" hidden>
+                <p class="hint" id="wxLoginMsg"></p>
+                <img id="wxLoginQr" alt="" hidden style="width:220px;height:220px;align-self:center;border-radius:16px;background:var(--canvas)">
+                <button class="btn block" id="wxLoginBtn" data-t="wxLoginBtn"></button>
+              </div>
+              <input class="field" id="chName" autocomplete="off" data-ph="chName" data-al="chName">
+              <input class="field" id="chWebhook" inputmode="url" autocapitalize="off" autocomplete="off" data-ph="chWebhook" data-al="chWebhook">
+              <input class="field" id="chSecret" type="password" autocomplete="off" data-ph="chSecret" data-al="chSecret">
+              <input class="field" id="chToken" type="password" autocomplete="off" data-ph="chToken" data-al="chToken" hidden>
+              <input class="field" id="chChat" autocapitalize="off" autocomplete="off" data-ph="chChat" data-al="chChat" hidden>
+              <button class="btn primary block" id="saveChannel" data-t="save"></button>
+              <p class="hint" id="chMsg" role="status"></p>
+            </div>
+          </details>
+        </div>
+        <div class="section">
+          <h3 data-i="phone" data-t="pushTitle"></h3>
+          <div class="keystate none" id="pushState"></div>
+          <p class="hint" id="pushHint" data-t="pushHint"></p>
+          <label class="hint" for="pushChatMode" data-t="pushChatTitle"></label>
+          <select class="field" id="pushChatMode"></select>
+          <p class="hint" data-t="pushChatHint"></p>
+          <p class="hint" id="pushLast"></p>
+          <p class="hint" id="pushDiag" hidden></p>
+          <div class="row">
+            <button class="btn primary" id="pushEnable" data-t="pushEnable"></button>
+            <button class="btn" id="pushTest" data-t="pushTest" hidden></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-panel" data-panel="general" hidden>
+        <div class="section">
+          <h3 data-i="moon" data-t="themeTitle"></h3>
+          <div class="seg" id="themeSeg"></div>
+        </div>
+        <div class="section">
+          <h3 data-i="globe" data-t="langTitle"></h3>
+          <select class="field" id="langSel" data-al="langTitle"></select>
+        </div>
+        <div class="section">
+          <h3 data-i="clock" data-t="zoneTitle"></h3>
+          <div class="row"><input class="field" id="zone" autocapitalize="off" autocomplete="off" aria-label="Time zone"><button class="btn" id="saveZone" data-t="save"></button></div>
+          <p class="hint" id="zoneMsg" role="status"></p>
+        </div>
+      </div>
+
+      <div class="settings-panel" data-panel="system" hidden>
+        <div class="section">
+          <h3 data-i="terminal" data-t="extTitle"></h3>
+          <p class="hint" data-t="extHint"></p>
+          <div id="extList"></div>
+          <p class="hint" id="extEmpty" data-t="extEmpty"></p>
+        </div>
+        <div class="section">
+          <h3 data-i="lock" data-t="pinTitle"></h3>
+          <p class="hint" data-t="pinHint"></p>
+          <button class="btn danger block" id="logout" data-t="logout"></button>
+        </div>
+        <p class="hint" id="buildInfo"></p>
       </div>
     </div>
     <button id="jump" type="button" data-i="down" data-t="jumpLatest" hidden></button>
@@ -855,7 +898,18 @@ const I18N = {
   step_skill_remove:['移除技能','Removing a skill'], step_ext_list:['查看扩展','Checking extensions'], step_skill:['使用技能','Using a skill'],
   stepsCount:['共 {n} 步','{n} steps'],
   // model, budget, account
+  setGroupModel:['模型与花费','Model & cost'], setGroupAssistant:['助理','Assistant'], setGroupConnect:['连接','Connect'], setGroupGeneral:['通用','General'], setGroupSystem:['系统','System'],
   modelTitle:['模型','Model'], modelLabel:['选择模型','Choose a model'], otherModel:['其他模型（自行填写）…','Other model (enter yourself)…'],
+  providersHint:['保存多个模型供应商，随时切换；只有当前使用的那个会计入花费。','Keep several model providers and switch anytime; only the active one is used and counted.'],
+  providersEmpty:['还没有模型，先添加一个。','No model yet. Add one below.'],
+  addProvider:['添加模型供应商','Add a model provider'], providerFormTitle:['模型供应商','Model provider'],
+  pKind:['供应商','Provider'], pKindCustom:['自定义端点','Custom endpoint'], pName:['名称（可选）','Name (optional)'], pApi:['接口协议','API protocol'], pBase:['接口地址（https）','Endpoint (https)'], pModel:['模型名称','Model name'], pKey:['API Key（留空沿用已保存）','API key (blank keeps saved)'],
+  apiOpenAI:['OpenAI 兼容（Chat Completions）','OpenAI-compatible (Chat Completions)'], apiAnthropic:['Anthropic Messages','Anthropic Messages'], apiResponses:['OpenAI Responses','OpenAI Responses'],
+  providerActive:['使用中','In use'], providerUse:['使用','Use'], providerEdit:['编辑','Edit'], providerDelete:['删除','Delete'],
+  providerPrice:['输入 ${n} · 输出 ${m} / 百万 tokens','Input ${n} · output ${m} per 1M tokens'],
+  providerNoKey:['还没有密钥','No key yet'], providerSaved:['已保存，下一条消息使用新模型','Saved. The next message uses the new model'],
+  providerBusy:['Bob 正在忙，稍后再切换','Bob is busy, try again later'],
+  err_BAD_PROVIDER:['这个供应商配置不完整','That provider configuration is incomplete'], err_BAD_KIND:['不支持的供应商','Unsupported provider'], err_BAD_API:['不支持的接口协议','Unsupported API protocol'], err_BAD_LIMIT:['上下文或输出长度无效','Invalid context or output length'], err_TOO_MANY_PROVIDERS:['最多保存 12 个供应商','At most 12 providers'], err_NO_PROVIDER:['找不到这个供应商','No such provider'],
   keySaved:['密钥已保存','Key saved'], keyEnv:['由服务器环境提供','Set by the server'], replaceKey:['更换','Replace'], keyNone:['还没有密钥，请先填写','No key yet. Add one below'],
   customHint:['填写兼容 Anthropic Messages 协议的服务（实际请求地址为：接口地址 + /v1/messages）。这是实验功能，尚未验证。','An Anthropic Messages-compatible service (requests go to the endpoint + /v1/messages). Experimental and not verified.'],
   cEndpoint:['接口地址（https）','Endpoint (https)'], cModel:['模型名称','Model name'], cKey:['API Key（留空沿用已保存）','API key (blank keeps saved)'],
@@ -991,7 +1045,7 @@ function show(view) {
   else drawAttachments()
   if (view === 'chat') atEnd()
   if (view === 'clerk') loadClerk()
-  if (view === 'settings') { loadModelCard().catch(() => {}); loadExtensions(); loadClerk(); loadPushState(); loadFeatures(); loadProactive(); loadMemory() }
+  if (view === 'settings') { loadProviders().catch(() => {}); showSettingsGroup(settingsGroupSaved(), false); loadExtensions(); loadClerk(); loadPushState(); loadFeatures(); loadProactive(); loadMemory() }
   refreshOrb(); refreshBanner(); setHero()
 }
 document.querySelectorAll('nav button').forEach(b => { b.onclick = () => show(b.dataset.view) })
@@ -2529,60 +2583,172 @@ $('composer').onsubmit = async e => {
 }
 
 // ---- settings ----
-let appState = {}, deepseekModels = []
-const CUSTOM = '__custom'
-function renderModelCard() {
-  const sel = $('modelSel'), custom = sel.value === CUSTOM
-  $('customBox').hidden = !custom
-  const saved = appState.model ?? {}
-  const has = (saved.kind === 'custom') === custom && appState.hasKey
-  const ks = $('keyState')
-  ks.className = 'keystate' + (has ? '' : ' none')
-  ks.textContent = ''
-  ks.insertAdjacentHTML('afterbegin', icon(has ? 'tick' : 'shield'))
-  ks.append(el('span', '', t(has ? 'keySaved' : 'keyNone')))
-  if (has && appState.keyHint) ks.append(el('code', '', appState.keyHint === 'env' ? t('keyEnv') : appState.keyHint))
-  if (has && !custom && appState.keyHint !== 'env') {
-    const b = el('button', 'link', t('replaceKey')); b.type = 'button'
-    b.onclick = () => { $('key').hidden = false; $('key').focus(); b.remove() }
-    ks.append(b)
-  }
-  $('key').hidden = custom || has
+let appState = {}, providerData = { items: [], presets: [], activeId: null }, editingProvider = null
+const SAVE_GROUP_KEY = 'bobbot.settings.group'
+// Suggestions only: the server accepts any model id for a saved vendor, and these are just quick picks.
+const MODEL_HINTS = {
+  deepseek: [],
+  openai: ['gpt-4.1-mini', 'gpt-4.1', 'gpt-4o-mini'],
+  anthropic: ['claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-opus-4-1'],
+  google: ['gemini-2.5-flash', 'gemini-2.5-pro'],
+  openrouter: ['deepseek/deepseek-chat', 'openai/gpt-4.1-mini', 'anthropic/claude-sonnet-4.5', 'google/gemini-2.5-flash'],
+  custom: [],
 }
+const PRICE_HINTS = {
+  'gpt-4.1-mini': [0.4, 1.6], 'gpt-4.1': [2, 8], 'gpt-4o-mini': [0.15, 0.6],
+  'claude-sonnet-4-5': [3, 15], 'claude-haiku-4-5': [1, 5], 'claude-opus-4-1': [15, 75],
+  'gemini-2.5-flash': [0.3, 2.5], 'gemini-2.5-pro': [1.25, 10],
+  'deepseek/deepseek-chat': [0.27, 1.1],
+}
+const settingsGroupSaved = () => { try { return localStorage.getItem(SAVE_GROUP_KEY) || 'model' } catch { return 'model' } }
+function showSettingsGroup(name, persist = true) {
+  if (!['model', 'assistant', 'connect', 'general', 'system'].includes(name)) name = 'model'
+  for (const b of $('settingsNav').querySelectorAll('button')) {
+    const on = b.dataset.panel === name
+    b.classList.toggle('on', on)
+    b.setAttribute('aria-selected', String(on))
+  }
+  for (const panel of document.querySelectorAll('#viewSettings .settings-panel')) panel.hidden = panel.dataset.panel !== name
+  if (persist) { try { localStorage.setItem(SAVE_GROUP_KEY, name) } catch { /* private mode */ } }
+}
+$('settingsNav').addEventListener('click', e => {
+  const b = e.target.closest('button[data-panel]')
+  if (b) showSettingsGroup(b.dataset.panel)
+})
 function showBuild(s) {
   const b = s?.build
   if (!b?.commit) return
   const commit = b.commit === 'dev' ? 'dev' : b.commit.slice(0, 7)
   $('buildInfo').textContent = t('build') + ' ' + commit + (b.at ? ' · ' + b.at : '')
 }
-async function loadModelCard() {
+const presetOf = kind => providerData.presets.find(p => p.kind === kind) ?? null
+const providerLabel = kind => kind === 'custom' ? t('pKindCustom') : (presetOf(kind)?.label ?? kind)
+function fillKindOptions() {
+  $('pKind').replaceChildren(...providerData.presets.map(p => new Option(p.kind === 'custom' ? t('pKindCustom') : p.label, p.kind)))
+  $('pApi').replaceChildren(
+    new Option(t('apiOpenAI'), 'openai-completions'),
+    new Option(t('apiAnthropic'), 'anthropic-messages'),
+    new Option(t('apiResponses'), 'openai-responses'),
+  )
+}
+function providerFields(kind) {
+  const preset = presetOf(kind)
+  const custom = kind === 'custom'
+  $('pApi').hidden = !custom
+  $('pBase').hidden = !custom
+  $('pPriceRow').hidden = kind === 'deepseek'
+  if (preset && !custom) { $('pBase').value = preset.baseUrl; $('pApi').value = preset.api }
+  const hints = MODEL_HINTS[kind] ?? []
+  $('modelHints').replaceChildren(...hints.map(id => { const o = document.createElement('option'); o.value = id; return o }))
+}
+$('pKind').onchange = () => {
+  if (editingProvider) return
+  const kind = $('pKind').value, preset = presetOf(kind)
+  providerFields(kind)
+  $('pName').value = providerLabel(kind)
+  $('pModel').value = preset?.model ?? ''
+  const prices = PRICE_HINTS[preset?.model] ?? []
+  $('pIn').value = prices[0] ?? ''
+  $('pOut').value = prices[1] ?? ''
+  $('pMsg').textContent = ''
+}
+function providerRow(p) {
+  const row = el('div', 'prov' + (p.active ? ' on' : ''))
+  const head = el('div', 'prov-head')
+  head.append(el('b', '', p.name || p.model))
+  if (p.active) head.append(el('span', 'mini', t('providerActive')))
+  row.append(head)
+  row.append(el('div', 'prov-meta', `${providerLabel(p.kind)} · ${p.model}`))
+  row.append(el('div', 'prov-meta', p.hasKey ? (p.keyHint === 'env' ? t('keyEnv') : p.keyHint) : t('providerNoKey')))
+  if (p.kind !== 'deepseek' && Number.isFinite(Number(p.inputUsd)) && Number.isFinite(Number(p.outputUsd))) {
+    row.append(el('div', 'prov-price', t('providerPrice', { n: p.inputUsd, m: p.outputUsd })))
+  }
+  const actions = el('div', 'prov-actions')
+  if (!p.active) {
+    const use = el('button', 'btn', t('providerUse')); use.type = 'button'
+    use.onclick = async () => {
+      const r = await post('/api/providers/activate', { id: p.id })
+      if (r.status === 200) { providerData = r.data; renderProviders(); toast(t('providerSaved')) }
+      else toast(errText(r.data, r.status), true)
+    }
+    actions.append(use)
+  }
+  const edit = el('button', 'btn', t('providerEdit')); edit.type = 'button'
+  edit.onclick = () => openProviderForm(p)
+  const del = el('button', 'btn danger', t('providerDelete')); del.type = 'button'
+  del.onclick = async () => {
+    if (!confirm(t('confirmDelete', p.name))) return
+    const r = await post('/api/providers/delete', { id: p.id })
+    if (r.status === 200) { providerData = r.data; renderProviders(); toast(t('saved')) }
+    else toast(errText(r.data, r.status), true)
+  }
+  actions.append(edit, del)
+  row.append(actions)
+  return row
+}
+function renderProviders() {
+  $('providerList').replaceChildren(...providerData.items.map(providerRow))
+  $('providerEmpty').hidden = providerData.items.length > 0
+}
+function openProviderForm(p = null) {
+  fillKindOptions()
+  editingProvider = p?.id ?? null
+  $('pKind').disabled = Boolean(p)
+  $('pKind').value = p?.kind ?? 'deepseek'
+  providerFields($('pKind').value)
+  $('pName').value = p?.name ?? providerLabel($('pKind').value)
+  $('pModel').value = p?.model ?? presetOf($('pKind').value)?.model ?? ''
+  $('pBase').value = p?.baseUrl ?? presetOf($('pKind').value)?.baseUrl ?? ''
+  $('pApi').value = p?.api ?? presetOf($('pKind').value)?.api ?? 'openai-completions'
+  $('pIn').value = p?.inputUsd ?? (PRICE_HINTS[p?.model] ?? [])[0] ?? ''
+  $('pOut').value = p?.outputUsd ?? (PRICE_HINTS[p?.model] ?? [])[1] ?? ''
+  $('pKey').value = ''
+  $('pMsg').textContent = ''
+  $('providerForm').hidden = false
+  $('pKey').placeholder = p?.hasKey ? t('pKey') : 'sk-...'
+  $('pKey').focus()
+  $('providerForm').scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+}
+function closeProviderForm() {
+  $('providerForm').hidden = true
+  editingProvider = null
+  $('pKind').disabled = false
+  $('pMsg').textContent = ''
+}
+$('addProvider').onclick = () => openProviderForm()
+$('cancelProvider').onclick = closeProviderForm
+$('saveProvider').onclick = async () => {
+  const kind = $('pKind').value
+  const body = {
+    id: editingProvider ?? undefined, kind,
+    name: $('pName').value.trim(), api: $('pApi').value,
+    baseUrl: $('pBase').value.trim(), model: $('pModel').value.trim(),
+    key: $('pKey').value.trim(), inputUsd: $('pIn').value, outputUsd: $('pOut').value,
+    activate: true,
+  }
+  $('saveProvider').disabled = true
+  try {
+    const { status, data } = await post('/api/providers', body)
+    if (status === 200) {
+      providerData = data
+      renderProviders()
+      closeProviderForm()
+      toast(t('providerSaved'))
+      await loadProviders()
+    } else $('pMsg').textContent = errText(data, status)
+  } finally { $('saveProvider').disabled = false }
+}
+async function loadProviders() {
   appState = await (await fetch('/api/state')).json()
   showBuild(appState)
-  try { deepseekModels = (await post('/api/models')).data.deepseek ?? [] } catch { deepseekModels = [] }
-  const sel = $('modelSel'), saved = appState.model ?? {}
-  sel.textContent = ''
-  const ids = saved.kind === 'deepseek' && !deepseekModels.includes(saved.model) ? [saved.model, ...deepseekModels] : deepseekModels
-  for (const id of ids) sel.append(new Option('DeepSeek · ' + id, id))
-  sel.append(new Option(t('otherModel'), CUSTOM))
-  sel.value = saved.kind === 'custom' ? CUSTOM : saved.model
-  if (saved.kind === 'custom') {
-    $('cEndpoint').value = saved.baseUrl ?? ''; $('cModel').value = saved.model ?? ''
-    $('cIn').value = saved.inputUsd ?? ''; $('cOut').value = saved.outputUsd ?? ''
-  }
-  renderModelCard()
-}
-$('modelSel').onchange = renderModelCard
-$('saveModel').onclick = async () => {
-  const custom = $('modelSel').value === CUSTOM
-  const body = custom
-    ? { kind: 'custom', baseUrl: $('cEndpoint').value, model: $('cModel').value, key: $('cKey').value, inputUsd: $('cIn').value, outputUsd: $('cOut').value }
-    : { kind: 'deepseek', model: $('modelSel').value, key: $('key').value }
-  const { status, data } = await post('/api/model', body)
-  if (status === 200) {
-    $('key').value = ''; $('cKey').value = ''
-    await loadModelCard()
-    $('settingsMsg').textContent = t('saved')
-  } else $('settingsMsg').textContent = errText(data, status)
+  try {
+    const [providers, models] = await Promise.all([fetch('/api/providers').then(r => r.json()), post('/api/models', {})])
+    if (!Array.isArray(providers?.items)) throw new Error('NO_PROVIDERS')
+    providerData = providers
+    MODEL_HINTS.deepseek = models.data?.deepseek ?? []
+  } catch { providerData = { items: [], presets: [], activeId: null } }
+  fillKindOptions()
+  renderProviders()
 }
 $('saveCap').onclick = async () => {
   const { status, data } = await post('/api/budget', { capUsd: Number($('cap').value) })
@@ -2830,7 +2996,7 @@ async function boot() {
   showBuild(s)
   setBadge(s.unread)
   show('chat')
-  if (!s.hasKey) { $('settingsMsg').textContent = t('noKey'); show('settings') }
+  if (!s.hasKey) { $('settingsMsg').textContent = t('noKey'); show('settings'); showSettingsGroup('model') }
   connect()
   reportPresence(true)
   loadClerk() // the front page shows what is waiting
