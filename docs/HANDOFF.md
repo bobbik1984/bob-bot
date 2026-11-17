@@ -87,7 +87,7 @@ ssh ... 'ln -sfn /home/ubuntu/bob-bot/prototype/node_modules /tmp/bobtest/protot
 ssh ... 'cd /tmp/bobtest/prototype && node test/unit.mjs && node test/e2e.mjs'
 ```
 
-当前基线：`unit 44/44`、`plugins 9/9`、`browser 20/20`、`e2e 76/76`、`ui 12/12`。e2e 需要 Chrome 与空闲端口；跑之前 `fuser -k 8799/tcp`。
+当前基线：`unit 45/45`、`plugins 9/9`、`browser 20/20`、`e2e 76/76`、`ui 12/12`。e2e 需要 Chrome 与空闲端口；跑之前 `fuser -k 8799/tcp`。
 
 **部署不依赖 GitHub**：RY 在国内，常连不上 GitHub。`deploy-ry.sh` 通过 SSH 把当前提交直接推给 RY（旁路引用 `refs/deploy/main`），RY 再 `git reset --hard` 到它；GitHub 备份在 x1t 上尽力推送，失败只警告。只部署已提交的内容，且必须在 `main` 上。`--via-github` 才让 RY 自己拉 GitHub。
 
