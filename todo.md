@@ -18,6 +18,10 @@
 - [x] 定时任务的待批草稿（保存确切动作，批准后不经模型执行）
 - [x] 记忆注入所有对话与任务；修复做梦和主动关心的回合等待
 - [x] Bob 可改自己：沙箱功能包（工具/接口/小部件/样式）+ 3 分钟试用、保留或自动回退
+- [x] GCP e2-micro 纯二进制轻量网关上线（https://bot.bobbik.org）：Go 单二进制 (~6MB，常驻内存 1.5MB~6MB)
+- [x] 手机端多模型/多服务商预设（国内外主流服务商下拉：Gemini, DeepSeek, OpenAI, Moonshot, Qwen, GLM, Doubao, OpenRouter, Custom）
+- [x] Base URL / 模型名称 / 各服务商 API Key 独立持久化记录与免输入一键切换
+- [x] 统一 OpenAI + Gemini 协议双核流式 SSE 推理
 
 ## 🔜 下一步（原型优先级）
 

@@ -92,6 +92,12 @@ phases:
     tasks:
       - text: 一键部署脚本与构建戳（deploy-ry.sh + /api/version）
         status: done
+      - text: GCP Always Free e2-micro 纯二进制轻量部署 (bot.bobbik.org)，Go 单二进制 (~6MB，常驻内存 1.5MB~6MB)
+        status: done
+      - text: 手机端多模型/多服务商预设（国内外主流服务商：Gemini, DeepSeek, OpenAI, Moonshot, Qwen, GLM, Doubao, OpenRouter, Custom）
+        status: done
+      - text: Base URL / 模型名称 / 各服务商 API Key 独立持久化记住与免输入切换
+        status: done
       - text: 卡片化对话（图标/标签/对齐信息行/双按钮）与 Orb 状态动效
         status: done
       - text: 多语言切换、语音输入、会话重命名、恢复上次页面、3 小时新会话

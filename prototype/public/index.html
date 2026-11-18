@@ -622,19 +622,49 @@ nav button.on span:first-child { background:var(--accent-soft); }
       </div>
       <div class="section">
         <h3 data-i="cpu" data-t="modelTitle"></h3>
-        <label class="hint" for="modelSel" data-t="modelLabel"></label>
-        <select class="field" id="modelSel"></select>
-        <div class="keystate" id="keyState"></div>
-        <input class="field" id="key" type="password" autocomplete="off" placeholder="sk-..." aria-label="API key" hidden>
-        <div class="stack" id="customBox" hidden>
-          <p class="hint" data-t="customHint"></p>
-          <input class="field" id="cEndpoint" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="https://api.example.com/anthropic" data-al="cEndpoint">
-          <input class="field" id="cModel" autocapitalize="off" autocomplete="off" data-ph="cModel" data-al="cModel">
-          <input class="field" id="cKey" type="password" autocomplete="off" data-ph="cKey" data-al="cKey">
-          <p class="hint" data-t="priceWhy"></p>
-          <div class="row"><input class="field" id="cIn" type="number" inputmode="decimal" min="0" step="any" data-ph="cIn" data-al="cIn"><input class="field" id="cOut" type="number" inputmode="decimal" min="0" step="any" data-ph="cOut" data-al="cOut"></div>
+        
+        <label class="hint" for="providerSel" data-t="providerLabel"></label>
+        <select class="field" id="providerSel">
+          <optgroup label="国外主流 (Overseas)">
+            <option value="gemini">Google Gemini (Flash / Pro)</option>
+            <option value="openai">OpenAI (GPT-4o / 4o-mini)</option>
+            <option value="openrouter">OpenRouter (多模型聚合)</option>
+            <option value="xai">xAI (Grok-3)</option>
+          </optgroup>
+          <optgroup label="国内主流 (Domestic)">
+            <option value="deepseek">DeepSeek (V3 / R1 推理)</option>
+            <option value="moonshot">Moonshot / Kimi (月之暗面)</option>
+            <option value="qwen">阿里通义千问 (Qwen / 百炼)</option>
+            <option value="zhipu">智谱 AI (GLM-4 / 5)</option>
+            <option value="doubao">火山引擎 (豆包 Doubao)</option>
+          </optgroup>
+          <optgroup label="自定义 (Custom)">
+            <option value="custom">自定义 OpenAI 兼容接口</option>
+          </optgroup>
+        </select>
+
+        <div class="row" style="margin-top:10px;justify-content:space-between;align-items:center">
+          <label class="hint" for="modelSel" data-t="modelLabel" style="margin:0"></label>
+          <button class="link mini" id="toggleCustomModel" type="button" data-t="manualModel"></button>
         </div>
-        <button class="btn primary block" id="saveModel" data-t="save"></button>
+        <select class="field" id="modelSel"></select>
+        <input class="field" id="customModelInput" placeholder="输入模型名称 (如 deepseek-chat)" autocomplete="off" hidden>
+
+        <div id="endpointGroup" style="margin-top:10px">
+          <div class="row" style="justify-content:space-between;align-items:center">
+            <label class="hint" for="cEndpoint" data-t="endpointLabel" style="margin:0"></label>
+            <button class="link mini" id="resetEndpoint" type="button" data-t="resetDefault"></button>
+          </div>
+          <input class="field" id="cEndpoint" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="https://api.deepseek.com/v1">
+        </div>
+
+        <div style="margin-top:10px">
+          <label class="hint" data-t="keyLabel" style="margin:0"></label>
+          <div class="keystate" id="keyState"></div>
+          <input class="field" id="key" type="password" autocomplete="off" placeholder="粘贴 API Key (留空保持已存密钥)">
+        </div>
+
+        <button class="btn primary block" id="saveModel" data-t="save" style="margin-top:14px"></button>
       </div>
       <div class="section">
         <h3 data-i="wallet" data-t="capTitle"></h3>
@@ -849,9 +879,10 @@ const I18N = {
   step_skill_remove:['移除技能','Removing a skill'], step_ext_list:['查看扩展','Checking extensions'], step_skill:['使用技能','Using a skill'],
   stepsCount:['共 {n} 步','{n} steps'],
   // model, budget, account
-  modelTitle:['模型','Model'], modelLabel:['选择模型','Choose a model'], otherModel:['其他模型（自行填写）…','Other model (enter yourself)…'],
-  keySaved:['密钥已保存','Key saved'], keyEnv:['由服务器环境提供','Set by the server'], replaceKey:['更换','Replace'], keyNone:['还没有密钥，请先填写','No key yet. Add one below'],
-  customHint:['填写兼容 Anthropic Messages 协议的服务（实际请求地址为：接口地址 + /v1/messages）。这是实验功能，尚未验证。','An Anthropic Messages-compatible service (requests go to the endpoint + /v1/messages). Experimental and not verified.'],
+  modelTitle:['模型与服务商','Model & Provider'], providerLabel:['服务商 (Provider)','Provider'], modelLabel:['模型 (Model)','Model'],
+  manualModel:['手动输入模型名','Custom Model Name'], selectPresetModel:['选择预设模型','Select Preset Model'], endpointLabel:['接口地址 (Base URL)','Base URL'], resetDefault:['恢复默认','Reset Default'], keyLabel:['API 密钥 (API Key)','API Key'],
+  keySaved:['密钥已配置','Key configured'], keyEnv:['由服务器环境提供','Set by server env'], replaceKey:['更换','Change'], keyNone:['未配置密钥 (请在下方填入)','No key configured (enter below)'],
+  customHint:['支持标准 OpenAI / Gemini 兼容格式（自动请求 /chat/completions）。','Supports standard OpenAI / Gemini compatible endpoints (/chat/completions).'],
   cEndpoint:['接口地址（https）','Endpoint (https)'], cModel:['模型名称','Model name'], cKey:['API Key（留空沿用已保存）','API key (blank keeps saved)'],
   priceWhy:['价格用于统计月度花费上限','Prices are used for the monthly spending limit'], cIn:['输入价格（美元/百万 tokens）','Input price (USD per 1M tokens)'], cOut:['输出价格（美元/百万 tokens）','Output price (USD per 1M tokens)'],
   capTitle:['本月花费','This month'], capLabel:['每月模型花费上限（美元）','Monthly model spending limit (USD)'],
@@ -2405,60 +2436,259 @@ $('composer').onsubmit = async e => {
 }
 
 // ---- settings ----
-let appState = {}, deepseekModels = []
-const CUSTOM = '__custom'
-function renderModelCard() {
-  const sel = $('modelSel'), custom = sel.value === CUSTOM
-  $('customBox').hidden = !custom
-  const saved = appState.model ?? {}
-  const has = (saved.kind === 'custom') === custom && appState.hasKey
-  const ks = $('keyState')
-  ks.className = 'keystate' + (has ? '' : ' none')
-  ks.textContent = ''
-  ks.insertAdjacentHTML('afterbegin', icon(has ? 'tick' : 'shield'))
-  ks.append(el('span', '', t(has ? 'keySaved' : 'keyNone')))
-  if (has && appState.keyHint) ks.append(el('code', '', appState.keyHint === 'env' ? t('keyEnv') : appState.keyHint))
-  if (has && !custom && appState.keyHint !== 'env') {
-    const b = el('button', 'link', t('replaceKey')); b.type = 'button'
-    b.onclick = () => { $('key').hidden = false; $('key').focus(); b.remove() }
-    ks.append(b)
+let appState = {}
+const PRESET_PROVIDERS = {
+  gemini: {
+    name: 'Google Gemini',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    models: [
+      { id: 'gemini-2.5-flash', name: 'gemini-2.5-flash (推荐 · 极速免费)' },
+      { id: 'gemini-2.5-pro', name: 'gemini-2.5-pro (高智商推理旗舰)' },
+      { id: 'gemini-2.5-flash-lite', name: 'gemini-2.5-flash-lite (轻量低延迟)' }
+    ],
+    defaultModel: 'gemini-2.5-flash',
+    placeholder: 'AIzaSy... (Google AI Studio Key)'
+  },
+  openai: {
+    name: 'OpenAI',
+    baseUrl: 'https://api.openai.com/v1',
+    models: [
+      { id: 'gpt-4o', name: 'gpt-4o (全能旗舰)' },
+      { id: 'gpt-4o-mini', name: 'gpt-4o-mini (性价比首选)' },
+      { id: 'gpt-4.1-nano', name: 'gpt-4.1-nano (极轻量)' }
+    ],
+    defaultModel: 'gpt-4o-mini',
+    placeholder: 'sk-...'
+  },
+  openrouter: {
+    name: 'OpenRouter',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    models: [
+      { id: 'google/gemini-2.5-flash', name: 'google/gemini-2.5-flash' },
+      { id: 'anthropic/claude-3.5-sonnet', name: 'anthropic/claude-3.5-sonnet' },
+      { id: 'openai/gpt-4o', name: 'openai/gpt-4o' },
+      { id: 'deepseek/deepseek-chat', name: 'deepseek/deepseek-chat' }
+    ],
+    defaultModel: 'google/gemini-2.5-flash',
+    placeholder: 'sk-or-v1-...'
+  },
+  xai: {
+    name: 'xAI (Grok)',
+    baseUrl: 'https://api.x.ai/v1',
+    models: [
+      { id: 'grok-3', name: 'grok-3 (旗舰)' },
+      { id: 'grok-3-mini', name: 'grok-3-mini (轻量)' }
+    ],
+    defaultModel: 'grok-3-mini',
+    placeholder: 'xai-...'
+  },
+  deepseek: {
+    name: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com/v1',
+    models: [
+      { id: 'deepseek-chat', name: 'deepseek-chat (DeepSeek-V3 通用)' },
+      { id: 'deepseek-reasoner', name: 'deepseek-reasoner (DeepSeek-R1 深度推理)' }
+    ],
+    defaultModel: 'deepseek-chat',
+    placeholder: 'sk-... (DeepSeek API Key)'
+  },
+  moonshot: {
+    name: 'Moonshot (Kimi)',
+    baseUrl: 'https://api.moonshot.cn/v1',
+    models: [
+      { id: 'moonshot-v1-8k', name: 'moonshot-v1-8k (8K 标准)' },
+      { id: 'moonshot-v1-32k', name: 'moonshot-v1-32k (32K 长文本)' },
+      { id: 'moonshot-v1-128k', name: 'moonshot-v1-128k (128K 超长)' }
+    ],
+    defaultModel: 'moonshot-v1-8k',
+    placeholder: 'sk-... (Moonshot API Key)'
+  },
+  qwen: {
+    name: '阿里通义千问 (Qwen)',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    models: [
+      { id: 'qwen-plus', name: 'qwen-plus (均衡旗舰)' },
+      { id: 'qwen-turbo', name: 'qwen-turbo (极速高并发)' },
+      { id: 'qwen-max', name: 'qwen-max (复杂推理)' }
+    ],
+    defaultModel: 'qwen-plus',
+    placeholder: 'sk-... (DashScope API Key)'
+  },
+  zhipu: {
+    name: '智谱 AI (GLM)',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    models: [
+      { id: 'glm-4-flash', name: 'glm-4-flash (超快免费)' },
+      { id: 'glm-4-plus', name: 'glm-4-plus (高智商旗舰)' }
+    ],
+    defaultModel: 'glm-4-flash',
+    placeholder: 'your-zhipu-api-key'
+  },
+  doubao: {
+    name: '火山引擎 (豆包 Doubao)',
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    models: [
+      { id: 'Doubao-Seed-1.6-flash', name: 'Doubao-Seed-1.6-flash' },
+      { id: 'Doubao-Seed-2.0-mini', name: 'Doubao-Seed-2.0-mini' }
+    ],
+    defaultModel: 'Doubao-Seed-1.6-flash',
+    placeholder: 'your-volcengine-api-key'
+  },
+  custom: {
+    name: '自定义 OpenAI 兼容接口',
+    baseUrl: '',
+    models: [],
+    defaultModel: '',
+    placeholder: 'API Key'
   }
-  $('key').hidden = custom || has
 }
+
+let isManualModel = false
+
 function showBuild(s) {
   const b = s?.build
   if (!b?.commit) return
   const commit = b.commit === 'dev' ? 'dev' : b.commit.slice(0, 7)
   $('buildInfo').textContent = t('build') + ' ' + commit + (b.at ? ' · ' + b.at : '')
 }
-async function loadModelCard() {
-  appState = await (await fetch('/api/state')).json()
-  showBuild(appState)
-  try { deepseekModels = (await post('/api/models')).data.deepseek ?? [] } catch { deepseekModels = [] }
-  const sel = $('modelSel'), saved = appState.model ?? {}
-  sel.textContent = ''
-  const ids = saved.kind === 'deepseek' && !deepseekModels.includes(saved.model) ? [saved.model, ...deepseekModels] : deepseekModels
-  for (const id of ids) sel.append(new Option('DeepSeek · ' + id, id))
-  sel.append(new Option(t('otherModel'), CUSTOM))
-  sel.value = saved.kind === 'custom' ? CUSTOM : saved.model
-  if (saved.kind === 'custom') {
-    $('cEndpoint').value = saved.baseUrl ?? ''; $('cModel').value = saved.model ?? ''
-    $('cIn').value = saved.inputUsd ?? ''; $('cOut').value = saved.outputUsd ?? ''
+
+function syncProviderUI(keepEndpoint) {
+  const pKey = $('providerSel').value
+  const preset = PRESET_PROVIDERS[pKey] || PRESET_PROVIDERS.custom
+  
+  if (!keepEndpoint || !$('cEndpoint').value) {
+    $('cEndpoint').value = preset.baseUrl || ''
   }
-  renderModelCard()
+  
+  const sel = $('modelSel')
+  sel.textContent = ''
+  for (const m of preset.models) {
+    sel.append(new Option(m.name, m.id))
+  }
+  
+  if (preset.models.length > 0) {
+    $('toggleCustomModel').hidden = false
+    if (!isManualModel) {
+      $('modelSel').hidden = false
+      $('customModelInput').hidden = true
+      $('toggleCustomModel').textContent = t('manualModel')
+    }
+  } else {
+    isManualModel = true
+    $('modelSel').hidden = true
+    $('customModelInput').hidden = false
+    $('toggleCustomModel').hidden = true
+  }
+  
+  $('key').placeholder = preset.placeholder || 'API Key'
+  renderKeyState()
 }
-$('modelSel').onchange = renderModelCard
+
+function renderKeyState() {
+  const pKey = $('providerSel').value
+  const pInfo = appState.savedProviders?.[pKey] || (appState.provider === pKey ? { hasKey: appState.hasKey, keyHint: appState.keyHint } : null)
+  const has = !!(pInfo && pInfo.hasKey)
+  
+  const ks = $('keyState')
+  ks.className = 'keystate' + (has ? '' : ' none')
+  ks.textContent = ''
+  ks.insertAdjacentHTML('afterbegin', icon(has ? 'tick' : 'shield'))
+  ks.append(el('span', '', t(has ? 'keySaved' : 'keyNone')))
+  if (has && pInfo.keyHint) ks.append(el('code', '', pInfo.keyHint))
+}
+
+async function loadModelCard() {
+  try {
+    appState = await (await fetch('/api/state')).json()
+  } catch (e) {
+    appState = {}
+  }
+  showBuild(appState)
+  
+  const activeP = appState.provider || 'gemini'
+  $('providerSel').value = activeP
+  syncProviderUI(true)
+  
+  if (appState.model) {
+    const opts = Array.from($('modelSel').options)
+    if (opts.some(o => o.value === appState.model)) {
+      $('modelSel').value = appState.model
+      isManualModel = false
+      $('modelSel').hidden = false
+      $('customModelInput').hidden = true
+      $('toggleCustomModel').textContent = t('manualModel')
+    } else {
+      isManualModel = true
+      $('modelSel').hidden = true
+      $('customModelInput').hidden = false
+      $('customModelInput').value = appState.model
+      $('toggleCustomModel').textContent = t('selectPresetModel')
+    }
+  }
+  if (appState.baseUrl) {
+    $('cEndpoint').value = appState.baseUrl
+  }
+  renderKeyState()
+}
+
+$('providerSel').onchange = () => {
+  isManualModel = false
+  syncProviderUI(false)
+  const pKey = $('providerSel').value
+  const pInfo = appState.savedProviders?.[pKey]
+  if (pInfo && pInfo.model) {
+    const opts = Array.from($('modelSel').options)
+    if (opts.some(o => o.value === pInfo.model)) {
+      $('modelSel').value = pInfo.model
+    } else {
+      isManualModel = true
+      $('modelSel').hidden = true
+      $('customModelInput').hidden = false
+      $('customModelInput').value = pInfo.model
+      $('toggleCustomModel').textContent = t('selectPresetModel')
+    }
+    if (pInfo.baseUrl) $('cEndpoint').value = pInfo.baseUrl
+  } else if (PRESET_PROVIDERS[pKey]?.defaultModel) {
+    $('modelSel').value = PRESET_PROVIDERS[pKey].defaultModel
+  }
+}
+
+$('toggleCustomModel').onclick = () => {
+  isManualModel = !isManualModel
+  $('modelSel').hidden = isManualModel
+  $('customModelInput').hidden = !isManualModel
+  $('toggleCustomModel').textContent = t(isManualModel ? 'selectPresetModel' : 'manualModel')
+  if (isManualModel) {
+    $('customModelInput').value = $('modelSel').value
+    $('customModelInput').focus()
+  }
+}
+
+$('resetEndpoint').onclick = () => {
+  const pKey = $('providerSel').value
+  const preset = PRESET_PROVIDERS[pKey] || PRESET_PROVIDERS.custom
+  $('cEndpoint').value = preset.baseUrl || ''
+}
+
 $('saveModel').onclick = async () => {
-  const custom = $('modelSel').value === CUSTOM
-  const body = custom
-    ? { kind: 'custom', baseUrl: $('cEndpoint').value, model: $('cModel').value, key: $('cKey').value, inputUsd: $('cIn').value, outputUsd: $('cOut').value }
-    : { kind: 'deepseek', model: $('modelSel').value, key: $('key').value }
-  const { status, data } = await post('/api/model', body)
+  const provider = $('providerSel').value
+  const model = isManualModel ? $('customModelInput').value.trim() : $('modelSel').value
+  const baseUrl = $('cEndpoint').value.trim()
+  const key = $('key').value.trim()
+  
+  if (!model) {
+    $('settingsMsg').textContent = '请选择或输入模型名称'
+    return
+  }
+  
+  const { status, data } = await post('/api/model', { provider, model, baseUrl, key })
   if (status === 200) {
-    $('key').value = ''; $('cKey').value = ''
+    $('key').value = ''
     await loadModelCard()
     $('settingsMsg').textContent = t('saved')
-  } else $('settingsMsg').textContent = errText(data, status)
+  } else {
+    $('settingsMsg').textContent = errText(data, status)
+  }
 }
 $('saveCap').onclick = async () => {
   const { status, data } = await post('/api/budget', { capUsd: Number($('cap').value) })

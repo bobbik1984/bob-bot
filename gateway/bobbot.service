@@ -1,0 +1,18 @@
+[Unit]
+Description=Bob-Bot Pure Binary Gateway (Gemini API)
+After=network.target
+
+[Service]
+Type=simple
+User=bobbik_hbz_gmail_com
+WorkingDirectory=/home/bobbik_hbz_gmail_com/bob-bot
+Environment=PORT=8080
+Environment=BOBBOT_PIN=1234
+Environment=BOBBOT_MODEL=gemini-2.5-flash
+ExecStart=/home/bobbik_hbz_gmail_com/bob-bot/bobbot
+Restart=always
+RestartSec=5
+MemoryMax=300M
+
+[Install]
+WantedBy=multi-user.target
