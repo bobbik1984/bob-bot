@@ -184,20 +184,20 @@ func loadConfig() Config {
 		PIN:            pin,
 		CookieSecret:   secret,
 		ActiveProvider: "gemini",
-		ActiveModel:    "gemini-3.8-flash",
+		ActiveModel:    "gemini-4-neon",
 		ActiveBaseURL:  "https://generativelanguage.googleapis.com/v1beta",
 		Providers: map[string]ProviderEntry{
 			"gemini": {
 				BaseURL: "https://generativelanguage.googleapis.com/v1beta",
-				Model:   "gemini-3.8-flash",
+				Model:   "gemini-4-neon",
 			},
 			"openai": {
 				BaseURL: "https://api.openai.com/v1",
-				Model:   "gpt-5.6-tera",
+				Model:   "gpt-6.2-sol",
 			},
 			"openrouter": {
 				BaseURL: "https://openrouter.ai/api/v1",
-				Model:   "google/gemini-3.8-flash",
+				Model:   "google/gemini-4-neon",
 			},
 			"xai": {
 				BaseURL: "https://api.x.ai/v1",
@@ -209,11 +209,11 @@ func loadConfig() Config {
 			},
 			"moonshot": {
 				BaseURL: "https://api.moonshot.cn/v1",
-				Model:   "kimi-k3.1",
+				Model:   "kimi-k3.1-pro",
 			},
 			"qwen": {
 				BaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-				Model:   "qwen3.8-flash",
+				Model:   "qwen4-max",
 			},
 			"zhipu": {
 				BaseURL: "https://open.bigmodel.cn/api/paas/v4",
