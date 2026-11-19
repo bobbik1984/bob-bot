@@ -626,17 +626,17 @@ nav button.on span:first-child { background:var(--accent-soft); }
         <label class="hint" for="providerSel" data-t="providerLabel"></label>
         <select class="field" id="providerSel">
           <optgroup label="国外主流 (Overseas)">
-            <option value="gemini">Google Gemini (Flash / Pro)</option>
-            <option value="openai">OpenAI (GPT-4o / 4o-mini)</option>
+            <option value="gemini">Google Gemini (4 Argon / 3.8 Flash)</option>
+            <option value="openai">OpenAI (GPT-5.6 / Astra 6)</option>
             <option value="openrouter">OpenRouter (多模型聚合)</option>
-            <option value="xai">xAI (Grok-3)</option>
+            <option value="xai">xAI (Grok 4.7 / 4.6)</option>
           </optgroup>
           <optgroup label="国内主流 (Domestic)">
-            <option value="deepseek">DeepSeek (V3 / R1 推理)</option>
-            <option value="moonshot">Moonshot / Kimi (月之暗面)</option>
-            <option value="qwen">阿里通义千问 (Qwen / 百炼)</option>
-            <option value="zhipu">智谱 AI (GLM-4 / 5)</option>
-            <option value="doubao">火山引擎 (豆包 Doubao)</option>
+            <option value="deepseek">DeepSeek (V4.1 Flash / V4)</option>
+            <option value="moonshot">Moonshot / Kimi (K3.1 / K3)</option>
+            <option value="qwen">阿里通义千问 (Qwen 3.8 Max / Flash)</option>
+            <option value="zhipu">智谱 AI (GLM-5.3 / Flash)</option>
+            <option value="doubao">火山引擎 (豆包 Seed 2.1)</option>
           </optgroup>
           <optgroup label="自定义 (Custom)">
             <option value="custom">自定义 OpenAI 兼容接口</option>
@@ -2442,96 +2442,109 @@ const PRESET_PROVIDERS = {
     name: 'Google Gemini',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
     models: [
-      { id: 'gemini-2.5-flash', name: 'gemini-2.5-flash (推荐 · 极速免费)' },
-      { id: 'gemini-2.5-pro', name: 'gemini-2.5-pro (高智商推理旗舰)' },
-      { id: 'gemini-2.5-flash-lite', name: 'gemini-2.5-flash-lite (轻量低延迟)' }
+      { id: 'gemini-3.8-flash', name: 'gemini-3.8-flash (推荐 · 极速免费多模态)' },
+      { id: 'gemini-4-argon', name: 'gemini-4-argon (Gemini 4 最新旗舰 · 深层推理)' },
+      { id: 'gemini-3.1-pro', name: 'gemini-3.1-pro (Pro 旗舰)' },
+      { id: 'gemini-3.1-flash-lite', name: 'gemini-3.1-flash-lite (超轻量低延迟)' }
     ],
-    defaultModel: 'gemini-2.5-flash',
+    defaultModel: 'gemini-3.8-flash',
     placeholder: 'AIzaSy... (Google AI Studio Key)'
   },
   openai: {
     name: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
     models: [
-      { id: 'gpt-4o', name: 'gpt-4o (全能旗舰)' },
-      { id: 'gpt-4o-mini', name: 'gpt-4o-mini (性价比首选)' },
-      { id: 'gpt-4.1-nano', name: 'gpt-4.1-nano (极轻量)' }
+      { id: 'gpt-5.6-tera', name: 'gpt-5.6-tera (5.6 世代主力均衡)' },
+      { id: 'gpt-5.6-sol', name: 'gpt-5.6-sol (5.6 世代高算力旗舰)' },
+      { id: 'gpt-5.6-luna', name: 'gpt-5.6-luna (5.6 世代超轻量)' },
+      { id: 'astra-6', name: 'astra-6 (2026 前沿 Agent 旗舰)' }
     ],
-    defaultModel: 'gpt-4o-mini',
+    defaultModel: 'gpt-5.6-tera',
     placeholder: 'sk-...'
   },
   openrouter: {
     name: 'OpenRouter',
     baseUrl: 'https://openrouter.ai/api/v1',
     models: [
-      { id: 'google/gemini-2.5-flash', name: 'google/gemini-2.5-flash' },
-      { id: 'anthropic/claude-3.5-sonnet', name: 'anthropic/claude-3.5-sonnet' },
-      { id: 'openai/gpt-4o', name: 'openai/gpt-4o' },
-      { id: 'deepseek/deepseek-chat', name: 'deepseek/deepseek-chat' }
+      { id: 'google/gemini-3.8-flash', name: 'google/gemini-3.8-flash' },
+      { id: 'google/gemini-4-argon', name: 'google/gemini-4-argon' },
+      { id: 'anthropic/claude-opus-5', name: 'anthropic/claude-opus-5' },
+      { id: 'anthropic/claude-sonnet-5.5', name: 'anthropic/claude-sonnet-5.5' },
+      { id: 'openai/gpt-5.6-sol', name: 'openai/gpt-5.6-sol' },
+      { id: 'deepseek/deepseek-v4.1-flash', name: 'deepseek/deepseek-v4.1-flash' },
+      { id: 'qwen/qwen3.8-max-0902', name: 'qwen/qwen3.8-max-0902' }
     ],
-    defaultModel: 'google/gemini-2.5-flash',
+    defaultModel: 'google/gemini-3.8-flash',
     placeholder: 'sk-or-v1-...'
   },
   xai: {
     name: 'xAI (Grok)',
     baseUrl: 'https://api.x.ai/v1',
     models: [
-      { id: 'grok-3', name: 'grok-3 (旗舰)' },
-      { id: 'grok-3-mini', name: 'grok-3-mini (轻量)' }
+      { id: 'grok-4.7', name: 'grok-4.7 (最新可调深度旗舰)' },
+      { id: 'grok-4.6', name: 'grok-4.6 (500K 上下文旗舰)' },
+      { id: 'grok-4.3', name: 'grok-4.3 (主力版)' }
     ],
-    defaultModel: 'grok-3-mini',
+    defaultModel: 'grok-4.7',
     placeholder: 'xai-...'
   },
   deepseek: {
     name: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com/v1',
     models: [
-      { id: 'deepseek-chat', name: 'deepseek-chat (DeepSeek-V3 通用)' },
-      { id: 'deepseek-reasoner', name: 'deepseek-reasoner (DeepSeek-R1 深度推理)' }
+      { id: 'deepseek-flash', name: 'deepseek-flash (推荐 · V4.1 Flash 最新)' },
+      { id: 'deepseek-v4-flash', name: 'deepseek-v4-flash (V4 1M 上下文)' },
+      { id: 'deepseek-v4.1-flash-1017', name: 'deepseek-v4.1-flash-1017 (1017 快照)' },
+      { id: 'deepseek-chat', name: 'deepseek-chat (通用兼容别名)' },
+      { id: 'deepseek-reasoner', name: 'deepseek-reasoner (推理兼容别名)' }
     ],
-    defaultModel: 'deepseek-chat',
+    defaultModel: 'deepseek-flash',
     placeholder: 'sk-... (DeepSeek API Key)'
   },
   moonshot: {
     name: 'Moonshot (Kimi)',
     baseUrl: 'https://api.moonshot.cn/v1',
     models: [
-      { id: 'moonshot-v1-8k', name: 'moonshot-v1-8k (8K 标准)' },
-      { id: 'moonshot-v1-32k', name: 'moonshot-v1-32k (32K 长文本)' },
-      { id: 'moonshot-v1-128k', name: 'moonshot-v1-128k (128K 超长)' }
+      { id: 'kimi-k3.1', name: 'kimi-k3.1 (2026/10 最新旗舰 · 百万上下文)' },
+      { id: 'kimi-k3', name: 'kimi-k3 (K3 长程思考旗舰)' },
+      { id: 'kimi-k2.7-code', name: 'kimi-k2.7-code (编程专项)' },
+      { id: 'kimi-k2.6', name: 'kimi-k2.6 (轻量旗舰)' }
     ],
-    defaultModel: 'moonshot-v1-8k',
+    defaultModel: 'kimi-k3.1',
     placeholder: 'sk-... (Moonshot API Key)'
   },
   qwen: {
     name: '阿里通义千问 (Qwen)',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     models: [
-      { id: 'qwen-plus', name: 'qwen-plus (均衡旗舰)' },
-      { id: 'qwen-turbo', name: 'qwen-turbo (极速高并发)' },
-      { id: 'qwen-max', name: 'qwen-max (复杂推理)' }
+      { id: 'qwen3.8-flash', name: 'qwen3.8-flash (推荐 · 极速百万上下文)' },
+      { id: 'qwen3.8-max', name: 'qwen3.8-max (Q3.8 旗舰 · 1M 上下文)' },
+      { id: 'qwen3.7-max', name: 'qwen3.7-max (Agentic 强推理)' },
+      { id: 'qwen3.6-plus', name: 'qwen3.6-plus (均衡高性价比)' }
     ],
-    defaultModel: 'qwen-plus',
+    defaultModel: 'qwen3.8-flash',
     placeholder: 'sk-... (DashScope API Key)'
   },
   zhipu: {
     name: '智谱 AI (GLM)',
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     models: [
-      { id: 'glm-4-flash', name: 'glm-4-flash (超快免费)' },
-      { id: 'glm-4-plus', name: 'glm-4-plus (高智商旗舰)' }
+      { id: 'glm-5.3-flash', name: 'glm-5.3-flash (推荐 · 极速免费高并发)' },
+      { id: 'glm-5.3', name: 'glm-5.3 (最新旗舰 · 1.31M 窗口)' },
+      { id: 'glm-5.1', name: 'glm-5.1 (长决策链路高阶)' }
     ],
-    defaultModel: 'glm-4-flash',
+    defaultModel: 'glm-5.3-flash',
     placeholder: 'your-zhipu-api-key'
   },
   doubao: {
     name: '火山引擎 (豆包 Doubao)',
     baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
     models: [
-      { id: 'Doubao-Seed-1.6-flash', name: 'Doubao-Seed-1.6-flash' },
-      { id: 'Doubao-Seed-2.0-mini', name: 'Doubao-Seed-2.0-mini' }
+      { id: 'doubao-seed-2-1-turbo-260813', name: 'doubao-seed-2-1-turbo-260813 (2.1 Turbo)' },
+      { id: 'doubao-seed-2-0-code-260813', name: 'doubao-seed-2-0-code-260813 (编程专用)' },
+      { id: 'doubao-seed-2-0-mini-260215', name: 'doubao-seed-2-0-mini-260215 (轻量快速)' }
     ],
-    defaultModel: 'Doubao-Seed-1.6-flash',
+    defaultModel: 'doubao-seed-2-1-turbo-260813',
     placeholder: 'your-volcengine-api-key'
   },
   custom: {

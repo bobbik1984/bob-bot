@@ -184,44 +184,44 @@ func loadConfig() Config {
 		PIN:            pin,
 		CookieSecret:   secret,
 		ActiveProvider: "gemini",
-		ActiveModel:    "gemini-2.5-flash",
+		ActiveModel:    "gemini-3.8-flash",
 		ActiveBaseURL:  "https://generativelanguage.googleapis.com/v1beta",
 		Providers: map[string]ProviderEntry{
 			"gemini": {
 				BaseURL: "https://generativelanguage.googleapis.com/v1beta",
-				Model:   "gemini-2.5-flash",
+				Model:   "gemini-3.8-flash",
 			},
 			"openai": {
 				BaseURL: "https://api.openai.com/v1",
-				Model:   "gpt-4o-mini",
+				Model:   "gpt-5.6-tera",
 			},
 			"openrouter": {
 				BaseURL: "https://openrouter.ai/api/v1",
-				Model:   "google/gemini-2.5-flash",
+				Model:   "google/gemini-3.8-flash",
 			},
 			"xai": {
 				BaseURL: "https://api.x.ai/v1",
-				Model:   "grok-3-mini",
+				Model:   "grok-4.7",
 			},
 			"deepseek": {
 				BaseURL: "https://api.deepseek.com/v1",
-				Model:   "deepseek-chat",
+				Model:   "deepseek-flash",
 			},
 			"moonshot": {
 				BaseURL: "https://api.moonshot.cn/v1",
-				Model:   "moonshot-v1-8k",
+				Model:   "kimi-k3.1",
 			},
 			"qwen": {
 				BaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-				Model:   "qwen-plus",
+				Model:   "qwen3.8-flash",
 			},
 			"zhipu": {
 				BaseURL: "https://open.bigmodel.cn/api/paas/v4",
-				Model:   "glm-4-flash",
+				Model:   "glm-5.3-flash",
 			},
 			"doubao": {
 				BaseURL: "https://ark.cn-beijing.volces.com/api/v3",
-				Model:   "Doubao-Seed-1.6-flash",
+				Model:   "doubao-seed-2-1-turbo-260813",
 			},
 			"custom": {
 				BaseURL: "",
