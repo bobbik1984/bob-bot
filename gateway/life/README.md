@@ -15,11 +15,11 @@
 
 GitHub 基线不包含 GCP 运行中的 Go 网关。必须在有 `gateway/main.go`、`features.go`、`go.mod` 和 `gateway/public/` 的原工作副本执行。发布器将网关当前工作文件复制到临时位置，将候选模块挂到已有路由，执行模块和完整网关测试，交叉编译，再用已配置的 SSH 别名发布。原仓库及现有数据文件不被构建步骤改写。
 
-在原仓库的 PowerShell 中执行：
+在原仓库的 PowerShell 中，用节点台账和服务地图为 `$sshAlias`、`$publicOrigin`、`$gatewayPort` 赋值，然后执行：
 
 ```powershell
 git fetch origin refs/heads/prototype/mobile-life
-if ($LASTEXITCODE -eq 0) { git show FETCH_HEAD:scripts/deploy-life.py | python - --repo . --ref FETCH_HEAD }
+if ($LASTEXITCODE -eq 0) { git show FETCH_HEAD:scripts/deploy-life.py | python - --repo . --ref FETCH_HEAD --host $sshAlias --url $publicOrigin --port $gatewayPort }
 ```
 
 参数 `--build-only` 用于只运行测试和交叉编译。发布器要求 GCP 目标原有 Go 服务、正确的 SSH 主机密钥与免交互重启权限。它保留旧二进制，核对新文件 SHA-256，并在远端执行本机及公网版本、首页和未登录访问检查。切换后验收失败会恢复旧二进制。候选版本端点为 `/api/life/version`；原网关版本端点继续报告网关基线。

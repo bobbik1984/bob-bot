@@ -29,6 +29,7 @@ stage=$1
 expected=$2
 version=$3
 public=$4
+port=$5
 unit=bobbot.service
 pid=$(systemctl show "$unit" -p MainPID --value)
 test "$pid" -gt 1
@@ -51,7 +52,7 @@ cleanup() {
     cp -p "$backup" "$new"; mv -f "$new" "$live"
     sudo -n systemctl restart "$unit"
     systemctl is-active --quiet "$unit"
-    curl -fsS --max-time 6 http://127.0.0.1:8080/api/version >/dev/null
+    curl -fsS --max-time 6 "http://127.0.0.1:$port"/api/version >/dev/null
     echo "Previous binary restored" >&2
   fi
   rm -f "$stage" "$new"
@@ -70,7 +71,7 @@ switched=1
 mv -f "$new" "$live"
 sudo -n systemctl restart "$unit"
 ok=0
-for delay in 1 2 3 5; do sleep "$delay"; if check http://127.0.0.1:8080; then ok=1; break; fi; done
+for delay in 1 2 3 5; do sleep "$delay"; if check "http://127.0.0.1:$port"; then ok=1; break; fi; done
 test "$ok" = 1
 check "$public"
 echo "Verified $version at $public (previous binary: $backup)"
@@ -81,16 +82,20 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--repo", type=Path, default=Path.cwd())
     p.add_argument("--ref", default="FETCH_HEAD")
-    p.add_argument("--host", default="gcp")
-    p.add_argument("--url", default="https://bot.bobbik.org")
+    p.add_argument("--host", default=None)
+    p.add_argument("--url", default=None)
     p.add_argument("--build-only", action="store_true")
+    p.add_argument("--port", type=int)
     args = p.parse_args()
     repo = args.repo.resolve()
     ref = git(repo, "rev-parse", "--verify", args.ref + "^{commit}").decode("ascii").strip()
-    if not re.fullmatch(r"[0-9a-f]{40}", ref) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.@-]*", args.host):
+    if not re.fullmatch(r"[0-9a-f]{40}", ref):
         raise ValueError("Unexpected revision or SSH alias")
-    if args.url != "https://bot.bobbik.org":
-        raise ValueError("This release targets the GCP Bob gateway")
+    if not args.build_only:
+        if not (args.host and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.@-]*",args.host)
+                and args.url and re.fullmatch(r"https://[A-Za-z0-9.-]+",args.url)
+                and args.port and 0 < args.port <= 65535):
+            raise ValueError("Provide the SSH alias, HTTPS origin and local port from the service inventory")
     with tempfile.TemporaryDirectory(prefix="bob-life-") as tmp:
         stage = Path(tmp)
         gw = stage / "gateway"
@@ -121,7 +126,7 @@ def main():
         run(["go", "mod", "edit", "-require=bobbot/life@v0.0.0", "-replace=bobbot/life=./life"], cwd=gw)
         run(["go","test","./..."],cwd=gw/"life")
         run(["go","test","./..."],cwd=gw)
-        run(["go","build","-o",str(stage/"bobbot"),"."],cwd=gw,
+        run(["go","build","-ldflags","-X bobbot/life.publicOrigin="+(args.url or "https://localhost"),"-o",str(stage/"bobbot"),"."],cwd=gw,
             env=dict(os.environ,CGO_ENABLED="0",GOOS="linux",GOARCH="amd64"))
         if args.build_only:
             print("Build and unit tests passed.")
@@ -137,7 +142,7 @@ def main():
         binfile=stage/"bobbot"
         digest=hashlib.sha256(binfile.read_bytes()).hexdigest()
         run(["scp","-o","BatchMode=yes","-o","StrictHostKeyChecking=yes",str(binfile),args.host+":"+remote])
-        command="bash -s -- "+" ".join(shlex.quote(s) for s in (remote,digest,VERSION,args.url))
+        command="bash -s -- "+" ".join(shlex.quote(s) for s in (remote,digest,VERSION,args.url,str(args.port)))
         run(ssh+[command],input=REMOTE.encode("utf-8"))
 
 
