@@ -37,6 +37,7 @@ func (a *App) Mount(m *http.ServeMux, host Host) {
 	m.HandleFunc("GET /{$}", file("home.html", "text/html; charset=utf-8"))
 	m.HandleFunc("GET /classic", host.Classic)
 	m.HandleFunc("GET /life-ui.js", file("life.js", "text/javascript; charset=utf-8"))
+	m.HandleFunc("GET /life-calendar.mjs", file("calendar.mjs", "text/javascript; charset=utf-8"))
 	m.HandleFunc("GET /sw.js", file("sw.js", "text/javascript; charset=utf-8"))
 	m.HandleFunc("GET /life.webmanifest", file("manifest.json", "application/manifest+json"))
 	m.HandleFunc("GET /api/life/version", func(w http.ResponseWriter, r *http.Request) { reply(w, 200, map[string]string{"version": Version}) })
@@ -94,6 +95,18 @@ func (a *App) Mount(m *http.ServeMux, host Host) {
 			return e
 		}
 		reply(w, 200, item)
+		return nil
+	})
+	route("POST /api/life/calendar", func(w http.ResponseWriter, r *http.Request) error {
+		var v struct{ Events []calendarEvent }
+		if e := decode(w, r, &v); e != nil {
+			return e
+		}
+		result, e := a.importCalendar(v.Events)
+		if e != nil {
+			return e
+		}
+		reply(w, 200, result)
 		return nil
 	})
 	route("POST /api/life/action", func(w http.ResponseWriter, r *http.Request) error {
