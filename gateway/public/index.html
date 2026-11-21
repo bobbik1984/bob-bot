@@ -331,6 +331,7 @@ select.field { appearance:none; background-image:linear-gradient(45deg,transpare
 .ext code { font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--muted); overflow-wrap:anywhere; }
 
 /* composer and tabs */
+#chatModel { align-self:flex-start; max-width:calc(100% - 32px); margin:0 16px; padding:5px 7px; border:0; border-radius:8px; background:var(--surface); color:var(--muted); font:inherit; font-size:13px; cursor:pointer; }
 #composer { display:flex; align-items:flex-end; gap:4px; margin:4px 12px 8px; padding:5px 5px 5px 6px; background:var(--surface); border:1px solid var(--line); border-radius:26px; box-shadow:var(--shadow); transition:border-color .15s, box-shadow .15s; }
 #composer textarea { font-size:16px; flex:1; min-width:0; border:0; background:none; resize:none; height:42px; max-height:160px; padding:10px 2px; line-height:22px; outline:0; }
 #composer:focus-within { border-color:var(--accent); box-shadow:var(--shadow), 0 0 0 3px var(--accent-soft); }
@@ -569,6 +570,7 @@ html::-webkit-scrollbar-thumb,.life-tools::-webkit-scrollbar-thumb { border-radi
         
         <label class="hint" for="providerSel" data-t="providerLabel"></label>
         <select class="field" id="providerSel"></select>
+        <input class="field" id="providerName" data-ph="providerName" data-al="providerName" maxlength="64" hidden>
 
         <div class="row" style="margin-top:10px;justify-content:space-between;align-items:center">
           <label class="hint" for="modelSel" data-t="modelLabel" style="margin:0"></label>
@@ -723,6 +725,7 @@ html::-webkit-scrollbar-thumb,.life-tools::-webkit-scrollbar-thumb { border-radi
   </main>
   <button id="banner" hidden></button>
   <div id="attachRow" hidden></div>
+  <select id="chatModel" data-al="modelTitle"></select>
   <form id="composer" class="empty">
     <button type="button" class="attach" id="attachBtn" data-al="attach" data-i="clip"></button>
     <textarea id="text" rows="1" autocomplete="off" enterkeyhint="send" data-ph="placeholder" aria-label="Message"></textarea>
@@ -920,7 +923,7 @@ const I18N = {
   step_skill_remove:['移除技能','Removing a skill'], step_ext_list:['查看扩展','Checking extensions'], step_skill:['使用技能','Using a skill'],
   stepsCount:['共 {n} 步','{n} steps'],
   // model, budget, account
-  currentModel:['正在使用','In use'], useModel:['使用此模型','Use this model'], connectionOptions:['连接地址','Connection endpoint'], modelIdHint:['模型 ID','Model ID'], needKey:['请先输入这个服务商的 API Key','Enter an API key for this provider first'], modelTitle:['对话模型','Chat model'], providerLabel:['服务商','Provider'], modelLabel:['模型','Model'],
+  providerName:['新供应商名称','New provider name'], addProvider:['添加兼容 OpenAI 的供应商…','Add OpenAI-compatible provider…'], manageModels:['管理供应商…','Manage providers…'], duplicateProvider:['该名称已存在，请从列表选择','This name already exists. Select it from the list.'], endpointNeeded:['请输入接口地址','Enter the API endpoint'], currentModel:['正在使用','In use'], useModel:['使用此模型','Use this model'], connectionOptions:['连接地址','Connection endpoint'], modelIdHint:['模型 ID','Model ID'], needKey:['请先输入这个服务商的 API Key','Enter an API key for this provider first'], modelTitle:['对话模型','Chat model'], providerLabel:['服务商','Provider'], modelLabel:['模型','Model'],
   manualModel:['手动输入模型名','Custom Model Name'], selectPresetModel:['选择预设模型','Select Preset Model'], endpointLabel:['接口地址 (Base URL)','Base URL'], resetDefault:['恢复默认','Reset Default'], keyLabel:['API 密钥 (API Key)','API Key'],
   keySaved:['密钥已配置','Key configured'], keyEnv:['由服务器环境提供','Set by server env'], replaceKey:['更换','Change'], keyNone:['未配置密钥 (请在下方填入)','No key configured (enter below)'],
   customHint:['支持标准 OpenAI / Gemini 兼容格式（自动请求 /chat/completions）。','Supports standard OpenAI / Gemini compatible endpoints (/chat/completions).'],
@@ -1034,6 +1037,7 @@ function show(view) {
   if (persistView && (view === 'chat' || view === 'clerk')) localStorage.setItem('bobbot.lastView', view)
   VIEWS.forEach(v => { $('view' + v[0].toUpperCase() + v.slice(1)).hidden = v !== view })
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.view === view))
+  $('chatModel').hidden = view !== 'chat'
   $('composer').hidden = view !== 'chat'
   if (view !== 'chat') { $('attachRow').hidden = true; $('jump').hidden = true }
   else drawAttachments()
@@ -2506,6 +2510,7 @@ $('text').addEventListener('keydown', e => {
 })
 $('composer').onsubmit = async e => {
   e.preventDefault()
+  if ($('chatModel').disabled) return
   const text = $('text').value.trim()
   if (!text && !attachments.length) return
   poke()
@@ -2661,6 +2666,39 @@ const PRESET_PROVIDERS = {
   }
 }
 
+function providerName(id) {
+  return PRESET_PROVIDERS[id]?.name?.[lang]?.split(' (')[0] || id.replace(/^custom:/, '')
+}
+function drawChatModels() {
+  const select = $('chatModel')
+  select.replaceChildren()
+  for (const [provider, profile] of Object.entries(appState.savedProviders || {})) {
+    if (!profile.hasKey && provider !== appState.provider) continue
+    const group = document.createElement('optgroup')
+    group.label = providerName(provider)
+    const models = new Set([profile.model, ...(PRESET_PROVIDERS[provider]?.models || []).map(m => m.id)])
+    for (const model of models) {
+      if (model) group.append(new Option(model, JSON.stringify([provider,model])))
+    }
+    select.append(group)
+  }
+  select.add(new Option(t('manageModels'), '@manage'))
+  select.value = JSON.stringify([appState.provider,appState.model])
+}
+$('chatModel').onchange = async e => {
+  const select = e.currentTarget
+  if (select.value === '@manage') { drawChatModels(); show('settings'); return }
+  const [provider,model] = JSON.parse(select.value)
+  select.disabled = true
+  try {
+    const result = await post('/api/model', {provider,model})
+    if (result.status !== 200) throw Error(errText(result.data,result.status))
+    appState.provider = provider
+    appState.model = model
+    appState.savedProviders[provider].model = model
+  } catch (error) { notice(error.message,true) }
+  finally { drawChatModels(); select.disabled = false }
+}
 function populateProviderSelect() {
   const sel = $('providerSel')
   const prev = sel.value
@@ -2680,7 +2718,11 @@ function populateProviderSelect() {
     }
     sel.append(og)
   }
-  if (prev && PRESET_PROVIDERS[prev]) sel.value = prev
+  for (const id of Object.keys(appState?.savedProviders || {})) {
+    if (!Object.hasOwn(PRESET_PROVIDERS,id)) sel.add(new Option(providerName(id),id))
+  }
+  sel.add(new Option(t('addProvider'), '@add'))
+  if (prev) sel.value = prev
 }
 populateProviderSelect()
 
@@ -2746,9 +2788,12 @@ async function loadModelCard() {
   }
   showBuild(appState)
   
+  populateProviderSelect()
+  drawChatModels()
+  $('providerName').hidden = true
   const activeP = appState.provider || 'gemini'
-  $('activeModel').textContent = t('currentModel') + ' · ' + (PRESET_PROVIDERS[activeP]?.name[lang]?.split(' (')[0] || activeP) + ' · ' + appState.model
-  $('endpointGroup').open = activeP === 'custom'
+  $('activeModel').textContent = t('currentModel') + ' · ' + providerName(activeP) + ' · ' + appState.model
+  $('endpointGroup').open = activeP === 'custom' || !Object.hasOwn(PRESET_PROVIDERS,activeP)
   $('providerSel').value = activeP
   syncProviderUI(true)
   
@@ -2788,7 +2833,10 @@ $('providerSel').onchange = () => {
   $('key').value = ''
   $('customModelInput').value = ''
   $('modelMsg').textContent = ''
-  $('endpointGroup').open = $('providerSel').value === 'custom'
+  const choice = $('providerSel').value
+  $('providerName').hidden = choice !== '@add'
+  $('providerName').value = ''
+  $('endpointGroup').open = choice === 'custom' || !Object.hasOwn(PRESET_PROVIDERS,choice)
   isManualModel = false
   syncProviderUI(false)
   const pKey = $('providerSel').value
@@ -2828,11 +2876,18 @@ $('resetEndpoint').onclick = () => {
 }
 
 $('saveModel').onclick = async () => {
-  const provider = $('providerSel').value
+  let provider = $('providerSel').value
+  if (provider === '@add') {
+    const name = $('providerName').value.trim()
+    if (!name) { $('providerName').focus(); return }
+    provider = 'custom:' + name
+    if (appState.savedProviders?.[provider]) { $('modelMsg').textContent = t('duplicateProvider'); return }
+  }
   const model = isManualModel ? $('customModelInput').value.trim() : $('modelSel').value
   const baseUrl = $('cEndpoint').value.trim()
   const key = $('key').value.trim()
   
+  if (!baseUrl) { $('modelMsg').textContent = t('endpointNeeded'); $('endpointGroup').open = true; $('cEndpoint').focus(); return }
   if (!key && !appState.savedProviders?.[provider]?.hasKey) {
     $('modelMsg').textContent = t('needKey'); $('key').focus(); return
   }
@@ -3096,6 +3151,7 @@ async function boot() {
   $('app').hidden = !s.authed
   if (!s.authed) { if (!s.pinSet) $('loginMsg').textContent = t('noPin'); return }
   appState = s
+  drawChatModels()
   syncDevicePush()
   showBuild(s)
   setBadge(s.unread)
