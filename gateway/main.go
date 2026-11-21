@@ -188,7 +188,11 @@ func main() {
 	})
 
 	// WeChat bridge compatibility endpoints
-	mux.HandleFunc("POST /v1/chat", handleV1Chat)
+	bridge := http.HandlerFunc(handleV1Chat)
+	if os.Getenv("BOBBOT_OWNER_ONLY_BRIDGE") == "1" {
+		bridge = owner(bridge)
+	}
+	mux.HandleFunc("POST /v1/chat", bridge)
 	mux.HandleFunc("GET /v1/health", func(w http.ResponseWriter, r *http.Request) {
 		jsonResp(w, 200, map[string]string{"status": "ok", "model": cfg.ActiveModel})
 	})

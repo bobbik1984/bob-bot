@@ -575,7 +575,6 @@ nav button.on span:first-child { background:var(--accent-soft); }
       <div id="inboxList"></div>
     </div>
     <div class="view" id="viewSettings" hidden>
-      <a class="link" href="/wechat" data-t="wechatIntake"></a>
       <div class="slot" id="slotSettings"></div>
       <div class="settings-nav" id="settingsNav" role="tablist">
         <button class="on" type="button" data-panel="model" role="tab" data-t="setGroupModel"></button>
@@ -927,7 +926,6 @@ const I18N = {
   providerBusy:['Bob 正在忙，稍后再切换','Bob is busy, try again later'],
   err_BAD_PROVIDER:['这个供应商配置不完整','That provider configuration is incomplete'], err_BAD_KIND:['不支持的供应商','Unsupported provider'], err_BAD_API:['不支持的接口协议','Unsupported API protocol'], err_BAD_LIMIT:['上下文或输出长度无效','Invalid context or output length'], err_TOO_MANY_PROVIDERS:['最多保存 12 个供应商','At most 12 providers'], err_NO_PROVIDER:['找不到这个供应商','No such provider'],
   keySaved:['密钥已保存','Key saved'], keyEnv:['由服务器环境提供','Set by the server'], replaceKey:['更换','Replace'], keyNone:['还没有密钥，请先填写','No key yet. Add one below'],
-  wechatIntake:['微信收件箱','WeChat inbox'],
   customHint:['填写兼容 Anthropic Messages 协议的服务（实际请求地址为：接口地址 + /v1/messages）。这是实验功能，尚未验证。','An Anthropic Messages-compatible service (requests go to the endpoint + /v1/messages). Experimental and not verified.'],
   cEndpoint:['接口地址（https）','Endpoint (https)'], cModel:['模型名称','Model name'], cKey:['API Key（留空沿用已保存）','API key (blank keeps saved)'],
   priceWhy:['价格用于统计月度花费上限','Prices are used for the monthly spending limit'], cIn:['输入价格（美元/百万 tokens）','Input price (USD per 1M tokens)'], cOut:['输出价格（美元/百万 tokens）','Output price (USD per 1M tokens)'],

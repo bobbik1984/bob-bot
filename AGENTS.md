@@ -49,6 +49,8 @@
 3. **无 SSH 权限的云端沙盒 Agent 边界**：
    - 若当前 Agent 无法直连 `ssh gcp`，不得伪造部署成功；应把代码提交到 GitHub 后，提示用户在本地终端（或由本地 Agent）执行 `.\scripts\deploy-gcp.ps1` 完成上线。
 
+4. **RY 独立实例**：使用同一份 `gateway/` 源码和 [release-ry.json](release-ry.json)。运行 `python -X utf8 scripts/deploy-gcp.py deploy --target release-ry.json` 发布至 RY。原位保留该用户的 PIN 配置和整个 `data/`。
+
 ## 5. PWA 身份与推送升级契约
 
 生产 Origin 取自既有发布配置。首页与经典页共用根作用域、manifest 的 `id: "/"` 和 `scope: "/"`，以及永久入口 `/sw.js`。UI 改版须继续注册同一 worker，保留 `push` 与 `notificationclick` 监听。订阅同步、隐私偏好和密钥沿用同一通道。不得在升级、登录或页面初始化时例行取消订阅或轮换 VAPID。原位部署保留整个 `data/`，迁移机器时整体恢复。兼容与验收细则见 [架构规范](docs/ARCHITECTURE.md#pwa-push-contract)。

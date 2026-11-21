@@ -60,14 +60,15 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument("action",choices=["deploy","package"])
     p.add_argument("--repo",type=Path,default=ROOT)
+    p.add_argument("--target",type=Path,default=ROOT/"release.json")
     p.add_argument("--host")
     p.add_argument("--url")
     p.add_argument("--port",type=int)
     p.add_argument("--output",type=Path)
     opts=p.parse_args()
     repo=opts.repo.resolve()
-    manifest=ROOT/"release.json"
-    target=json.loads(manifest.read_text(encoding="utf-8")) if manifest.is_file() else {}
+    manifest=opts.target
+    target=json.loads(manifest.read_text(encoding="utf-8"))
     host=opts.host or target.get("ssh_alias","")
     url=opts.url or target.get("origin","")
     port=opts.port if opts.port is not None else target.get("port",8080)

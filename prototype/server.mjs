@@ -1,5 +1,4 @@
 // BobBot test prototype: PIN login, chats over DSH, a shared cloud browser with phone takeover, and gated server tools.
-import { intakeRelay } from './intake-relay.mjs'
 import crypto from 'node:crypto'
 import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -2396,7 +2395,7 @@ async function route(req, res) {
 }
 
 const server = http.createServer((req, res) => {
-  intakeRelay(req, res).then(handled => handled || route(req, res)).catch(error => {
+  route(req, res).catch(error => {
     console.error(error)
     if (!res.headersSent) send(res, 500, { error: error.message })
   })
