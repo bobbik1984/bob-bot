@@ -221,7 +221,10 @@ async function attention(){
  $('attention').scrollIntoView({block:'nearest'});
  $('attention').focus({preventScroll:true});
 }
-window.BobLife={paint,handle,start,attention};
+function resetPrompt(){
+ pending=null;lastRequest=null;$('turnPrompt').replaceChildren();
+}
+window.BobLife={paint,handle,start,attention,resetPrompt};
 setInterval(refresh,30000);
 addEventListener('pageshow',refresh);
 document.addEventListener('visibilitychange',refresh);

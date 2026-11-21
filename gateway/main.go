@@ -1090,8 +1090,8 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(conv.History) == 0 && conv.Title == "New Chat" {
 		conv.Title = text
-		if len(conv.Title) > 30 {
-			conv.Title = conv.Title[:30] + "..."
+		if title := []rune(conv.Title); len(title) > 30 {
+			conv.Title = string(title[:30]) + "…"
 		}
 	}
 	runningCID = cid
