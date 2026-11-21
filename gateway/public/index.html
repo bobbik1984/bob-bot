@@ -121,6 +121,9 @@ html[data-theme=dark] {
 #app { height:100%; height:100dvh; display:flex; flex-direction:column; max-width:720px; margin:0 auto; background:var(--bg); position:relative; overflow:hidden; }
 .orb-btn { display:grid; place-items:center; width:44px; height:44px; border-radius:50%; }
 .orb-btn .orb { --s:30px; }
+#app.hero .orb-btn { position:absolute; z-index:2; width:max(44px,var(--hd)); height:max(44px,var(--hd)); left:50%; top:var(--htop); transform:translateX(-50%); }
+#app.hero .orb-btn .orb { --s:var(--hd); }
+#app.hero header .title { grid-column:2; }
 header { display:grid; grid-template-columns:minmax(56px,auto) 1fr minmax(56px,auto); align-items:center; padding:calc(8px + env(safe-area-inset-top)) 8px 8px; min-height:56px; }
 header .title { text-align:center; font-size:16px; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 header .right { justify-self:end; display:flex; align-items:center; gap:6px; padding-right:4px; }
@@ -479,7 +482,7 @@ nav button.on span:first-child { background:var(--accent-soft); }
 
 html { scrollbar-gutter:stable; }
 #app { max-width:850px; }
-#welcome { min-height:min(58dvh,440px); justify-content:center; padding:0; }
+
 [data-receipt] .msg { min-width:min(220px,70vw); }
 [data-receipt] .msg>small { color:var(--muted); }
 [data-receipt] .msg>strong { display:block; font-size:17px; margin:4px 0; }
@@ -737,7 +740,7 @@ html::-webkit-scrollbar-thumb,.life-tools::-webkit-scrollbar-thumb { border-radi
 
 <dialog id="assistantMenu" class="life-tools" aria-labelledby="assistantMenuTitle"><div class="dhead"><b id="assistantMenuTitle">Bob</b><button type="button" data-dismiss data-t="close"></button></div>
 <button id="viewRecords" data-t="myRecords"></button><button id="captureTools" data-t="sourceTools"></button><button id="archiveChats" data-t="history"></button><button id="preferences" data-t="tabSettings"></button></dialog>
-<dialog id="recordsDialog" class="life-tools" aria-labelledby="recordsTitle"><div class="dhead"><b id="recordsTitle" data-t="myRecords"></b><button data-dismiss data-t="close"></button></div><details id="agenda"><summary id="agendaCount"></summary><ol id="agendaList"></ol><small id="agendaEmpty" data-life-t="agendaEmpty"></small></details>
+<dialog id="recordsDialog" class="life-tools" aria-labelledby="recordsTitle"><div class="dhead"><b id="recordsTitle" data-t="myRecords"></b><button data-dismiss data-t="close"></button></div><button id="lifeLoadStatus" data-t="retryLife" hidden></button><details id="agenda"><summary id="agendaCount"></summary><ol id="agendaList"></ol><small id="agendaEmpty" data-life-t="agendaEmpty"></small></details>
 <div id="open"></div><details><summary data-life-t="history"></summary><div id="closed"></div></details>
 </dialog>
 <dialog id="captureDialog" class="life-tools" aria-labelledby="sourceTitle"><div class="dhead"><b id="sourceTitle" data-t="sourceTools"></b><button data-dismiss data-t="close"></button></div><section><form id="capture"><label><span data-life-t="capture"></span><textarea maxlength="1200" id="note"></textarea></label>
@@ -782,11 +785,12 @@ html::-webkit-scrollbar-thumb,.life-tools::-webkit-scrollbar-thumb { border-radi
 // and one more entry to each list; anything missing falls back to English.
 const LANGS = [{ code: 'zh', label: '简体中文' }, { code: 'en', label: 'English' }]
 const savedLang = localStorage.getItem('bobbot.lang') || localStorage.getItem('bob-life-lang') || 'auto'
-const lang = savedLang === 'auto' ? (navigator.language.startsWith('zh') ? 'zh' : 'en') : savedLang
+const languageTag = savedLang === 'auto' ? navigator.language : savedLang
+const lang = /^zh(?:-|$)/i.test(languageTag) ? 'zh' : 'en'
 const langIndex = Math.max(0, LANGS.findIndex(l => l.code === lang))
 const zh = lang === 'zh'
 const I18N = {
-  signIn:['进入','Sign in'], backBob:['返回 Bob','Back to Bob'], myRecords:['Bob 记着的事','What Bob is tracking'], sourceTools:['添加截图或日历','Add a screenshot or calendar'], moreOptions:['更多','More'],
+  signIn:['进入','Sign in'], backBob:['返回 Bob','Back to Bob'], myRecords:['Bob 记着的事','What Bob is tracking'], retryLife:['重新加载提醒','Reload reminders'], sourceTools:['添加截图或日历','Add a screenshot or calendar'], moreOptions:['更多','More'],
 
   devicePushOff:['关闭本机通知','Disable on this device'], pushAccepted:['推送服务已接受，请查看本机通知中心。','Push service accepted the test. Check this device’s notifications.'],
   pushPreview:['锁屏显示提醒正文','Show reminder details on the lock screen'],
@@ -1692,6 +1696,7 @@ $('drawer').addEventListener('keydown', e => {
 $('profileMenu').onclick=()=>$('assistantMenu').showModal()
 document.querySelectorAll('[data-dismiss]').forEach(b=>b.onclick=()=>b.closest('dialog').close())
 function menuAction(fn) { return () => { $('assistantMenu').close(); fn() } }
+$('lifeLoadStatus').onclick = () => location.reload()
 $('viewRecords').onclick=menuAction(()=>$('recordsDialog').showModal())
 $('captureTools').onclick=menuAction(()=>$('captureDialog').showModal())
 $('preferences').onclick=menuAction(()=>show('settings'))
@@ -2477,7 +2482,7 @@ $('composer').onsubmit = async e => {
   const restore = () => { setText(text); attachments = files; drawAttachments() } // keep the draft so nothing is lost
   if (!files.length) {
     try {
-      const life = await lifeReady
+      const life = await lifeReady()
       if (await life.handle(text)) return
     } catch { restore(); notice(t('failed'),true); return }
   }
@@ -3050,13 +3055,23 @@ async function boot() {
   showBuild(s)
   setBadge(s.unread)
   show('chat')
-  lifeReady.then(life => life.start()).catch(()=>notice(t('failed'),true))
+  startLife()
   connect()
   reportPresence(true)
   loadClerk() // the front page shows what is waiting
   loadFeatures() // widgets and styling the owner has kept
 }
-const lifeReady = import('/life-ui.js')
+const lifeReady = () => import('/life-ui.js')
+async function startLife() {
+  try {
+    const life = await lifeReady()
+    await life.start()
+    $('lifeLoadStatus').hidden = true
+  } catch (error) {
+    console.warn('Bob reminders could not start', error)
+    $('lifeLoadStatus').hidden = false
+  }
+}
 window.assistantUI = { lang, active:()=>activeCid, showChat:()=>show('chat'), openAssistant, notice, setHero, atEnd,
   compose:text=>{ show('chat'); setText(text); $('text').focus() },
   say:(role,text)=>message(role,text), settings:()=>show('settings') }
