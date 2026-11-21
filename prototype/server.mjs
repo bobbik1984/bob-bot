@@ -319,9 +319,18 @@ const TOOLS = [
     panel_html: { type: 'string', description: 'Optional HTML panel shown in Settings, with the same bob.* helpers as a widget' },
   }, ['name', 'title']],
   ['feature_remove', 'Remove a feature package, after the user confirms.', { name: { type: 'string' } }, ['name']],
-  ['show_card', 'Show organized information to the user as a card in the chat: weather advice, a comparison, a list of results. Use it instead of a long text block.', {
-    title: { type: 'string' }, subtitle: { type: 'string' }, tag: { type: 'string', description: 'A short label such as Weather or Result' },
-    fields: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, value: { type: 'string' } }, required: ['label', 'value'] }, description: 'Up to 12 label and value pairs' },
+  ['show_card', 'Show organized information to the user as a card in the chat: weather advice, a comparison, spreadsheet breakdown, or a list of results. For multi-row/multi-column tabular data (such as Excel sheets, brand comparisons, schedules, or financial tables), ALWAYS pass `table` (`{ columns, rows }`) so it renders as a clean horizontally scrollable table instead of cramming rows into key-value `fields`.', {
+    title: { type: 'string' }, subtitle: { type: 'string' }, tag: { type: 'string', description: 'A short label such as Weather, Table, or Result' },
+    fields: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, value: { type: 'string' } }, required: ['label', 'value'] }, description: 'Up to 12 short summary key-value pairs (best for totals/KPIs, not multi-row tables)' },
+    table: {
+      type: 'object',
+      description: 'Horizontally scrollable data table (up to 16 columns, 50 rows). Preferred whenever presenting spreadsheet rows, brand breakdowns, or multi-column comparisons.',
+      properties: {
+        columns: { type: 'array', items: { type: 'string' }, description: 'Column headers' },
+        rows: { type: 'array', items: { type: 'array', items: { type: 'string' } }, description: 'Data rows matching columns' },
+      },
+      required: ['columns', 'rows'],
+    },
     items: { type: 'array', items: { type: 'string' }, description: 'Up to 12 short bullet points' },
     note: { type: 'string' },
   }, ['title']],

@@ -24,3 +24,8 @@ description: 处理 PDF、Excel (.xlsx/.xls/.csv)、Word (.docx)、PPT (.pptx) �
 生成产出文件后，务必在回复中附上可直接点击的站内链接（受 PIN 登录保护）：
 - 在线预览（适合 PDF / HTML / 图片）：`[查看文件名](/api/workspace/file?path=outputs/文件名)`
 - 直接下载（适合 Excel / Word / PPT）：`[下载文件名](/api/workspace/file?path=outputs/文件名&download=1)`
+
+## 4. 表格数据展示规范（重要）
+当向用户展示读取到的 Excel / CSV 明细、按品牌/项目汇总表或多列对比数据时：
+- **优先使用结构化表格**：通过 `show_card` 的 `table: { columns, rows }` 参数展示明细数据，或在回复中输出标准 Markdown 表格（`| 列1 | 列2 |`），前端会自动渲染为支持左右滑动阅读的精致数据表格。
+- **避免把明细行塞进 key-value 列表**：`show_card` 的 `fields` 只用于放 3–5 项核心汇总指标（如总业绩、总成本、待确认项），切忌把多行多列的数据压成一长段文字塞在 `fields` 里换行显示。

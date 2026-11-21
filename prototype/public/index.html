@@ -164,7 +164,7 @@ main { flex:1; min-height:0; position:relative; }
 .bubble-row { display:flex; gap:8px; align-items:flex-end; }
 .bubble-row.user { justify-content:flex-end; }
 .bubble-row .spacer { width:28px; flex:none; }
-.msg { max-width:84%; padding:10px 14px; border-radius:20px; white-space:pre-wrap; overflow-wrap:anywhere; background:var(--surface); border:1px solid var(--line); border-bottom-left-radius:6px; box-shadow:var(--shadow-1); }
+.msg { max-width:84%; min-width:0; padding:10px 14px; border-radius:20px; white-space:pre-wrap; overflow-wrap:anywhere; background:var(--surface); border:1px solid var(--line); border-bottom-left-radius:6px; box-shadow:var(--shadow-1); }
 .bubble-row.user .msg { background:var(--bubble-user); color:var(--bubble-user-text); border-color:transparent; box-shadow:none; border-bottom-left-radius:20px; border-bottom-right-radius:6px; }
 .typing { display:flex; gap:5px; padding:14px 16px; }
 .typing i { width:7px; height:7px; border-radius:50%; background:var(--muted); opacity:.45; animation:blink 1.2s infinite; }
@@ -183,7 +183,7 @@ main { flex:1; min-height:0; position:relative; }
 #banner svg { width:1.1em; height:1.1em; }
 
 /* cards: one clean block, aligned rows, actions at the bottom */
-.card { background:var(--surface); border:1px solid var(--line); border-radius:22px; padding:16px; display:flex; flex-direction:column; gap:12px; box-shadow:var(--shadow); }
+.card { background:var(--surface); border:1px solid var(--line); border-radius:22px; padding:16px; display:flex; flex-direction:column; gap:12px; box-shadow:var(--shadow); min-width:0; max-width:100%; }
 .card-top { display:flex; align-items:center; gap:10px; }
 .card-top .chipicon { width:36px; height:36px; border-radius:12px; display:inline-flex; align-items:center; justify-content:center; background:var(--accent-soft); color:var(--accent-ink); flex:none; }
 .card-top .chipicon svg { width:18px; height:18px; }
@@ -226,8 +226,26 @@ main { flex:1; min-height:0; position:relative; }
 .msg.md { white-space:normal; }
 .msg.md p { margin:0 0 6px; }
 .msg.md p:last-child { margin:0; }
+.msg.md h1, .msg.md h2, .msg.md h3 { margin:10px 0 6px; font-weight:700; line-height:1.35; }
+.msg.md h1 { font-size:17px; } .msg.md h2 { font-size:15.5px; } .msg.md h3 { font-size:14.5px; }
+.msg.md h1:first-child, .msg.md h2:first-child, .msg.md h3:first-child { margin-top:0; }
 .md-list { margin:4px 0 6px; padding-left:20px; }
 .msg.md code { background:var(--surface-2); padding:1px 5px; border-radius:6px; font-size:.9em; }
+.msg.md pre.md-pre { margin:6px 0; padding:10px 12px; border-radius:12px; background:var(--surface-2); border:1px solid var(--line); overflow-x:auto; font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space:pre; }
+.msg.md pre.md-pre code { background:none; padding:0; font-size:inherit; }
+.md-table-wrap { width:100%; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; margin:6px 0; border:1px solid var(--line); border-radius:14px; background:var(--surface); }
+.card .md-table-wrap { margin:2px 0; }
+.md-table-wrap::-webkit-scrollbar { height:6px; }
+.md-table-wrap::-webkit-scrollbar-thumb { background:var(--surface-3); border-radius:999px; }
+.data-table { border-collapse:separate; border-spacing:0; width:max-content; min-width:100%; font-size:13px; line-height:1.45; font-variant-numeric:tabular-nums; }
+.data-table th, .data-table td { padding:8px 12px; text-align:left; border-bottom:1px solid var(--line); border-right:1px solid var(--line); white-space:nowrap; vertical-align:top; }
+.data-table th:last-child, .data-table td:last-child { border-right:0; }
+.data-table tbody tr:last-child td { border-bottom:0; }
+.data-table thead th { background:var(--surface-2); color:var(--text); font-weight:650; position:sticky; top:0; z-index:1; }
+.data-table th:first-child, .data-table td:first-child { position:sticky; left:0; background:var(--surface); z-index:2; font-weight:600; }
+.data-table thead th:first-child { background:var(--surface-2); z-index:3; }
+.data-table tbody tr:nth-child(even) td { background:var(--bg); }
+.data-table tbody tr:nth-child(even) td:first-child { background:var(--bg); }
 .card pre.detail.soft { font:14px/1.5 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
 
 /* cards Bob asks for: organized information */
@@ -1444,14 +1462,68 @@ function inlineMd(node, s) {
     else node.append(document.createTextNode(part))
   }
 }
-function renderMd(parent, text) { // bold, code, bullets and headings only, built without innerHTML
+function renderTable(columns, rows, useInline = false) {
+  const wrap = el('div', 'md-table-wrap')
+  const tbl = el('table', 'data-table')
+  const thead = el('thead'), trh = el('tr')
+  for (const col of columns) {
+    const th = el('th')
+    if (useInline) inlineMd(th, col); else th.textContent = col
+    trh.append(th)
+  }
+  thead.append(trh)
+  const tbody = el('tbody')
+  for (const r of rows) {
+    const tr = el('tr')
+    for (let i = 0; i < columns.length; i++) {
+      const td = el('td')
+      const val = r[i] ?? ''
+      if (useInline) inlineMd(td, val); else td.textContent = val
+      tr.append(td)
+    }
+    tbody.append(tr)
+  }
+  tbl.append(thead, tbody)
+  wrap.append(tbl)
+  return wrap
+}
+const splitMdRow = line => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim())
+const isMdTableSep = line => /^\s*\|?(\s*:?-{2,}:?\s*\|)+\s*:?-{2,}:?\s*\|?\s*$/.test(line)
+function renderMd(parent, text) { // tables, code blocks, headings, bullets, bold/code/links, built without innerHTML
+  const lines = String(text ?? '').split('\n')
   let list = null
-  for (const line of text.split('\n')) {
-    const bullet = /^\s*[-*]\s+(.*)$/.exec(line)
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (/^\s*```/.test(line)) {
+      list = null
+      const codeLines = []
+      i++
+      while (i < lines.length && !/^\s*```/.test(lines[i])) { codeLines.push(lines[i]); i++ }
+      const pre = el('pre', 'md-pre'), code = el('code')
+      code.textContent = codeLines.join('\n')
+      pre.append(code); parent.append(pre)
+      continue
+    }
+    if (line.includes('|') && i + 1 < lines.length && isMdTableSep(lines[i + 1])) {
+      list = null
+      const cols = splitMdRow(line)
+      const rows = []
+      i += 2
+      while (i < lines.length && lines[i].includes('|') && lines[i].trim()) {
+        rows.push(splitMdRow(lines[i]))
+        i++
+      }
+      i--
+      if (cols.length && rows.length) parent.append(renderTable(cols, rows, true))
+      continue
+    }
+    const bullet = /^\s*(?:[-*]|\d+\.)\s+(.*)$/.exec(line)
     if (bullet) { if (!list) { list = el('ul', 'md-list'); parent.append(list) } const li = el('li'); inlineMd(li, bullet[1]); list.append(li); continue }
     list = null
     if (!line.trim()) continue
-    const p = el('p'); inlineMd(p, line.replace(/^#{1,6}\s+/, '')); parent.append(p)
+    const h = /^(#{1,3})\s+(.*)$/.exec(line)
+    if (h) { const hn = el('h' + h[1].length); inlineMd(hn, h[2]); parent.append(hn); continue }
+    const p = el('p'); inlineMd(p, line.replace(/^#{4,6}\s+/, '')); parent.append(p)
   }
 }
 function message(role, text, files = []) {
@@ -1576,6 +1648,9 @@ function infoCard(card) {
     const rows = el('div', 'rows')
     for (const f of card.fields) rows.append(kv(f.label, f.value))
     c.append(rows)
+  }
+  if (card.table?.columns?.length && card.table?.rows?.length) {
+    c.append(renderTable(card.table.columns, card.table.rows, false))
   }
   if (card.items?.length) {
     const list = el('ul', 'info-items')
