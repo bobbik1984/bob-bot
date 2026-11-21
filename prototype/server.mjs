@@ -1771,6 +1771,7 @@ const keyHint = profile => {
 const publicModel = cfg => ({
   id: cfg.id ?? null, name: cfg.name ?? 'DeepSeek', kind: cfg.kind ?? 'deepseek', api: cfg.api ?? 'anthropic-messages',
   model: cfg.model, baseUrl: cfg.baseUrl ?? null, inputUsd: cfg.inputUsd ?? null, outputUsd: cfg.outputUsd ?? null,
+  reasoningEffort: cfg.reasoningEffort ?? '',
   contextWindow: cfg.contextWindow ?? null, maxTokens: cfg.maxTokens ?? null,
 })
 function providersView() {
