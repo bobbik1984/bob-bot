@@ -508,7 +508,9 @@ html { scrollbar-gutter:stable; }
 .clerk-records article { padding:12px 0; border-bottom:1px solid var(--line); }
 .clerk-records .actions { display:flex; flex-wrap:wrap; gap:8px; }
 .clerk-records button, .clerk-records summary { color:var(--accent-ink); padding:8px; cursor:pointer; }
-#profileMenu { min-width:44px; min-height:44px; }
+#app > header .right { grid-column:3; }
+#composer { margin-bottom:4px; }
+#app > nav { flex-shrink:0; }
 #app.hero #viewChat { overflow-y:auto; }
 html::-webkit-scrollbar, .life-tools::-webkit-scrollbar { width:6px; }
 html::-webkit-scrollbar-thumb,.life-tools::-webkit-scrollbar-thumb { border-radius:6px; background:var(--line); }
@@ -530,8 +532,7 @@ html::-webkit-scrollbar-thumb,.life-tools::-webkit-scrollbar-thumb { border-radi
 <section id="app" class="hero" hidden>
   <header>
     <button type="button" class="orb-btn" id="orbBtn" data-al="history" aria-controls="drawer" aria-expanded="false"><span aria-hidden="true" class="orb" id="hOrb" data-orb data-state="nap"></span></button>
-    <div class="title" id="title"></div>
-    <div class="right"><div id="slotHeader"></div><button id="returnBob" class="link" data-t="backBob" hidden></button><button id="openClerkPage" class="link" data-t="clerkTitle"></button><button id="profileMenu" class="icon-btn" data-al="tabSettings" data-i="sliders"></button></div>
+    <div class="right"><div id="slotHeader"></div></div>
   </header>
   <main>
     <div class="view" id="viewChat">
@@ -636,32 +637,33 @@ html::-webkit-scrollbar-thumb,.life-tools::-webkit-scrollbar-thumb { border-radi
       <div class="section">
         <h3 data-i="clock" data-t="zoneTitle"></h3>
         <div class="row">
-          <input class="field" id="zone" list="cityZones" autocapitalize="off" autocomplete="off" aria-label="Time zone" placeholder="Beijing / Shanghai / Asia/Shanghai">
+          <input class="field" id="zone" list="cityZones" autocapitalize="off" autocomplete="off" data-al="zoneTitle" data-ph="cityExample" maxlength="100">
           <datalist id="cityZones">
-            <option value="北京 (Asia/Shanghai)">
-            <option value="上海 (Asia/Shanghai)">
-            <option value="深圳 (Asia/Shanghai)">
-            <option value="广州 (Asia/Shanghai)">
-            <option value="香港 (Asia/Hong_Kong)">
-            <option value="台北 (Asia/Taipei)">
-            <option value="新加坡 (Asia/Singapore)">
-            <option value="东京 (Asia/Tokyo)">
-            <option value="首尔 (Asia/Seoul)">
-            <option value="悉尼 (Australia/Sydney)">
-            <option value="伦敦 (Europe/London)">
-            <option value="巴黎 (Europe/Paris)">
-            <option value="柏林 (Europe/Berlin)">
-            <option value="纽约 (America/New_York)">
-            <option value="洛杉矶 (America/Los_Angeles)">
-            <option value="旧金山 (America/Los_Angeles)">
-            <option value="西雅图 (America/Los_Angeles)">
-            <option value="多伦多 (America/Toronto)">
-            <option value="温哥华 (America/Vancouver)">
-            <option value="迪拜 (Asia/Dubai)">
-            <option value="UTC">
+            <option value="北京">
+            <option value="上海">
+            <option value="深圳">
+            <option value="广州">
+            <option value="香港">
+            <option value="台北">
+            <option value="新加坡">
+            <option value="东京">
+            <option value="首尔">
+            <option value="悉尼">
+            <option value="伦敦">
+            <option value="巴黎">
+            <option value="柏林">
+            <option value="纽约">
+            <option value="洛杉矶">
+            <option value="旧金山">
+            <option value="西雅图">
+            <option value="多伦多">
+            <option value="温哥华">
+            <option value="迪拜">
+
           </datalist>
           <button class="btn" id="saveZone" data-t="save"></button>
         </div>
+        <select class="field" id="cityMatches" data-al="chooseCity" hidden></select>
         <p class="hint" id="zoneMsg" role="status"></p>
       </div>
       <div class="section">
@@ -725,6 +727,7 @@ html::-webkit-scrollbar-thumb,.life-tools::-webkit-scrollbar-thumb { border-radi
     <button type="button" class="mic" id="micBtn" data-al="voiceInput" data-i="mic"></button>
     <button class="send" data-al="send" data-i="send"></button>
   </form>
+  <nav><button type="button" data-view="chat" data-t="tabChat"></button><button type="button" data-view="clerk" data-t="tabClerk"></button><button type="button" data-view="settings" data-t="tabSettings"></button></nav>
   <div id="fpModal" hidden>
     <div class="modal-card">
       <header><b id="fpTitle"></b><button class="icon-btn" id="fpClose" aria-label="close" data-i="cross"></button></header>
@@ -825,7 +828,7 @@ const I18N = {
   inboxSent:['已发送至 {n}','Sent to {n}'], inboxNotSent:['未送达','not delivered'],
   inboxTitle:['收件箱','Inbox'], inboxEmpty:['提醒和任务结果会出现在这里。','Reminders and task results show up here.'], markRead:['全部已读','Mark all read'],
   channelsTitle:['消息渠道','Channels'], channelsHint:['提醒和结果除了应用内，还可以发到这些渠道。密钥只保存在服务器上。','Reminders and results can also go to these channels. Secrets stay on the server.'],
-  addChannel:['添加渠道','Add a channel'], zoneTitle:['时区','Time zone'],
+  addChannel:['添加渠道','Add a channel'], zoneTitle:['天气城市','Weather city'], cityExample:['例如：深圳','e.g. London'], cityMissing:['未找到城市，请换个名称再试','City not found. Try another name.'], cityError:['暂时无法查询或保存城市，请重试','Could not look up or save the city. Try again.'], chooseCity:['选择所在城市','Choose your city'],
   kindTask:['任务','Task'], kindReminder:['提醒','Reminder'], nextRun:['下次：{n}','Next: {n}'], paused:['已暂停','Paused'], neverRun:['还没运行过','Not run yet'],
   runNow:['立即运行','Run now'], sendNow:['立即发送','Send now'], pause:['暂停','Pause'], resume:['恢复','Resume'], remove:['移除','Remove'], del:['删除','Del'],
   openRun:['查看过程','See the run'], openClerk:['去文员查看','Open in Clerk'], running:['运行中…','Running…'], inboxTo:['发送到：','Sent to: '],
@@ -1026,10 +1029,6 @@ let currentView = 'chat'
 let persistView = false
 function show(view) {
   currentView = view
-  $('returnBob').hidden = view === 'chat'
-  $('openClerkPage').hidden = view === 'clerk'
-  $('profileMenu').hidden = view === 'settings'
-  $('slotHeader').hidden = view !== 'chat'
   if (persistView && (view === 'chat' || view === 'clerk')) localStorage.setItem('bobbot.lastView', view)
   VIEWS.forEach(v => { $('view' + v[0].toUpperCase() + v.slice(1)).hidden = v !== view })
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.view === view))
@@ -1102,7 +1101,6 @@ function refreshOrb() {
   const mood = t({ nap: 'stateNap', think: 'stateThink', speak: 'stateSpeak', wait: 'stateWait' }[state])
   document.querySelectorAll('[data-orb]').forEach(orb => { orb.dataset.state = state; orb.setAttribute('aria-label', mood) })
   // The mood is drawn by the orb itself, so the header stays quiet.
-  $('title').textContent = currentView === 'chat' ? 'Bob' : t(currentView === 'clerk' ? 'clerkTitle' : 'settingsTitle')
   typing.hidden = !mine
   if (mine) { feed.append(typing); follow() }
 }
@@ -1695,12 +1693,9 @@ function closeDrawer() {
 $('drawer').addEventListener('keydown', e => {
   if (e.key === 'Escape') { e.preventDefault(); closeDrawer() }
 })
-$('profileMenu').onclick = () => show('settings')
-$('openClerkPage').onclick = () => show('clerk')
 document.querySelectorAll('[data-dismiss]').forEach(b=>b.onclick=()=>b.closest('dialog').close())
 $('lifeLoadStatus').onclick = () => location.reload()
 $('captureTools').onclick=() => $('captureDialog').showModal()
-$('returnBob').onclick = () => show('chat')
 $('orbBtn').addEventListener('pointerdown', () => poke())
 $('orbBtn').onclick = () => openDrawer($('orbBtn'))
 $('closeDrawer').onclick = closeDrawer
@@ -1954,7 +1949,7 @@ function drawClerk() {
   $('inboxHead').hidden = d.inbox.length === 0
   $('markRead').hidden = d.unread === 0
   $('channelList').replaceChildren(...d.channels.map(channelRow))
-  if (document.activeElement !== $('zone')) $('zone').value = d.timezone
+  if (document.activeElement !== $('zone')) $('zone').value = d.location?.name || ''
 }
 $('langSel').append(new Option(t('langAuto'), 'auto'), ...LANGS.map(l => new Option(l.label, l.code)))
 $('langSel').value = savedLang
@@ -2058,7 +2053,7 @@ function widgetState(frame) {
 }
 function frameInit(frame) {
   const style = getComputedStyle(document.documentElement)
-  return { bob: 'init', theme: frameTheme(), lang, state: widgetState(frame), vars: Object.fromEntries(FRAME_VARS.map(v => [v, style.getPropertyValue(v).trim()])) }
+  return { bob: 'init', location:frame.dataset.widget === 'weather-badge-widget' ? appState?.location : undefined, theme: frameTheme(), lang, state: widgetState(frame), vars: Object.fromEntries(FRAME_VARS.map(v => [v, style.getPropertyValue(v).trim()])) }
 }
 function sizeWidget(frame, width, height) {
   const inHeader = frame.dataset.anchor === 'header-right'
@@ -2334,14 +2329,46 @@ $('saveChannel').onclick = async () => {
   if (status === 200) { ;['chName', 'chWebhook', 'chSecret', 'chToken', 'chChat'].forEach(id => { $(id).value = '' }); $('addChannel').open = false }
 }
 $('markRead').onclick = () => post('/api/clerk/inbox/read')
+let cityCandidates = []
+$('zone').oninput = () => { $('cityMatches').hidden = true; $('zoneMsg').textContent = '' }
+async function saveCity(location) {
+  const {name, latitude, longitude, timezone} = location
+  location = {name, latitude, longitude, timezone}
+  const result = await post('/api/clerk/timezone', {location})
+  if (result.status !== 200) throw Error('save')
+  appState.location = location
+  $('zone').value = location.name
+  $('zoneMsg').textContent = t('saved') + ' · ' + result.data.timezone
+  $('cityMatches').hidden = true
+  document.querySelectorAll('.plugin-widget').forEach(frame => frame.contentWindow?.postMessage(frameInit(frame), '*'))
+  await loadClerk()
+}
+$('cityMatches').onchange = async e => {
+  const select = e.currentTarget
+  if (!select.value) return
+  select.disabled = true
+  try { await saveCity(cityCandidates[Number(select.value)]) } catch { $('zoneMsg').textContent = t('cityError'); select.value = '' }
+  finally { select.disabled = false }
+}
 $('saveZone').onclick = async () => {
-  const { status, data } = await post('/api/clerk/timezone', { timezone: $('zone').value.trim() })
-  if (status === 200 && data?.timezone) {
-    $('zone').value = data.timezone
-    $('zoneMsg').textContent = `${t('saved')} (${data.timezone})`
-  } else {
-    $('zoneMsg').textContent = errText(data, status)
-  }
+  const input = $('zone'), name = input.value.trim(), button = $('saveZone')
+  if (!name) { input.focus(); return }
+  button.disabled = true
+  input.disabled = true
+  $('cityMatches').hidden = true
+  try {
+    const query = new URLSearchParams({name,language:lang,count:'10'})
+    const res = await fetch('https://geocoding-api.open-meteo.com/v1/search?' + query, {signal:AbortSignal.timeout(12000)})
+    if (!res.ok) throw Error('geocoding')
+    cityCandidates = ((await res.json()).results || []).filter(c => c.timezone)
+    if (!cityCandidates.length) { $('zoneMsg').textContent = t('cityMissing'); return }
+    if (cityCandidates.length === 1) { await saveCity(cityCandidates[0]); return }
+    const select = $('cityMatches')
+    select.replaceChildren(new Option(t('chooseCity'), ''), ...cityCandidates.map((c,i) => new Option([c.name,c.admin1,c.country].filter(Boolean).join(' · '), i)))
+    select.hidden = false
+    select.focus()
+  } catch { $('zoneMsg').textContent = t('cityError') }
+  finally { input.disabled = false; button.disabled = false }
 }
 
 // ---- extensions: tool servers and skills that Bob installed ----

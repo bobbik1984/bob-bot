@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -36,11 +37,11 @@ type FeaturePackage struct {
 }
 
 type FeatureTrial struct {
-	Name       string          `json:"name"`
-	Title      string          `json:"title"`
-	ExpiresAt  int64           `json:"expiresAt"`
-	Previous   *FeaturePackage `json:"previous,omitempty"`
-	WasNew     bool            `json:"wasNew"`
+	Name      string          `json:"name"`
+	Title     string          `json:"title"`
+	ExpiresAt int64           `json:"expiresAt"`
+	Previous  *FeaturePackage `json:"previous,omitempty"`
+	WasNew    bool            `json:"wasNew"`
 }
 
 type FeatureStore struct {
@@ -469,7 +470,14 @@ func handleServeFeatureAsset(w http.ResponseWriter, r *http.Request) {
 		for _, wd := range f.Widgets {
 			if wd.ID == wid {
 				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				w.Write([]byte(wrapWidgetHTML(wd.HTML)))
+				html := wd.HTML
+				// Upgrade only the original Shanghai-only badge. Owner-edited widgets keep their own HTML.
+				if wid == "weather-badge-widget" && fmt.Sprintf("%x", sha256.Sum256([]byte(html))) == "3777d54d7011a53081132effb9fd1f4cc4d911fbe3ff9ac7b0b2aec166a48574" {
+					if builtIn, err := embeddedPublic.ReadFile("public/weather-badge.html"); err == nil {
+						html = string(builtIn)
+					}
+				}
+				w.Write([]byte(wrapWidgetHTML(html)))
 				return
 			}
 		}

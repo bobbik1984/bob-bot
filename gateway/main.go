@@ -23,6 +23,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	_ "time/tzdata"
 )
 
 //go:embed public/*
@@ -40,7 +41,15 @@ type ProactiveConfig struct {
 	Times   []string `json:"times"`
 }
 
+type CityLocation struct {
+	Name      string  `json:"name"`
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+	Timezone  string  `json:"timezone"`
+}
+
 type Config struct {
+	Location       *CityLocation            `json:"location,omitempty"`
 	Port           string                   `json:"port"`
 	PIN            string                   `json:"pin"`
 	CookieSecret   string                   `json:"cookieSecret"`
@@ -150,7 +159,7 @@ func main() {
 	mux.HandleFunc("POST /api/key", owner(handleSaveKey))
 	mux.HandleFunc("POST /api/budget", owner(handleSaveBudget))
 	mux.HandleFunc("POST /api/prefs", owner(handleSavePrefs))
-	mux.HandleFunc("GET /api/clerk", handleGetClerk)
+	mux.HandleFunc("GET /api/clerk", owner(handleGetClerk))
 	mux.HandleFunc("POST /api/clerk/timezone", handleSaveTimezone)
 	mux.HandleFunc("GET /api/proactive", handleGetProactive)
 	mux.HandleFunc("POST /api/proactive", handleSaveProactive)
@@ -313,6 +322,7 @@ func loadConfig() Config {
 				c.Timezone = diskCfg.Timezone
 			}
 			c.TimezoneChosen = diskCfg.TimezoneChosen
+			c.Location = diskCfg.Location
 			if diskCfg.BudgetCapUsd > 0 {
 				c.BudgetCapUsd = diskCfg.BudgetCapUsd
 			}
@@ -585,6 +595,7 @@ func handleState(w http.ResponseWriter, r *http.Request) {
 		resp["lang"] = cfg.Lang
 		resp["theme"] = cfg.Theme
 		resp["timezone"] = cfg.Timezone
+		resp["location"] = cfg.Location
 		resp["timezoneChosen"] = cfg.TimezoneChosen
 		resp["budget"] = map[string]interface{}{
 			"spentUsd": cfg.BudgetSpentUsd,
@@ -923,11 +934,13 @@ func handleSavePrefs(w http.ResponseWriter, r *http.Request) {
 func handleGetClerk(w http.ResponseWriter, r *http.Request) {
 	cfgLock.RLock()
 	tz := cfg.Timezone
+	location := cfg.Location
 	chosen := cfg.TimezoneChosen
 	cfgLock.RUnlock()
 	jsonResp(w, 200, map[string]interface{}{
 		"timezone":       tz,
 		"timezoneChosen": chosen,
+		"location":       location,
 		"todos":          []interface{}{},
 		"jobs":           []interface{}{},
 		"drafts":         []interface{}{},
@@ -943,11 +956,20 @@ func handleSaveTimezone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Timezone string `json:"timezone"`
+		Location *CityLocation `json:"location"`
+		Timezone string        `json:"timezone"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonResp(w, 400, map[string]string{"error": "BAD_JSON"})
 		return
+	}
+	if city := body.Location; city != nil {
+		city.Name = strings.TrimSpace(city.Name)
+		if city.Name == "" || len(city.Name) > 256 || city.Latitude < -90 || city.Latitude > 90 || city.Longitude < -180 || city.Longitude > 180 {
+			jsonResp(w, 400, map[string]string{"error": "INVALID_CITY"})
+			return
+		}
+		body.Timezone = city.Timezone
 	}
 	resolved, err := resolveTimezone(body.Timezone)
 	if err != nil {
@@ -955,9 +977,19 @@ func handleSaveTimezone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cfgLock.Lock()
+	if body.Location == nil && cfg.Location != nil {
+		cfgLock.Unlock()
+		jsonResp(w, 409, map[string]string{"error": "CITY_ALREADY_SET"})
+		return
+	}
+	previousLocation, previousZone, previousChosen := cfg.Location, cfg.Timezone, cfg.TimezoneChosen
+	cfg.Location = body.Location
 	cfg.Timezone = resolved
 	cfg.TimezoneChosen = true
 	saveErr := saveConfig()
+	if saveErr != nil {
+		cfg.Location, cfg.Timezone, cfg.TimezoneChosen = previousLocation, previousZone, previousChosen
+	}
 	cfgLock.Unlock()
 	if saveErr != nil {
 		jsonResp(w, 500, map[string]string{"error": "SAVE_FAILED"})
