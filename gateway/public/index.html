@@ -103,7 +103,6 @@ html[data-theme=dark] {
 @media (prefers-reduced-motion: reduce) {
   .orb .body, .orb .drop { animation:none !important; }
   .typing i { animation:none !important; opacity:.7 !important; }
-  .orb-btn { transition:none !important; }
 }
 
 /* login */
@@ -118,13 +117,10 @@ html[data-theme=dark] {
 .pad button:active { background:var(--accent-soft); }
 .pad .ghost { background:transparent; box-shadow:none; border-color:transparent; font-size:15px; color:var(--muted); }
 
-/* app shell: one orb that is the hero on the front page and the menu button once a chat has started */
+/* The header orb opens conversation history from every view. */
 #app { height:100%; height:100dvh; display:flex; flex-direction:column; max-width:720px; margin:0 auto; background:var(--bg); position:relative; overflow:hidden; }
-.orb-btn { position:absolute; z-index:2; padding:0; border-radius:50%; width:34px; height:34px; left:12px; top:calc(env(safe-area-inset-top) + 9px);
-  transition:left .6s cubic-bezier(.22,.8,.2,1), top .6s cubic-bezier(.22,.8,.2,1), width .6s cubic-bezier(.22,.8,.2,1), height .6s cubic-bezier(.22,.8,.2,1); }
-.orb-btn .orb { width:100%; height:100%; --s:34px; }
-#app.hero .orb-btn .orb { --s:var(--hd, 132px); }
-#app.hero .orb-btn { width:var(--hd, 132px); height:var(--hd, 132px); left:calc(50% - var(--hd, 132px) / 2); top:var(--htop, 20%); }
+.orb-btn { display:grid; place-items:center; width:44px; height:44px; border-radius:50%; }
+.orb-btn .orb { --s:30px; }
 header { display:grid; grid-template-columns:minmax(56px,auto) 1fr minmax(56px,auto); align-items:center; padding:calc(8px + env(safe-area-inset-top)) 8px 8px; min-height:56px; }
 header .title { text-align:center; font-size:16px; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 header .right { justify-self:end; display:flex; align-items:center; gap:6px; padding-right:4px; }
@@ -483,8 +479,6 @@ nav button.on span:first-child { background:var(--accent-soft); }
 
 html { scrollbar-gutter:stable; }
 #app { max-width:850px; }
-#app .orb-btn, #app.hero .orb-btn { width:30px; height:30px; left:16px; top:calc(13px + env(safe-area-inset-top)); transition:none; }
-#app .orb-btn .orb, #app.hero .orb-btn .orb { --s:30px; }
 #welcome { min-height:min(58dvh,440px); justify-content:center; padding:0; }
 [data-receipt] .msg { min-width:min(220px,70vw); }
 [data-receipt] .msg>small { color:var(--muted); }
@@ -511,7 +505,6 @@ html { scrollbar-gutter:stable; }
 #assistantMenu button { display:block; width:100%; margin:6px 0; text-align:start; }
 #assistantMenu .dhead button,.life-tools .dhead button { width:auto; }
 #profileMenu { min-width:44px; min-height:44px; }
-#app:not(.hero) #orbBtn { pointer-events:none; }
 #app.hero #viewChat { overflow-y:auto; }
 html::-webkit-scrollbar, .life-tools::-webkit-scrollbar { width:6px; }
 html::-webkit-scrollbar-thumb,.life-tools::-webkit-scrollbar-thumb { border-radius:6px; background:var(--line); }
@@ -531,9 +524,8 @@ html::-webkit-scrollbar-thumb,.life-tools::-webkit-scrollbar-thumb { border-radi
 </section>
 
 <section id="app" class="hero" hidden>
-  <span aria-hidden="true" class="orb-btn" id="orbBtn"><span class="orb" id="hOrb" data-orb data-state="nap"></span></span>
   <header>
-    <span></span>
+    <button type="button" class="orb-btn" id="orbBtn" data-al="history" aria-controls="drawer" aria-expanded="false"><span aria-hidden="true" class="orb" id="hOrb" data-orb data-state="nap"></span></button>
     <div class="title" id="title"></div>
     <div class="right"><div id="slotHeader"></div><button id="returnBob" class="link" data-t="backBob" hidden></button><button id="profileMenu" class="icon-btn" data-al="moreOptions" aria-haspopup="dialog" data-i="sliders"></button></div>
   </header>
@@ -734,8 +726,8 @@ html::-webkit-scrollbar-thumb,.life-tools::-webkit-scrollbar-thumb { border-radi
   </div>
   <input type="file" id="filePick" multiple hidden accept=".txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.log,.xml,.html,.htm,.yaml,.yml,.ini,.sql,text/*">
   <div id="scrim"></div>
-  <aside id="drawer" aria-label="History">
-    <div class="dhead"><b data-t="history"></b><button class="icon-btn" id="closeDrawer" data-al="close" data-i="cross"></button></div>
+  <aside id="drawer" aria-labelledby="historyTitle" inert>
+    <div class="dhead"><b id="historyTitle" data-t="history"></b><button class="icon-btn" id="closeDrawer" data-al="close" data-i="cross"></button></div>
     <button class="btn primary" id="newChat" data-t="backBob"></button>
     <ul id="convList"></ul>
     <p class="hint" id="convMsg" role="status"></p>
@@ -1083,7 +1075,7 @@ new ResizeObserver(layoutHero).observe($('viewChat'))
   vv.addEventListener('scroll', fit)
 })()
 
-// The orb is large in the middle of a new chat, and moves to the top left, small, once there is something to read.
+// Show the greeting while the current chat is empty.
 function setHero() {
   const hero = currentView === 'chat' && feed.children.length <= 1 && !$('notices').childElementCount && !$('turnPrompt').childElementCount
   $('app').classList.toggle('hero', hero)
@@ -1677,26 +1669,36 @@ async function deleteConv(id, li) {
   setTimeout(drawConvs, 200)
   if (activeCid === id) { activeCid = null; clearFeed(); refreshOrb() }
 }
-function openDrawer() {
+let historyOpener
+function openDrawer(opener) {
+  historyOpener = opener
   closeRows()
   $('convMsg').textContent = ''
   $('drawer').inert = false
   $('drawer').classList.add('open'); $('scrim').classList.add('on')
+  $('orbBtn').setAttribute('aria-expanded', 'true')
+  $('closeDrawer').focus()
   loadConvs()
 }
 function closeDrawer() {
+  if ($('drawer').inert) return
   $('drawer').classList.remove('open'); $('scrim').classList.remove('on'); $('drawer').inert=true
+  $('orbBtn').setAttribute('aria-expanded', 'false')
+  historyOpener.focus()
 }
-closeDrawer()
+$('drawer').addEventListener('keydown', e => {
+  if (e.key === 'Escape') { e.preventDefault(); closeDrawer() }
+})
 $('profileMenu').onclick=()=>$('assistantMenu').showModal()
 document.querySelectorAll('[data-dismiss]').forEach(b=>b.onclick=()=>b.closest('dialog').close())
 function menuAction(fn) { return () => { $('assistantMenu').close(); fn() } }
 $('viewRecords').onclick=menuAction(()=>$('recordsDialog').showModal())
 $('captureTools').onclick=menuAction(()=>$('captureDialog').showModal())
 $('preferences').onclick=menuAction(()=>show('settings'))
-$('archiveChats').onclick=menuAction(openDrawer)
+$('archiveChats').onclick=menuAction(() => openDrawer($('profileMenu')))
 $('returnBob').onclick=openAssistant
 $('orbBtn').addEventListener('pointerdown', () => poke())
+$('orbBtn').onclick = () => openDrawer($('orbBtn'))
 $('closeDrawer').onclick = closeDrawer
 $('scrim').onclick = closeDrawer
 $('newChat').onclick = openAssistant

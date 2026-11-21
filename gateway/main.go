@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -680,20 +681,32 @@ func broadcast(v interface{}) {
 }
 
 func handleListConversations(w http.ResponseWriter, r *http.Request) {
-	convsLock.RLock()
-	defer convsLock.RUnlock()
-
-	list := make([]map[string]interface{}, 0, len(conversations))
-	for _, c := range conversations {
-		list = append(list, map[string]interface{}{
-			"id":         c.ID,
-			"title":      c.Title,
-			"created_at": c.CreatedAt,
-		})
+	type summary struct {
+		ID        string `json:"id"`
+		Title     string `json:"title"`
+		CreatedAt int64  `json:"created_at"`
+		UpdatedAt int64  `json:"updatedAt"`
 	}
+	convsLock.RLock()
+	list := make([]summary, 0, len(conversations))
+	for _, c := range conversations {
+		updatedAt := time.Unix(c.CreatedAt, 0).UnixMilli()
+		if n := len(c.Events); n > 0 {
+			updatedAt = max(updatedAt, c.Events[n-1].At)
+		}
+		list = append(list, summary{ID: c.ID, Title: c.Title, CreatedAt: c.CreatedAt, UpdatedAt: updatedAt})
+	}
+	running := runningCID
+	convsLock.RUnlock()
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].UpdatedAt == list[j].UpdatedAt {
+			return list[i].ID < list[j].ID
+		}
+		return list[i].UpdatedAt > list[j].UpdatedAt
+	})
 	jsonResp(w, 200, map[string]interface{}{
 		"items":   list,
-		"running": runningCID,
+		"running": running,
 	})
 }
 
