@@ -30,6 +30,12 @@ type ProviderEntry struct {
 	APIKey  string `json:"apiKey"`
 }
 
+type ProactiveConfig struct {
+	Enabled bool     `json:"enabled"`
+	Level   float64  `json:"level"`
+	Times   []string `json:"times"`
+}
+
 type Config struct {
 	Port           string                   `json:"port"`
 	PIN            string                   `json:"pin"`
@@ -39,6 +45,13 @@ type Config struct {
 	ActiveBaseURL  string                   `json:"activeBaseUrl"`
 	ActiveAPIKey   string                   `json:"activeApiKey"`
 	Providers      map[string]ProviderEntry `json:"providers"`
+	Lang           string                   `json:"lang"`
+	Theme          string                   `json:"theme"`
+	Timezone       string                   `json:"timezone"`
+	TimezoneChosen bool                     `json:"timezoneChosen"`
+	BudgetCapUsd   float64                  `json:"budgetCapUsd"`
+	BudgetSpentUsd float64                  `json:"budgetSpentUsd"`
+	Proactive      ProactiveConfig          `json:"proactive"`
 }
 
 type Message struct {
@@ -62,10 +75,11 @@ type Conversation struct {
 	Title     string    `json:"title"`
 	CreatedAt int64     `json:"created_at"`
 	Events    []Event   `json:"events"`
-	History   []Message `json:"-"`
+	History   []Message `json:"history"`
 }
 
 var (
+	cfgLock       sync.RWMutex
 	cfg           Config
 	convsLock     sync.RWMutex
 	conversations = make(map[string]*Conversation)
@@ -76,6 +90,8 @@ var (
 
 func main() {
 	cfg = loadConfig()
+	loadConversations()
+	loadFeatures()
 
 	log.Printf("Starting Bob-Bot (Go Native Gateway) on port :%s", cfg.Port)
 	log.Printf("Active Provider: %s | Model: %s", cfg.ActiveProvider, cfg.ActiveModel)
@@ -125,13 +141,20 @@ func main() {
 	mux.HandleFunc("POST /api/chat", handleChat)
 	mux.HandleFunc("POST /api/model", handleSaveModel)
 	mux.HandleFunc("POST /api/key", handleSaveKey)
+	mux.HandleFunc("POST /api/budget", handleSaveBudget)
+	mux.HandleFunc("POST /api/prefs", handleSavePrefs)
+	mux.HandleFunc("GET /api/clerk", handleGetClerk)
+	mux.HandleFunc("POST /api/clerk/timezone", handleSaveTimezone)
+	mux.HandleFunc("GET /api/proactive", handleGetProactive)
+	mux.HandleFunc("POST /api/proactive", handleSaveProactive)
+	mux.HandleFunc("GET /api/features", handleGetFeatures)
+	mux.HandleFunc("POST /api/features/trial", handleFeatureTrial)
+	mux.HandleFunc("POST /api/features/remove", handleFeatureRemove)
+	mux.HandleFunc("GET /f/", handleServeFeatureAsset)
 
-	// Stub endpoints to satisfy UI tabs
-	mux.HandleFunc("GET /api/clerk", func(w http.ResponseWriter, r *http.Request) { jsonResp(w, 200, map[string]interface{}{"items": []string{}, "unread": 0}) })
-	mux.HandleFunc("GET /api/extensions", func(w http.ResponseWriter, r *http.Request) { jsonResp(w, 200, map[string]interface{}{"mcp": []string{}}) })
-	mux.HandleFunc("GET /api/features", func(w http.ResponseWriter, r *http.Request) { jsonResp(w, 200, map[string]interface{}{"items": []string{}}) })
-	mux.HandleFunc("GET /api/memory", func(w http.ResponseWriter, r *http.Request) { jsonResp(w, 200, []string{}) })
-	mux.HandleFunc("GET /api/proactive", func(w http.ResponseWriter, r *http.Request) { jsonResp(w, 200, map[string]interface{}{"enabled": false}) })
+	// Stub endpoints to satisfy remaining UI tabs
+	mux.HandleFunc("GET /api/extensions", func(w http.ResponseWriter, r *http.Request) { jsonResp(w, 200, map[string]interface{}{"mcp": []string{}, "skills": []string{}}) })
+	mux.HandleFunc("GET /api/memory", func(w http.ResponseWriter, r *http.Request) { jsonResp(w, 200, map[string]interface{}{"items": []string{}, "insights": []string{}}) })
 	mux.HandleFunc("GET /api/wechat/status", func(w http.ResponseWriter, r *http.Request) { jsonResp(w, 200, map[string]interface{}{"running": false}) })
 	mux.HandleFunc("GET /api/push/config", func(w http.ResponseWriter, r *http.Request) { jsonResp(w, 200, map[string]interface{}{"publicKey": "", "subscriptions": 0}) })
 	mux.HandleFunc("GET /api/push/log", func(w http.ResponseWriter, r *http.Request) { jsonResp(w, 200, map[string]interface{}{"items": []string{}}) })
@@ -228,6 +251,17 @@ func loadConfig() Config {
 				Model:   "",
 			},
 		},
+		Lang:           "auto",
+		Theme:          "auto",
+		Timezone:       "Asia/Shanghai",
+		TimezoneChosen: false,
+		BudgetCapUsd:   100.0,
+		BudgetSpentUsd: 0.0,
+		Proactive: ProactiveConfig{
+			Enabled: false,
+			Level:   0.35,
+			Times:   []string{"09:00", "20:00"},
+		},
 	}
 
 	// Try reading persisted config.json
@@ -249,6 +283,28 @@ func loadConfig() Config {
 			if diskCfg.Providers != nil {
 				for k, v := range diskCfg.Providers {
 					c.Providers[k] = v
+				}
+			}
+			if diskCfg.Lang != "" {
+				c.Lang = diskCfg.Lang
+			}
+			if diskCfg.Theme != "" {
+				c.Theme = diskCfg.Theme
+			}
+			if diskCfg.Timezone != "" {
+				c.Timezone = diskCfg.Timezone
+			}
+			c.TimezoneChosen = diskCfg.TimezoneChosen
+			if diskCfg.BudgetCapUsd > 0 {
+				c.BudgetCapUsd = diskCfg.BudgetCapUsd
+			}
+			if diskCfg.BudgetSpentUsd > 0 {
+				c.BudgetSpentUsd = diskCfg.BudgetSpentUsd
+			}
+			if diskCfg.Proactive.Level > 0 || len(diskCfg.Proactive.Times) > 0 || diskCfg.Proactive.Enabled {
+				c.Proactive = diskCfg.Proactive
+				if c.Proactive.Times == nil {
+					c.Proactive.Times = []string{}
 				}
 			}
 		}
@@ -290,7 +346,131 @@ func saveConfig() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dataDir, "config.json"), b, 0600)
+	tmp := filepath.Join(dataDir, "config.json.tmp")
+	if err := os.WriteFile(tmp, b, 0600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, filepath.Join(dataDir, "config.json"))
+}
+
+func loadConversations() {
+	b, err := os.ReadFile(filepath.Join("./data", "conversations.json"))
+	if err != nil {
+		return
+	}
+	var list []*Conversation
+	if err := json.Unmarshal(b, &list); err != nil {
+		return
+	}
+	convsLock.Lock()
+	defer convsLock.Unlock()
+	for _, c := range list {
+		if c != nil && c.ID != "" {
+			if c.Events == nil {
+				c.Events = make([]Event, 0)
+			}
+			if c.History == nil {
+				c.History = make([]Message, 0)
+			}
+			conversations[c.ID] = c
+		}
+	}
+}
+
+func saveConversations() {
+	convsLock.RLock()
+	list := make([]*Conversation, 0, len(conversations))
+	for _, c := range conversations {
+		list = append(list, c)
+	}
+	convsLock.RUnlock()
+
+	os.MkdirAll("./data", 0755)
+	b, err := json.MarshalIndent(list, "", "  ")
+	if err != nil {
+		log.Printf("Failed to marshal conversations: %v", err)
+		return
+	}
+	tmp := filepath.Join("./data", "conversations.json.tmp")
+	if err := os.WriteFile(tmp, b, 0600); err == nil {
+		os.Rename(tmp, filepath.Join("./data", "conversations.json"))
+	}
+}
+
+var cityToIANA = map[string]string{
+	// China & East Asia
+	"北京": "Asia/Shanghai", "beijing": "Asia/Shanghai", "peking": "Asia/Shanghai",
+	"上海": "Asia/Shanghai", "shanghai": "Asia/Shanghai",
+	"深圳": "Asia/Shanghai", "shenzhen": "Asia/Shanghai",
+	"广州": "Asia/Shanghai", "guangzhou": "Asia/Shanghai",
+	"杭州": "Asia/Shanghai", "hangzhou": "Asia/Shanghai",
+	"成都": "Asia/Shanghai", "chengdu": "Asia/Shanghai",
+	"重庆": "Asia/Shanghai", "chongqing": "Asia/Shanghai",
+	"南京": "Asia/Shanghai", "nanjing": "Asia/Shanghai",
+	"武汉": "Asia/Shanghai", "wuhan": "Asia/Shanghai",
+	"西安": "Asia/Shanghai", "xian": "Asia/Shanghai", "xi'an": "Asia/Shanghai",
+	"天津": "Asia/Shanghai", "tianjin": "Asia/Shanghai",
+	"苏州": "Asia/Shanghai", "suzhou": "Asia/Shanghai",
+	"中国": "Asia/Shanghai", "china": "Asia/Shanghai", "cst": "Asia/Shanghai",
+	"香港": "Asia/Hong_Kong", "hong kong": "Asia/Hong_Kong", "hongkong": "Asia/Hong_Kong", "hk": "Asia/Hong_Kong",
+	"澳门": "Asia/Macau", "macau": "Asia/Macau", "macao": "Asia/Macau",
+	"台北": "Asia/Taipei", "taipei": "Asia/Taipei", "台湾": "Asia/Taipei", "taiwan": "Asia/Taipei",
+	"新加坡": "Asia/Singapore", "singapore": "Asia/Singapore", "sg": "Asia/Singapore",
+	"东京": "Asia/Tokyo", "tokyo": "Asia/Tokyo", "大阪": "Asia/Tokyo", "osaka": "Asia/Tokyo", "日本": "Asia/Tokyo", "japan": "Asia/Tokyo",
+	"首尔": "Asia/Seoul", "seoul": "Asia/Seoul", "韩国": "Asia/Seoul", "korea": "Asia/Seoul",
+	"曼谷": "Asia/Bangkok", "bangkok": "Asia/Bangkok",
+	"吉隆坡": "Asia/Kuala_Lumpur", "kuala lumpur": "Asia/Kuala_Lumpur",
+	"迪拜": "Asia/Dubai", "dubai": "Asia/Dubai",
+	"悉尼": "Australia/Sydney", "sydney": "Australia/Sydney",
+	"墨尔本": "Australia/Melbourne", "melbourne": "Australia/Melbourne",
+	"奥克兰": "Pacific/Auckland", "auckland": "Pacific/Auckland",
+	// Europe
+	"伦敦": "Europe/London", "london": "Europe/London", "uk": "Europe/London",
+	"巴黎": "Europe/Paris", "paris": "Europe/Paris",
+	"柏林": "Europe/Berlin", "berlin": "Europe/Berlin",
+	"法兰克福": "Europe/Berlin", "frankfurt": "Europe/Berlin",
+	"阿姆斯特丹": "Europe/Amsterdam", "amsterdam": "Europe/Amsterdam",
+	"苏黎世": "Europe/Zurich", "zurich": "Europe/Zurich",
+	"莫斯科": "Europe/Moscow", "moscow": "Europe/Moscow",
+	// Americas
+	"纽约": "America/New_York", "new york": "America/New_York", "nyc": "America/New_York",
+	"波士顿": "America/New_York", "boston": "America/New_York",
+	"华盛顿": "America/New_York", "washington": "America/New_York",
+	"迈阿密": "America/New_York", "miami": "America/New_York",
+	"多伦多": "America/Toronto", "toronto": "America/Toronto",
+	"芝加哥": "America/Chicago", "chicago": "America/Chicago",
+	"达拉斯": "America/Chicago", "dallas": "America/Chicago",
+	"休斯顿": "America/Chicago", "houston": "America/Chicago",
+	"丹佛": "America/Denver", "denver": "America/Denver",
+	"洛杉矶": "America/Los_Angeles", "los angeles": "America/Los_Angeles", "la": "America/Los_Angeles",
+	"旧金山": "America/Los_Angeles", "san francisco": "America/Los_Angeles", "sf": "America/Los_Angeles", "硅谷": "America/Los_Angeles",
+	"西雅图": "America/Los_Angeles", "seattle": "America/Los_Angeles",
+	"温哥华": "America/Vancouver", "vancouver": "America/Vancouver",
+	"utc": "UTC", "gmt": "UTC",
+}
+
+func resolveTimezone(raw string) (string, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return "", fmt.Errorf("EMPTY_TIMEZONE")
+	}
+	// Strip parenthetical hints like "北京 (Asia/Shanghai)"
+	if idx := strings.Index(s, "("); idx != -1 {
+		if end := strings.Index(s[idx:], ")"); end != -1 {
+			inside := strings.TrimSpace(s[idx+1 : idx+end])
+			if _, err := time.LoadLocation(inside); err == nil {
+				return inside, nil
+			}
+		}
+		s = strings.TrimSpace(s[:idx])
+	}
+	if mapped, ok := cityToIANA[strings.ToLower(s)]; ok {
+		return mapped, nil
+	}
+	if _, err := time.LoadLocation(s); err == nil {
+		return s, nil
+	}
+	return "", fmt.Errorf("UNKNOWN_TIMEZONE")
 }
 
 func authed(r *http.Request) bool {
@@ -364,6 +544,7 @@ func handleState(w http.ResponseWriter, r *http.Request) {
 		"pinSet": true,
 	}
 	if isAuthed {
+		cfgLock.RLock()
 		savedProviders := make(map[string]interface{})
 		for pName, pEntry := range cfg.Providers {
 			savedProviders[pName] = map[string]interface{}{
@@ -379,9 +560,18 @@ func handleState(w http.ResponseWriter, r *http.Request) {
 		resp["hasKey"] = cfg.ActiveAPIKey != ""
 		resp["keyHint"] = maskKey(cfg.ActiveAPIKey)
 		resp["savedProviders"] = savedProviders
-		resp["budget"] = map[string]interface{}{"spentUsd": 0.0, "capUsd": 100.0, "exceeded": false}
+		resp["lang"] = cfg.Lang
+		resp["theme"] = cfg.Theme
+		resp["timezone"] = cfg.Timezone
+		resp["timezoneChosen"] = cfg.TimezoneChosen
+		resp["budget"] = map[string]interface{}{
+			"spentUsd": cfg.BudgetSpentUsd,
+			"capUsd":   cfg.BudgetCapUsd,
+			"exceeded": cfg.BudgetCapUsd > 0 && cfg.BudgetSpentUsd >= cfg.BudgetCapUsd,
+		}
 		resp["unread"] = 0
-		resp["build"] = map[string]string{"version": "0.3.0-go", "builtAt": "2026-11-18"}
+		resp["build"] = map[string]string{"version": "0.4.0-go", "commit": "go-unify", "at": "2026-11-19"}
+		cfgLock.RUnlock()
 	}
 	jsonResp(w, 200, resp)
 }
@@ -420,9 +610,12 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 		sseLock.Unlock()
 	}()
 
+	cfgLock.RLock()
+	initBudget := map[string]interface{}{"spentUsd": cfg.BudgetSpentUsd, "capUsd": cfg.BudgetCapUsd, "exceeded": cfg.BudgetCapUsd > 0 && cfg.BudgetSpentUsd >= cfg.BudgetCapUsd}
+	cfgLock.RUnlock()
 	initData, _ := json.Marshal(map[string]interface{}{
 		"type":    "hello",
-		"budget":  map[string]interface{}{"spentUsd": 0.0, "capUsd": 100.0},
+		"budget":  initBudget,
 		"running": runningCID,
 		"pending": []string{},
 		"unread":  0,
@@ -492,6 +685,7 @@ func handleCreateConversation(w http.ResponseWriter, r *http.Request) {
 	convsLock.Lock()
 	conversations[id] = conv
 	convsLock.Unlock()
+	saveConversations()
 
 	broadcast(map[string]string{"type": "conversations"})
 	jsonResp(w, 200, map[string]string{"id": id})
@@ -521,6 +715,7 @@ func handleDeleteConversation(w http.ResponseWriter, r *http.Request) {
 	convsLock.Lock()
 	delete(conversations, body.ID)
 	convsLock.Unlock()
+	saveConversations()
 
 	broadcast(map[string]string{"type": "conversations"})
 	jsonResp(w, 200, map[string]bool{"ok": true})
@@ -537,6 +732,7 @@ func handleRenameConversation(w http.ResponseWriter, r *http.Request) {
 		c.Title = body.Title
 	}
 	convsLock.Unlock()
+	saveConversations()
 
 	broadcast(map[string]string{"type": "conversations"})
 	jsonResp(w, 200, map[string]bool{"ok": true})
@@ -566,6 +762,7 @@ func handleSaveModel(w http.ResponseWriter, r *http.Request) {
 	baseUrl := strings.TrimSpace(body.BaseURL)
 	key := strings.TrimSpace(body.Key)
 
+	cfgLock.Lock()
 	entry := cfg.Providers[pKey]
 	entry.Model = model
 	if baseUrl != "" {
@@ -581,8 +778,12 @@ func handleSaveModel(w http.ResponseWriter, r *http.Request) {
 	cfg.ActiveBaseURL = entry.BaseURL
 	cfg.ActiveAPIKey = entry.APIKey
 
-	if err := saveConfig(); err != nil {
+	err := saveConfig()
+	cfgLock.Unlock()
+	if err != nil {
 		log.Printf("Failed to save config: %v", err)
+		jsonResp(w, 500, map[string]string{"error": "SAVE_FAILED"})
+		return
 	}
 
 	log.Printf("Updated model: Provider=%s, Model=%s, BaseURL=%s, KeyConfigured=%v",
@@ -605,13 +806,166 @@ func handleSaveKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cfgLock.Lock()
 	entry := cfg.Providers[cfg.ActiveProvider]
 	entry.APIKey = key
 	cfg.Providers[cfg.ActiveProvider] = entry
 	cfg.ActiveAPIKey = key
-
-	saveConfig()
+	err := saveConfig()
+	cfgLock.Unlock()
+	if err != nil {
+		jsonResp(w, 500, map[string]string{"error": "SAVE_FAILED"})
+		return
+	}
 	jsonResp(w, 200, map[string]bool{"ok": true})
+}
+
+func handleSaveBudget(w http.ResponseWriter, r *http.Request) {
+	if !authed(r) {
+		jsonResp(w, 401, map[string]string{"error": "UNAUTHED"})
+		return
+	}
+	var body struct {
+		CapUsd float64 `json:"capUsd"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.CapUsd < 0 {
+		jsonResp(w, 400, map[string]string{"error": "INVALID_BUDGET"})
+		return
+	}
+	cfgLock.Lock()
+	cfg.BudgetCapUsd = body.CapUsd
+	err := saveConfig()
+	b := map[string]interface{}{
+		"spentUsd": cfg.BudgetSpentUsd,
+		"capUsd":   cfg.BudgetCapUsd,
+		"exceeded": cfg.BudgetCapUsd > 0 && cfg.BudgetSpentUsd >= cfg.BudgetCapUsd,
+	}
+	cfgLock.Unlock()
+	if err != nil {
+		jsonResp(w, 500, map[string]string{"error": "SAVE_FAILED"})
+		return
+	}
+	broadcast(Event{Type: "budget", Budget: b})
+	jsonResp(w, 200, map[string]interface{}{"ok": true, "budget": b})
+}
+
+func handleSavePrefs(w http.ResponseWriter, r *http.Request) {
+	if !authed(r) {
+		jsonResp(w, 401, map[string]string{"error": "UNAUTHED"})
+		return
+	}
+	var body struct {
+		Lang  string `json:"lang"`
+		Theme string `json:"theme"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonResp(w, 400, map[string]string{"error": "BAD_JSON"})
+		return
+	}
+	cfgLock.Lock()
+	if body.Lang != "" {
+		cfg.Lang = body.Lang
+	}
+	if body.Theme != "" {
+		cfg.Theme = body.Theme
+	}
+	err := saveConfig()
+	cfgLock.Unlock()
+	if err != nil {
+		jsonResp(w, 500, map[string]string{"error": "SAVE_FAILED"})
+		return
+	}
+	jsonResp(w, 200, map[string]bool{"ok": true})
+}
+
+func handleGetClerk(w http.ResponseWriter, r *http.Request) {
+	cfgLock.RLock()
+	tz := cfg.Timezone
+	chosen := cfg.TimezoneChosen
+	cfgLock.RUnlock()
+	jsonResp(w, 200, map[string]interface{}{
+		"timezone":       tz,
+		"timezoneChosen": chosen,
+		"todos":          []interface{}{},
+		"jobs":           []interface{}{},
+		"drafts":         []interface{}{},
+		"inbox":          []interface{}{},
+		"channels":       []interface{}{},
+		"unread":         0,
+	})
+}
+
+func handleSaveTimezone(w http.ResponseWriter, r *http.Request) {
+	if !authed(r) {
+		jsonResp(w, 401, map[string]string{"error": "UNAUTHED"})
+		return
+	}
+	var body struct {
+		Timezone string `json:"timezone"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonResp(w, 400, map[string]string{"error": "BAD_JSON"})
+		return
+	}
+	resolved, err := resolveTimezone(body.Timezone)
+	if err != nil {
+		jsonResp(w, 400, map[string]string{"error": "UNKNOWN_TIMEZONE", "message": "Enter a city name (e.g. Beijing, Tokyo, New York) or IANA timezone (e.g. Asia/Shanghai)"})
+		return
+	}
+	cfgLock.Lock()
+	cfg.Timezone = resolved
+	cfg.TimezoneChosen = true
+	saveErr := saveConfig()
+	cfgLock.Unlock()
+	if saveErr != nil {
+		jsonResp(w, 500, map[string]string{"error": "SAVE_FAILED"})
+		return
+	}
+	jsonResp(w, 200, map[string]interface{}{"ok": true, "timezone": resolved})
+}
+
+func handleGetProactive(w http.ResponseWriter, r *http.Request) {
+	cfgLock.RLock()
+	p := cfg.Proactive
+	cfgLock.RUnlock()
+	if p.Times == nil {
+		p.Times = []string{}
+	}
+	jsonResp(w, 200, p)
+}
+
+func handleSaveProactive(w http.ResponseWriter, r *http.Request) {
+	if !authed(r) {
+		jsonResp(w, 401, map[string]string{"error": "UNAUTHED"})
+		return
+	}
+	var body struct {
+		Enabled *bool    `json:"enabled"`
+		Level   *float64 `json:"level"`
+		Times   []string `json:"times"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonResp(w, 400, map[string]string{"error": "BAD_JSON"})
+		return
+	}
+	cfgLock.Lock()
+	if body.Enabled != nil {
+		cfg.Proactive.Enabled = *body.Enabled
+	}
+	if body.Level != nil {
+		cfg.Proactive.Level = *body.Level
+	}
+	if body.Times != nil {
+		cfg.Proactive.Times = body.Times
+	}
+	err := saveConfig()
+	p := cfg.Proactive
+	cfgLock.Unlock()
+	if err != nil {
+		jsonResp(w, 500, map[string]string{"error": "SAVE_FAILED"})
+		return
+	}
+	jsonResp(w, 200, p)
 }
 
 func handleChat(w http.ResponseWriter, r *http.Request) {
@@ -662,6 +1016,7 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 	conv.Events = append(conv.Events, userEv)
 	conv.History = append(conv.History, Message{Role: "user", Text: text, Time: time.Now().Unix()})
 	convsLock.Unlock()
+	saveConversations()
 	broadcast(userEv)
 
 	broadcast(Event{Type: "status", Status: "thinking", CID: cid})
@@ -695,98 +1050,206 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		conv.Events = append(conv.Events, aiEv)
 		conv.History = append(conv.History, Message{Role: "model", Text: aiText, Time: time.Now().Unix()})
 		convsLock.Unlock()
+		saveConversations()
+		broadcast(aiEv)
 	}()
 
 	jsonResp(w, 200, map[string]string{"ok": "true", "cid": cid})
 }
 
+func bobToolSchemas() []map[string]interface{} {
+	return []map[string]interface{}{
+		{
+			"name":        "install_feature",
+			"description": "Install or update a live UI plugin/widget package mounted directly into Bob's web interface (starts in 3-minute trial mode with Keep/Undo buttons).",
+			"parameters": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name":        map[string]interface{}{"type": "string", "description": "Short lowercase identifier, e.g. 'weather-badge'"},
+					"title":       map[string]interface{}{"type": "string", "description": "Human-readable title, e.g. 'Weather Badge'"},
+					"description": map[string]interface{}{"type": "string", "description": "Brief description of what the feature does"},
+					"css":         map[string]interface{}{"type": "string", "description": "Optional scoped CSS"},
+					"panel_html":  map[string]interface{}{"type": "string", "description": "Optional settings/detail panel HTML"},
+					"widgets": map[string]interface{}{
+						"type":        "array",
+						"description": "UI widgets to mount into slots",
+						"items": map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"id":     map[string]interface{}{"type": "string", "description": "Widget id, e.g. 'badge'"},
+								"anchor": map[string]interface{}{"type": "string", "description": "Slot name: 'header-right', 'home', 'clerk-top', or 'settings-top'"},
+								"place":  map[string]interface{}{"type": "string", "description": "'start' or 'end'"},
+								"width":  map[string]interface{}{"type": "integer", "description": "Width in pixels (header-right: 60-160)"},
+								"height": map[string]interface{}{"type": "integer", "description": "Height in pixels (header-right: 28-38)"},
+								"html":   map[string]interface{}{"type": "string", "description": "Self-contained HTML/CSS/JS for the sandboxed widget iframe"},
+							},
+							"required": []string{"id", "anchor", "html"},
+						},
+					},
+				},
+				"required": []string{"name", "title", "widgets"},
+			},
+		},
+		{
+			"name":        "remove_feature",
+			"description": "Remove an installed UI feature/plugin by its name.",
+			"parameters": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{"type": "string", "description": "Feature name to remove"},
+				},
+				"required": []string{"name"},
+			},
+		},
+		{
+			"name":        "list_features",
+			"description": "List all currently installed UI features/plugins.",
+			"parameters": map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+		},
+	}
+}
+
 func callGeminiStream(history []Message, cid string) (string, error) {
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:streamGenerateContent?alt=sse&key=%s", cfg.ActiveModel, cfg.ActiveAPIKey)
+	cfgLock.RLock()
+	model := cfg.ActiveModel
+	apiKey := cfg.ActiveAPIKey
+	cfgLock.RUnlock()
 
-	type ContentPart struct {
-		Text string `json:"text"`
-	}
-	type Content struct {
-		Role  string        `json:"role"`
-		Parts []ContentPart `json:"parts"`
-	}
-	type ReqBody struct {
-		Contents []Content `json:"contents"`
-	}
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:streamGenerateContent?alt=sse&key=%s", model, apiKey)
 
-	contents := make([]Content, 0, len(history))
+	contents := make([]map[string]interface{}, 0, len(history)+4)
 	for _, m := range history {
 		role := m.Role
 		if role == "assistant" {
 			role = "model"
 		}
-		contents = append(contents, Content{
-			Role:  role,
-			Parts: []ContentPart{{Text: m.Text}},
+		contents = append(contents, map[string]interface{}{
+			"role":  role,
+			"parts": []map[string]interface{}{{"text": m.Text}},
 		})
 	}
 
-	b, _ := json.Marshal(ReqBody{Contents: contents})
-	req, err := http.NewRequest("POST", url, bytes.NewReader(b))
-	if err != nil {
-		return "", err
+	tools := []map[string]interface{}{
+		{"functionDeclarations": bobToolSchemas()},
 	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 90 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		errBytes, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("status %d: %s", resp.StatusCode, string(errBytes))
+	sysInst := map[string]interface{}{
+		"parts": []map[string]interface{}{{"text": bobSystemPrompt()}},
 	}
 
 	var full strings.Builder
-	reader := bufio.NewReader(resp.Body)
-	broadcast(Event{Type: "status", Status: "replying", CID: cid})
+	client := &http.Client{Timeout: 90 * time.Second}
 
-	for {
-		line, err := reader.ReadString('\n')
+	for round := 0; round < 4; round++ {
+		reqBody := map[string]interface{}{
+			"systemInstruction": sysInst,
+			"contents":          contents,
+			"tools":             tools,
+		}
+		b, _ := json.Marshal(reqBody)
+		req, err := http.NewRequest("POST", url, bytes.NewReader(b))
 		if err != nil {
-			break
+			return "", err
 		}
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "data:") {
-			continue
-		}
-		raw := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if raw == "" {
-			continue
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return "", err
 		}
 
-		var chunk struct {
-			Candidates []struct {
-				Content struct {
-					Parts []struct {
-						Text string `json:"text"`
-					} `json:"parts"`
-				} `json:"content"`
-			} `json:"candidates"`
+		if resp.StatusCode != 200 {
+			errBytes, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return "", fmt.Errorf("status %d: %s", resp.StatusCode, string(errBytes))
 		}
-		if err := json.Unmarshal([]byte(raw), &chunk); err == nil {
-			for _, cand := range chunk.Candidates {
-				for _, part := range cand.Content.Parts {
-					if part.Text != "" {
-						full.WriteString(part.Text)
-						broadcast(Event{
-							Type: "message",
-							Role: "assistant",
-							Text: full.String(),
-							CID:  cid,
-						})
+
+		type fnCall struct {
+			Name string                 `json:"name"`
+			Args map[string]interface{} `json:"args"`
+		}
+		var calls []fnCall
+		var rawModelParts []map[string]interface{}
+
+		reader := bufio.NewReader(resp.Body)
+		broadcast(Event{Type: "status", Status: "replying", CID: cid})
+
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				break
+			}
+			line = strings.TrimSpace(line)
+			if !strings.HasPrefix(line, "data:") {
+				continue
+			}
+			raw := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			if raw == "" {
+				continue
+			}
+
+			var chunk struct {
+				Candidates []struct {
+					Content struct {
+						Parts []map[string]interface{} `json:"parts"`
+					} `json:"content"`
+				} `json:"candidates"`
+			}
+			if err := json.Unmarshal([]byte(raw), &chunk); err == nil {
+				for _, cand := range chunk.Candidates {
+					for _, part := range cand.Content.Parts {
+						rawModelParts = append(rawModelParts, part)
+						isThought, _ := part["thought"].(bool)
+						if txt, ok := part["text"].(string); ok && txt != "" && !isThought {
+							full.WriteString(txt)
+							broadcast(Event{
+								Type: "delta",
+								Role: "assistant",
+								Text: full.String(),
+								CID:  cid,
+							})
+						}
+						if fcRaw, ok := part["functionCall"].(map[string]interface{}); ok {
+							name, _ := fcRaw["name"].(string)
+							args, _ := fcRaw["args"].(map[string]interface{})
+							if args == nil {
+								args = map[string]interface{}{}
+							}
+							if name != "" {
+								calls = append(calls, fnCall{Name: name, Args: args})
+							}
+						}
 					}
 				}
 			}
 		}
+		resp.Body.Close()
+
+		if len(calls) == 0 {
+			break
+		}
+
+		// Preserve exact raw model parts (including thoughtSignature) + append tool responses
+		respParts := make([]map[string]interface{}, 0, len(calls))
+		for _, fc := range calls {
+			resultStr := executeBobTool(fc.Name, fc.Args, cid)
+			var resultObj map[string]interface{}
+			if err := json.Unmarshal([]byte(resultStr), &resultObj); err != nil {
+				resultObj = map[string]interface{}{"result": resultStr}
+			}
+			respParts = append(respParts, map[string]interface{}{
+				"functionResponse": map[string]interface{}{
+					"name":     fc.Name,
+					"response": resultObj,
+				},
+			})
+		}
+		contents = append(contents,
+			map[string]interface{}{"role": "model", "parts": rawModelParts},
+			map[string]interface{}{"role": "user", "parts": respParts},
+		)
 	}
 
 	return full.String(), nil
@@ -805,108 +1268,189 @@ func callOpenAIStream(baseURL, apiKey, model string, history []Message, cid stri
 		u = u + "/chat/completions"
 	}
 
-	type ChatMsg struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	}
-	type ReqBody struct {
-		Model    string    `json:"model"`
-		Messages []ChatMsg `json:"messages"`
-		Stream   bool      `json:"stream"`
-	}
-
-	messages := make([]ChatMsg, 0, len(history))
+	messages := make([]map[string]interface{}, 0, len(history)+5)
+	messages = append(messages, map[string]interface{}{
+		"role":    "system",
+		"content": bobSystemPrompt(),
+	})
 	for _, m := range history {
 		role := m.Role
 		if role == "model" {
 			role = "assistant"
 		}
-		messages = append(messages, ChatMsg{
-			Role:    role,
-			Content: m.Text,
+		messages = append(messages, map[string]interface{}{
+			"role":    role,
+			"content": m.Text,
 		})
 	}
 
-	reqBytes, err := json.Marshal(ReqBody{
-		Model:    model,
-		Messages: messages,
-		Stream:   true,
-	})
-	if err != nil {
-		return "", err
-	}
-
-	req, err := http.NewRequest("POST", u, bytes.NewReader(reqBytes))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-
-	client := &http.Client{Timeout: 90 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		errBytes, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(errBytes))
+	oaiTools := make([]map[string]interface{}, 0, 3)
+	for _, s := range bobToolSchemas() {
+		oaiTools = append(oaiTools, map[string]interface{}{
+			"type":     "function",
+			"function": s,
+		})
 	}
 
 	var full strings.Builder
-	reader := bufio.NewReader(resp.Body)
-	broadcast(Event{Type: "status", Status: "replying", CID: cid})
+	client := &http.Client{Timeout: 90 * time.Second}
 
-	for {
-		line, err := reader.ReadString('\n')
+	for round := 0; round < 4; round++ {
+		reqBytes, err := json.Marshal(map[string]interface{}{
+			"model":    model,
+			"messages": messages,
+			"tools":    oaiTools,
+			"stream":   true,
+		})
 		if err != nil {
-			break
-		}
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "data:") {
-			continue
-		}
-		raw := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if raw == "" {
-			continue
-		}
-		if raw == "[DONE]" {
-			break
+			return "", err
 		}
 
-		var chunk struct {
-			Choices []struct {
-				Delta struct {
-					Role             string `json:"role"`
-					Content          string `json:"content"`
-					ReasoningContent string `json:"reasoning_content"`
-				} `json:"delta"`
-				FinishReason *string `json:"finish_reason"`
-			} `json:"choices"`
-			Error *struct {
-				Message string `json:"message"`
-			} `json:"error"`
+		req, err := http.NewRequest("POST", u, bytes.NewReader(reqBytes))
+		if err != nil {
+			return "", err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return "", err
 		}
 
-		if err := json.Unmarshal([]byte(raw), &chunk); err == nil {
-			if chunk.Error != nil && chunk.Error.Message != "" {
-				return full.String(), fmt.Errorf("API Error: %s", chunk.Error.Message)
+		if resp.StatusCode != 200 {
+			errBytes, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(errBytes))
+		}
+
+		type accTool struct {
+			ID   string
+			Name string
+			Args strings.Builder
+		}
+		toolAcc := map[int]*accTool{}
+		var roundText strings.Builder
+
+		reader := bufio.NewReader(resp.Body)
+		broadcast(Event{Type: "status", Status: "replying", CID: cid})
+
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				break
 			}
-			for _, choice := range chunk.Choices {
-				content := choice.Delta.Content
-				if content != "" {
-					full.WriteString(content)
-					broadcast(Event{
-						Type: "message",
-						Role: "assistant",
-						Text: full.String(),
-						CID:  cid,
-					})
+			line = strings.TrimSpace(line)
+			if !strings.HasPrefix(line, "data:") {
+				continue
+			}
+			raw := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			if raw == "" {
+				continue
+			}
+			if raw == "[DONE]" {
+				break
+			}
+
+			var chunk struct {
+				Choices []struct {
+					Delta struct {
+						Role      string `json:"role"`
+						Content   string `json:"content"`
+						ToolCalls []struct {
+							Index    int    `json:"index"`
+							ID       string `json:"id"`
+							Function struct {
+								Name      string `json:"name"`
+								Arguments string `json:"arguments"`
+							} `json:"function"`
+						} `json:"tool_calls"`
+					} `json:"delta"`
+				} `json:"choices"`
+				Error *struct {
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+
+			if err := json.Unmarshal([]byte(raw), &chunk); err == nil {
+				if chunk.Error != nil && chunk.Error.Message != "" {
+					resp.Body.Close()
+					return full.String(), fmt.Errorf("API Error: %s", chunk.Error.Message)
+				}
+				for _, choice := range chunk.Choices {
+					if choice.Delta.Content != "" {
+						roundText.WriteString(choice.Delta.Content)
+						full.WriteString(choice.Delta.Content)
+						broadcast(Event{
+							Type: "delta",
+							Role: "assistant",
+							Text: full.String(),
+							CID:  cid,
+						})
+					}
+					for _, tc := range choice.Delta.ToolCalls {
+						acc, ok := toolAcc[tc.Index]
+						if !ok {
+							acc = &accTool{}
+							toolAcc[tc.Index] = acc
+						}
+						if tc.ID != "" {
+							acc.ID = tc.ID
+						}
+						if tc.Function.Name != "" {
+							acc.Name = tc.Function.Name
+						}
+						if tc.Function.Arguments != "" {
+							acc.Args.WriteString(tc.Function.Arguments)
+						}
+					}
 				}
 			}
 		}
+		resp.Body.Close()
+
+		if len(toolAcc) == 0 {
+			break
+		}
+
+		tcList := make([]map[string]interface{}, 0, len(toolAcc))
+		toolMsgs := make([]map[string]interface{}, 0, len(toolAcc))
+		for idx := 0; idx < len(toolAcc); idx++ {
+			acc, ok := toolAcc[idx]
+			if !ok {
+				continue
+			}
+			id := acc.ID
+			if id == "" {
+				id = fmt.Sprintf("call_%d_%d", round, idx)
+			}
+			argsStr := acc.Args.String()
+			tcList = append(tcList, map[string]interface{}{
+				"id":   id,
+				"type": "function",
+				"function": map[string]interface{}{
+					"name":      acc.Name,
+					"arguments": argsStr,
+				},
+			})
+			var argsMap map[string]interface{}
+			_ = json.Unmarshal([]byte(argsStr), &argsMap)
+			if argsMap == nil {
+				argsMap = map[string]interface{}{}
+			}
+			resStr := executeBobTool(acc.Name, argsMap, cid)
+			toolMsgs = append(toolMsgs, map[string]interface{}{
+				"role":         "tool",
+				"tool_call_id": id,
+				"content":      resStr,
+			})
+		}
+		messages = append(messages, map[string]interface{}{
+			"role":       "assistant",
+			"content":    roundText.String(),
+			"tool_calls": tcList,
+		})
+		messages = append(messages, toolMsgs...)
 	}
 
 	return full.String(), nil

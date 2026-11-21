@@ -1,0 +1,5 @@
+{
+  "ssh_alias": "gcp",
+  "origin": "https://bot.bobbik.org",
+  "port": 8080
+}

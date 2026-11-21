@@ -37,3 +37,14 @@
    - 所有模型调用必须计入月度用量（默认 $10），达到上限后不得发起新的调用。
 4. **前端规范**：
    - 严格遵守全局 CSS Variables 主题色规范（严禁硬编码颜色值）、`scrollbar-gutter: stable` 防抖动与中英双语 i18n（`$t`）要求。
+
+## 4. GCP 轻量网关 (`gcp-bobbot` / `bot.bobbik.org`) 编译与发布规范
+
+1. **源码组成**：
+   - Go 原生单二进制网关位于 `gateway/`：`main.go`、`features.go`、`go.mod`、`public/`（经典聊天页在 `gateway/public/index.html`）及 `life/`（新版移动首页在 `gateway/life/web/home.html`）。
+   - 远端实例部署目录为 `/home/bobbik_hbz_gmail_com/bob-bot/`，由 `bobbot.service`（端口 `:8080`）+ `cloudflared` 隧道对外提供 `https://bot.bobbik.org` 服务；各服务商 API Key 持久化于远端 `data/config.json`，发布不会覆盖密钥。
+2. **标准一键发布（本地有 `ssh gcp` 权限的 Agent 必须使用）**：
+   - 直接运行：`.\scripts\deploy-gcp.ps1`（或 `python -X utf8 scripts/deploy-gcp.py deploy`），参数已默认固化在根目录 [release.json](release.json)。
+   - 脚本会自动打包完整 `gateway/` 源码、上传至 `gcp` 临时构建目录、运行测试并执行 **`go build .`**（**严禁**单独执行 `go build main.go`，否则会漏掉 `features.go` 与 `life/` 模块），原子替换二进制并重启 `bobbot.service`，最后校验本机与公网 `https://bot.bobbik.org/api/life/version`。
+3. **无 SSH 权限的云端沙盒 Agent 边界**：
+   - 若当前 Agent 无法直连 `ssh gcp`，不得伪造部署成功；应把代码提交到 GitHub 后，提示用户在本地终端（或由本地 Agent）执行 `.\scripts\deploy-gcp.ps1` 完成上线。

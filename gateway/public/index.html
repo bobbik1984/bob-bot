@@ -1,0 +1,3045 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#f4f6fb">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Bob">
+<title>Bob</title>
+<script>
+// Decide light or dark before the first paint, so the page never flashes the wrong one.
+(() => {
+  const system = matchMedia('(prefers-color-scheme: dark)')
+  const apply = () => {
+    let choice = 'auto'
+    try { choice = localStorage.getItem('bobbot.theme') || 'auto' } catch { /* private mode */ }
+    const dark = choice === 'dark' || (choice === 'auto' && system.matches)
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+    document.querySelector('meta[name=theme-color]').content = dark ? '#0e1117' : '#f5f6fa'
+    document.querySelector('meta[name=color-scheme]').content = dark ? 'dark' : 'light'
+  }
+  window.applyTheme = apply
+  apply()
+  system.addEventListener('change', apply)
+})()
+</script>
+<style>
+:root {
+  color-scheme: light;
+  --bg:#f5f6fa; --surface:#ffffff; --surface-2:#eef0f6; --surface-3:#e2e6ef; --text:#171c28; --muted:#667085; --line:#e4e7ee;
+  --accent:#2f6bff; --accent-text:#ffffff; --accent-soft:#e8efff; --accent-ink:#2152cc; --bubble-user:#2f6bff; --bubble-user-text:#ffffff;
+  --danger:#d64545; --danger-soft:#fdeceb; --ok:#1f9d6b; --ok-soft:#e3f6ee; --warn:#a96a12; --warn-soft:#fff3dc;
+  --shadow-1:0 1px 2px rgba(16,24,40,.05); --shadow:0 1px 2px rgba(16,24,40,.04), 0 8px 24px rgba(16,24,40,.06); --shadow-pop:0 12px 40px rgba(16,24,40,.16);
+  --shade:rgba(15,23,42,.45); --stage:#0b0f1a; --canvas:#ffffff;
+  --ease:cubic-bezier(.2,.8,.2,1);
+}
+html[data-theme=dark] {
+  color-scheme: dark;
+  --bg:#0e1117; --surface:#161a22; --surface-2:#1f242e; --surface-3:#2b313d; --text:#e8ebf2; --muted:#98a2b3; --line:#272d39;
+  --accent:#4b7dff; --accent-soft:#1a2748; --accent-ink:#a3bcff; --bubble-user:#3a66e0;
+  --danger:#f0736f; --danger-soft:#3a1c1e; --ok:#4cc38a; --ok-soft:#143024; --warn:#e3ad52; --warn-soft:#33280f;
+  --shadow-1:0 1px 2px rgba(0,0,0,.4); --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35); --shadow-pop:0 12px 40px rgba(0,0,0,.6);
+  --shade:rgba(0,0,0,.6); --stage:#05070b;
+}
+* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { height:100%; margin:0; }
+body { background:var(--bg); color:var(--text); font:16px/1.55 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+button, input, select, textarea { font:inherit; color:inherit; }
+button { cursor:pointer; border:0; background:none; padding:0; }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+svg { width:1.25em; height:1.25em; flex:none; }
+[hidden] { display:none !important; }
+
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:44px; padding:0 18px; border-radius:14px; background:var(--surface-2); font-weight:600; }
+.btn.small { min-height:36px; padding:0 14px; font-size:14px; border-radius:12px; }
+.btn.primary { background:var(--accent); color:var(--accent-text); }
+.btn.danger { background:var(--danger-soft); color:var(--danger); }
+.btn.block { width:100%; }
+.icon-btn { width:40px; height:40px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; color:var(--muted); }
+.icon-btn:active, .btn:active { transform:scale(.97); }
+.link { color:var(--accent-ink); font-weight:600; padding:6px 4px; }
+.field { width:100%; min-width:0; min-height:44px; padding:0 14px; border-radius:14px; border:1px solid var(--line); background:var(--surface); }
+
+/* The Bob orb is a drop of water floating in zero gravity. Surface tension is its only motion: it is pressed a
+   little, springs back with less each time, and settles round again. One number k drives the shape, x = k and
+   y = 1 / k, so the drop never grows or shrinks; its area stays the same. A 2D look, not a fluid simulation. */
+@property --k { syntax:'<number>'; inherits:false; initial-value:1; }
+@property --p { syntax:'<number>'; inherits:false; initial-value:1; }
+:root {
+  --drop-fill:rgba(205,230,255,.38); --drop-mid:rgba(150,200,246,.50); --drop-edge:rgba(82,146,222,.70);
+  --drop-rim:rgba(120,176,236,.55); --drop-shade:rgba(56,118,196,.30); --drop-light:rgba(255,255,255,.92); --drop-through:rgba(255,255,255,.55);
+}
+html[data-theme=dark] {
+  --drop-fill:rgba(130,190,250,.16); --drop-mid:rgba(120,185,250,.28); --drop-edge:rgba(150,205,255,.58);
+  --drop-rim:rgba(170,215,255,.50); --drop-shade:rgba(10,30,70,.55); --drop-light:rgba(235,246,255,.85); --drop-through:rgba(180,225,255,.35);
+}
+.orb { --s:28px; --t:9s; position:relative; width:var(--s); height:var(--s); flex:none; display:inline-block; }
+.orb.big { --s:84px; }
+.orb i { position:absolute; display:block; pointer-events:none; border-radius:50%; }
+.orb .drop { inset:0; transform:scale(var(--p), calc(1 / var(--p))); }
+.orb .body { inset:0; overflow:hidden; transform:scale(var(--k), calc(1 / var(--k))); animation:tension var(--t) ease-in-out infinite;
+  background:radial-gradient(circle at 50% 46%, var(--drop-fill) 0 42%, var(--drop-mid) 70%, var(--drop-edge) 100%);
+  box-shadow:inset 0 calc(var(--s) * -.07) calc(var(--s) * .14) var(--drop-shade), inset 0 calc(var(--s) * .03) calc(var(--s) * .06) var(--drop-light), inset 0 0 0 1px var(--drop-rim);
+  -webkit-backdrop-filter:blur(1.5px) saturate(1.15); backdrop-filter:blur(1.5px) saturate(1.15); }
+/* soft reflection up and to the left, and fainter light passing through at the lower right */
+.orb .hl { left:17%; top:12%; width:40%; height:28%; transform:rotate(-28deg); background:radial-gradient(closest-side, var(--drop-light), transparent); opacity:.85; transition:opacity .8s; }
+.orb .tx { right:12%; bottom:9%; width:46%; height:24%; transform:rotate(-30deg); background:radial-gradient(closest-side, var(--drop-through), transparent); opacity:.7; }
+/* waiting for the owner: a gentle amber warmth low in the drop */
+.orb .warm { left:4%; right:4%; bottom:-14%; height:52%; background:radial-gradient(closest-side, rgba(255,186,90,.42), transparent); opacity:0; transition:opacity .8s; }
+.orb[data-state=think] { --t:4s; }
+.orb[data-state=think] .hl { opacity:1; }
+.orb[data-state=speak] { --t:5s; }
+.orb[data-state=wait] .warm { opacity:1; }
+/* a tap or a sent message nudges the drop, and it rings out the same way */
+.orb.poke .drop { animation:poke 1.3s ease-in-out; }
+.orb.static .body { animation:none !important; }
+@keyframes tension { 0%,18% { --k:1; } 32% { --k:.975; } 46% { --k:1.018; } 60% { --k:.992; } 74% { --k:1.004; } 88%,100% { --k:1; } }
+@keyframes poke { 0% { --p:1; } 14% { --p:.955; } 32% { --p:1.03; } 50% { --p:.988; } 68% { --p:1.005; } 100% { --p:1; } }
+@media (prefers-reduced-motion: reduce) {
+  .orb .body, .orb .drop { animation:none !important; }
+  .typing i { animation:none !important; opacity:.7 !important; }
+  .orb-btn { transition:none !important; }
+}
+
+/* login */
+#login { height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:16px; }
+#login .sub { margin:0; color:var(--muted); font-size:14px; }
+.dots { display:flex; gap:16px; margin-top:10px; }
+.dots i { width:14px; height:14px; border-radius:50%; border:2px solid var(--line); background:var(--surface); transition:background .12s, border-color .12s; }
+.dots i.on { background:var(--accent); border-color:var(--accent); }
+#loginMsg { min-height:24px; color:var(--danger); font-size:14px; text-align:center; max-width:300px; }
+.pad { display:grid; grid-template-columns:repeat(3,72px); gap:14px 18px; }
+.pad button { height:72px; border-radius:50%; font-size:26px; background:var(--surface); box-shadow:var(--shadow); border:1px solid var(--line); }
+.pad button:active { background:var(--accent-soft); }
+.pad .ghost { background:transparent; box-shadow:none; border-color:transparent; font-size:15px; color:var(--muted); }
+
+/* app shell: one orb that is the hero on the front page and the menu button once a chat has started */
+#app { height:100%; height:100dvh; display:flex; flex-direction:column; max-width:720px; margin:0 auto; background:var(--bg); position:relative; overflow:hidden; }
+.orb-btn { position:absolute; z-index:2; padding:0; border-radius:50%; width:34px; height:34px; left:12px; top:calc(env(safe-area-inset-top) + 9px);
+  transition:left .6s cubic-bezier(.22,.8,.2,1), top .6s cubic-bezier(.22,.8,.2,1), width .6s cubic-bezier(.22,.8,.2,1), height .6s cubic-bezier(.22,.8,.2,1); }
+.orb-btn .orb { width:100%; height:100%; --s:34px; }
+#app.hero .orb-btn .orb { --s:var(--hd, 132px); }
+#app.hero .orb-btn { width:var(--hd, 132px); height:var(--hd, 132px); left:calc(50% - var(--hd, 132px) / 2); top:var(--htop, 20%); }
+header { display:grid; grid-template-columns:minmax(56px,auto) 1fr minmax(56px,auto); align-items:center; padding:calc(8px + env(safe-area-inset-top)) 8px 8px; min-height:56px; }
+header .title { text-align:center; font-size:16px; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+header .right { justify-self:end; display:flex; align-items:center; gap:6px; padding-right:4px; }
+main { flex:1; min-height:0; position:relative; }
+.view { position:absolute; inset:0; overflow-y:auto; scrollbar-gutter:stable; padding:6px 14px 14px; }
+
+/* chat */
+/* the empty front page has nothing to scroll, so it reserves no scrollbar slot and stays centred */
+#app.hero #viewChat { overflow:hidden; }
+/* the chat scrolls by touch, wheel and keys, but draws no scrollbar track, so nothing pushes it off the centre line */
+#viewChat { scrollbar-gutter:auto; scrollbar-width:none; }
+#viewChat::-webkit-scrollbar { display:none; }
+#welcome { display:flex; flex-direction:column; align-items:center; gap:6px; padding:var(--wtop, 30vh) 0 0; text-align:center; }
+#app.tight #welcome span.s { display:none; }
+#app.tight #welcome h1 { font-size:20px; }
+#welcome span.s { color:var(--muted); font-size:15px; }
+#welcome h1 { margin:0; font-size:26px; line-height:1.25; font-weight:700; letter-spacing:-.01em; }
+#glance { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:14px; }
+.glance-item { display:inline-flex; align-items:baseline; gap:6px; padding:8px 14px; border-radius:14px; background:var(--surface); border:1px solid var(--line); font-size:13px; color:var(--muted); box-shadow:var(--shadow-1); }
+.glance-item b { font-size:16px; color:var(--text); }
+.glance-item.warn { background:var(--warn-soft); border-color:transparent; color:var(--warn); }
+.glance-item.warn b { color:var(--warn); }
+.chipicon { width:36px; height:36px; border-radius:12px; display:inline-flex; align-items:center; justify-content:center; background:var(--accent-soft); color:var(--accent-ink); flex:none; }
+.chipicon svg { width:18px; height:18px; }
+#feed { display:flex; flex-direction:column; gap:10px; }
+.bubble-row { display:flex; gap:8px; align-items:flex-end; }
+.bubble-row.user { justify-content:flex-end; }
+.bubble-row .spacer { width:28px; flex:none; }
+.msg { max-width:84%; padding:10px 14px; border-radius:20px; white-space:pre-wrap; overflow-wrap:anywhere; background:var(--surface); border:1px solid var(--line); border-bottom-left-radius:6px; box-shadow:var(--shadow-1); }
+.bubble-row.user .msg { background:var(--bubble-user); color:var(--bubble-user-text); border-color:transparent; box-shadow:none; border-bottom-left-radius:20px; border-bottom-right-radius:6px; }
+.typing { display:flex; gap:5px; padding:14px 16px; }
+.typing i { width:7px; height:7px; border-radius:50%; background:var(--muted); opacity:.45; animation:blink 1.2s infinite; }
+.typing i:nth-child(2) { animation-delay:.2s; } .typing i:nth-child(3) { animation-delay:.4s; }
+@keyframes blink { 40% { opacity:1; transform:translateY(-2px); } }
+.steps { margin-left:36px; font-size:13px; color:var(--muted); background:var(--surface-2); border-radius:14px; padding:2px 12px; max-width:84%; }
+.steps summary { cursor:pointer; padding:8px 0; list-style:none; display:flex; align-items:center; gap:8px; }
+.steps summary::-webkit-details-marker { display:none; }
+.steps summary svg { width:1em; height:1em; }
+.steps ul { margin:0 0 8px; padding:0 0 0 22px; }
+.notice { font-size:13px; color:var(--muted); text-align:center; padding:2px 8px; }
+.notice.err { color:var(--danger); background:var(--danger-soft); border-radius:12px; padding:8px 12px; }
+.fileline { display:flex; align-items:center; gap:6px; margin-top:6px; font-size:13px; color:var(--muted); }
+.fileline svg { width:1em; height:1em; }
+#banner { display:flex; align-items:center; gap:8px; margin:0 12px 6px; padding:9px 14px; border-radius:14px; background:var(--warn-soft); color:var(--warn); font-size:14px; font-weight:600; text-align:left; }
+#banner svg { width:1.1em; height:1.1em; }
+
+/* cards: one clean block, aligned rows, actions at the bottom */
+.card { background:var(--surface); border:1px solid var(--line); border-radius:22px; padding:16px; display:flex; flex-direction:column; gap:12px; box-shadow:var(--shadow); }
+.card-top { display:flex; align-items:center; gap:10px; }
+.card-top .chipicon { width:36px; height:36px; border-radius:12px; display:inline-flex; align-items:center; justify-content:center; background:var(--accent-soft); color:var(--accent-ink); flex:none; }
+.card-top .chipicon svg { width:18px; height:18px; }
+.card.help .chipicon { background:var(--warn-soft); color:var(--warn); }
+.tag { font-size:12px; font-weight:600; color:var(--accent-ink); background:var(--accent-soft); padding:4px 10px; border-radius:999px; white-space:nowrap; }
+.card.help .tag { color:var(--warn); background:var(--warn-soft); }
+.card .time { margin-left:auto; font-size:12px; color:var(--muted); flex:none; }
+.card .lead { color:var(--muted); font-size:14px; }
+.card .what { font-size:17px; font-weight:700; line-height:1.4; overflow-wrap:anywhere; }
+.card .where { font-size:13px; color:var(--muted); overflow-wrap:anywhere; margin-top:-6px; }
+.card .rows { display:flex; flex-direction:column; gap:8px; }
+.card .kv { display:flex; align-items:baseline; justify-content:space-between; gap:16px; font-size:14px; }
+.card .kv .k { color:var(--muted); flex:none; }
+.card .kv .v { font-weight:600; text-align:right; overflow-wrap:anywhere; }
+.card .quote { margin:0; padding:12px 14px; border-radius:14px; background:var(--surface-2); font-size:14px; line-height:1.55; white-space:pre-wrap; overflow-wrap:anywhere; max-height:160px; overflow:auto; }
+.card pre.detail { margin:0; padding:10px 12px; border-radius:12px; background:var(--surface-2); font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; max-height:180px; overflow:auto; }
+.card img { width:100%; max-height:240px; object-fit:contain; border-radius:12px; background:var(--stage); }
+.card .actions { display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:10px; }
+.card .actions .btn { width:100%; min-height:42px; border-radius:14px; }
+.card .actions .link { justify-self:start; }
+.card .done { display:flex; align-items:center; gap:6px; color:var(--ok); font-weight:600; font-size:14px; }
+.card .done.no { color:var(--muted); }
+.card.saved .tag { background:var(--ok-soft); color:var(--ok); }
+.card.saved .chipicon { background:var(--ok-soft); color:var(--ok); }
+
+/* to-dos and formatted replies */
+.todo-row { display:flex; gap:12px; align-items:flex-start; }
+.todo-body { flex:1; min-width:0; }
+.todo-body .meta { font-size:13px; color:var(--muted); }
+.check { width:28px; height:28px; border-radius:50%; border:2px solid var(--line); color:transparent; display:inline-flex; align-items:center; justify-content:center; flex:none; margin-top:1px; }
+.check svg { width:16px; height:16px; }
+.check.on { background:var(--ok); border-color:var(--ok); color:var(--accent-text); }
+.card.todo.finished .what { text-decoration:line-through; color:var(--muted); }
+.card.todo .rm { color:var(--muted); }
+.msg.md { white-space:normal; }
+.msg.md p { margin:0 0 6px; }
+.msg.md p:last-child { margin:0; }
+.md-list { margin:4px 0 6px; padding-left:20px; }
+.msg.md code { background:var(--surface-2); padding:1px 5px; border-radius:6px; font-size:.9em; }
+.card pre.detail.soft { font:14px/1.5 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+
+/* cards Bob asks for: organized information */
+.card.info .what { font-size:17px; }
+.card.info .where { margin-top:0; font-size:13px; }
+.info-fields { display:grid; grid-template-columns:minmax(72px,auto) 1fr; gap:6px 14px; font-size:14px; }
+.info-fields .k { color:var(--muted); }
+.info-fields .v { font-weight:600; overflow-wrap:anywhere; }
+.info-items { list-style:none; margin:0; padding:0; font-size:14px; display:flex; flex-direction:column; gap:8px; }
+.info-items li { position:relative; padding-left:16px; }
+.info-items li::before { content:''; position:absolute; left:2px; top:.55em; width:5px; height:5px; border-radius:50%; background:var(--accent); }
+.inbox-item .card { box-shadow:none; margin-top:10px; background:var(--surface-2); border-color:transparent; }
+
+/* friendly cards: a saved schedule, a to-do, and the card that asks to confirm one */
+.card.saved { border-color:var(--line); }
+.card.saved .chipicon, .card.saved .tag { background:var(--ok-soft); color:var(--ok); }
+.card .what.big { font-size:18px; line-height:1.35; }
+.card .when { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted); margin-top:-4px; }
+.card .when svg { width:1em; height:1em; }
+.card .quote { margin:0; padding:10px 12px; border-radius:14px; background:var(--surface-2); font-size:14px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; max-height:150px; overflow:auto; }
+.card .quote.said { font-size:15px; }
+.card .chiplist .mini { background:var(--accent-soft); color:var(--accent-ink); }
+.card .today { background:var(--ok-soft); color:var(--ok); }
+
+/* clerk */
+.sect-head { display:flex; align-items:center; justify-content:space-between; margin:18px 2px 8px; }
+.sect-head h3 { margin:0; font-size:15px; }
+.sect-head .link { font-size:13px; }
+#jobList, #inboxList, #channelList { display:flex; flex-direction:column; gap:10px; }
+.job .what { font-size:16px; }
+.job .meta { font-size:13px; color:var(--muted); }
+.job .meta b { color:var(--text); font-weight:600; }
+.job .last { font-size:13px; color:var(--muted); display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.job .last.failed { color:var(--danger); }
+.job .last.warn { color:var(--warn); }
+.job .assist { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; border-radius:10px; background:var(--warn-soft); color:var(--warn); font-size:14px; }
+.job .assist .btn { flex:none; }
+.job .runs summary { cursor:pointer; font-size:13px; color:var(--muted); }
+.job .run { display:grid; grid-template-columns:auto 1fr; gap:2px 8px; padding:8px 0; border-top:1px solid var(--line); font-size:13px; color:var(--muted); }
+.job .run b { color:var(--ok); font-weight:600; }
+.job .run b.warn { color:var(--warn); }
+.job .run b.failed { color:var(--danger); }
+.job .runs .step { margin:6px 0 0; font-size:13px; color:var(--text); overflow-wrap:anywhere; }
+.job .run p { grid-column:1 / -1; margin:0; color:var(--text); overflow-wrap:anywhere; }
+.job.paused { opacity:.7; }
+.chiplist { display:flex; flex-wrap:wrap; gap:6px; }
+.mini { font-size:12px; padding:2px 8px; border-radius:999px; background:var(--surface-2); color:var(--muted); }
+.mini.bad { background:var(--danger-soft); color:var(--danger); }
+.mini.good { background:var(--ok-soft); color:var(--ok); }
+.job .actions { display:flex; flex-wrap:wrap; gap:8px; }
+/* the inbox is one list, not a pile of cards: rank comes from the type, and nothing is drawn down the left edge */
+#inboxList { gap:0; background:var(--surface); border:1px solid var(--line); border-radius:20px; box-shadow:var(--shadow-1); overflow:hidden; }
+#inboxList:empty { display:none; }
+.inbox-item { display:block; width:100%; padding:14px 16px; background:none; border:0; border-radius:0; text-align:left; }
+.inbox-item + .inbox-item { border-top:1px solid var(--line); }
+.inbox-item:focus-visible { outline-offset:-3px; }
+.inbox-item .top { display:flex; align-items:baseline; gap:12px; }
+.inbox-item .title { flex:1; min-width:0; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.inbox-item .top time { flex:none; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+.inbox-item .body { margin-top:3px; color:var(--muted); font-size:14px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.inbox-item.unread .title { font-weight:700; }
+.inbox-item.unread .title::after { content:''; display:inline-block; width:6px; height:6px; margin-left:7px; border-radius:50%; background:var(--accent); vertical-align:middle; }
+.inbox-item.unread .body { color:var(--text); }
+.inbox-item.unread time { color:var(--accent-ink); font-weight:600; }
+.inbox-item.open .body { display:block; }
+.inbox-item .sent { display:flex; align-items:center; gap:5px; margin-top:8px; font-size:12px; color:var(--muted); }
+.inbox-item .sent svg { width:13px; height:13px; color:var(--ok); }
+.inbox-item .sent.bad { color:var(--danger); }
+.inbox-item .sent.bad svg { color:var(--danger); }
+.channel { display:flex; flex-direction:column; gap:6px; background:var(--surface-2); border:1px solid transparent; border-radius:16px; padding:12px 14px; }
+.channel .ch-top { display:flex; align-items:center; gap:10px; }
+.channel .badge-t { width:36px; height:36px; border-radius:12px; background:var(--accent-soft); color:var(--accent-ink); display:inline-flex; align-items:center; justify-content:center; font-weight:700; flex:none; }
+.channel .ch-top b { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.channel .ch-meta { font-size:12px; color:var(--muted); overflow-wrap:anywhere; }
+.channel .ch-actions { display:flex; align-items:center; gap:8px; }
+.channel .res { display:block; font-size:12px; }
+.channel .res.bad { color:var(--danger); } .channel .res.good { color:var(--ok); }
+details.add { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:0 14px; margin-top:10px; }
+details.add summary { cursor:pointer; list-style:none; padding:12px 0; font-weight:600; color:var(--accent-ink); }
+details.add summary::-webkit-details-marker { display:none; }
+details.add .stack { padding-bottom:14px; }
+.empty-note { margin:4px 2px; }
+
+/* feature packages */
+.feature-row { display:flex; flex-direction:column; gap:8px; padding:12px; border-radius:16px; background:var(--surface-2); }
+.feature-info b { display:block; }
+.feature-info small { color:var(--muted); font-size:12px; }
+.hint.err { color:var(--danger); }
+#fpModal { position:fixed; inset:0; z-index:60; background:var(--shade); display:flex; }
+#fpModal .modal-card { background:var(--surface); width:100%; max-width:720px; margin:auto; height:min(92vh,900px); display:flex; flex-direction:column; overflow:hidden; border-radius:20px 20px 0 0; }
+#fpModal header { display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid var(--line); }
+#fpModal header b { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#fpModal iframe { flex:1; width:100%; border:0; background:var(--bg); }
+@media (min-width:720px) { #fpModal { padding:24px; } #fpModal .modal-card { border-radius:20px; } }
+
+/* settings */
+.section { background:var(--surface); border:1px solid var(--line); border-radius:20px; padding:16px; margin-bottom:12px; display:flex; flex-direction:column; gap:10px; box-shadow:var(--shadow); }
+.section h3 { margin:0; font-size:15px; }
+.hint { margin:0; font-size:13px; color:var(--muted); }
+.row { display:flex; gap:8px; align-items:center; }
+.row > .field { flex:1; }
+.bar { height:8px; border-radius:99px; background:var(--surface-2); overflow:hidden; }
+.bar i { display:block; height:100%; width:0; background:var(--accent); border-radius:99px; transition:width .3s; }
+.bar.warn i { background:var(--warn); } .bar.over i { background:var(--danger); }
+.big-n { font-size:26px; font-weight:700; }
+.big-n small { font-size:14px; font-weight:400; color:var(--muted); }
+#settingsMsg { min-height:20px; }
+select.field { appearance:none; background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%); background-position:calc(100% - 20px) 50%, calc(100% - 14px) 50%; background-size:6px 6px; background-repeat:no-repeat; padding-right:36px; }
+.stack { display:flex; flex-direction:column; gap:10px; }
+.keystate { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:14px; background:var(--ok-soft); color:var(--ok); font-weight:600; font-size:14px; }
+.keystate.none { background:var(--warn-soft); color:var(--warn); }
+.keystate code { font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--text); font-weight:400; opacity:.8; }
+.keystate .link { margin-left:auto; }
+.ext { display:flex; flex-direction:column; gap:8px; padding:10px 0; border-top:1px solid var(--line); }
+.ext:first-of-type { border-top:0; }
+.ext .head { display:flex; align-items:center; gap:8px; }
+.ext .head b { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.ext code { font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--muted); overflow-wrap:anywhere; }
+
+/* composer and tabs */
+#composer { display:flex; align-items:flex-end; gap:4px; margin:4px 12px 8px; padding:5px 5px 5px 6px; background:var(--surface); border:1px solid var(--line); border-radius:26px; box-shadow:var(--shadow); transition:border-color .15s, box-shadow .15s; }
+#composer textarea { font-size:16px; flex:1; min-width:0; border:0; background:none; resize:none; height:42px; max-height:160px; padding:10px 2px; line-height:22px; outline:0; }
+#composer:focus-within { border-color:var(--accent); box-shadow:var(--shadow), 0 0 0 3px var(--accent-soft); }
+#composer .send { width:42px; height:42px; border-radius:50%; background:var(--accent); color:var(--accent-text); display:inline-flex; align-items:center; justify-content:center; flex:none; transition:background-color .15s, color .15s, transform .12s var(--ease); }
+#composer .send:active { transform:scale(.94); }
+#composer.empty .send { background:var(--surface-3); color:var(--muted); }
+#composer .attach { width:40px; height:40px; border-radius:50%; color:var(--muted); display:inline-flex; align-items:center; justify-content:center; flex:none; }
+#attachRow { display:flex; flex-wrap:wrap; gap:6px; margin:6px 12px 0; }
+.file-chip { display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:5px 6px 5px 10px; border-radius:999px; background:var(--accent-soft); color:var(--accent-ink); font-size:13px; }
+.file-chip span.n { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px; }
+.file-chip small { opacity:.7; }
+.file-chip button { width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; color:inherit; }
+.file-chip svg { width:1em; height:1em; }
+nav { display:flex; border-top:1px solid var(--line); background:var(--surface); padding-bottom:env(safe-area-inset-bottom); }
+nav button { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 0 7px; font-size:12px; color:var(--muted); position:relative; }
+nav button.on { color:var(--accent); font-weight:600; }
+nav button svg { width:24px; height:24px; }
+.badge { position:absolute; top:3px; left:calc(50% + 6px); min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:var(--danger); color:var(--accent-text); font-size:11px; line-height:18px; text-align:center; }
+
+/* history drawer */
+#scrim { position:absolute; inset:0; background:var(--shade); opacity:0; pointer-events:none; transition:opacity .2s; z-index:3; }
+#scrim.on { opacity:1; pointer-events:auto; }
+#drawer { position:absolute; top:0; bottom:0; left:0; width:min(86%, 330px); background:var(--surface); z-index:4; transform:translateX(-102%); transition:transform .22s ease; display:flex; flex-direction:column; padding:calc(12px + env(safe-area-inset-top)) 0 calc(8px + env(safe-area-inset-bottom)); box-shadow:var(--shadow); }
+#drawer.open { transform:none; }
+.dhead { display:flex; align-items:center; gap:10px; padding:0 12px 12px 18px; }
+.dhead b { font-size:18px; margin-right:auto; }
+#newChat { margin:0 14px 12px; }
+#convList { list-style:none; margin:0; padding:0; flex:1; overflow-y:auto; scrollbar-gutter:stable; }
+.conv { position:relative; overflow:hidden; height:62px; transition:height .18s, opacity .18s; }
+.conv.gone { height:0; opacity:0; }
+.conv-main { position:relative; z-index:1; width:100%; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:flex-start; gap:2px; padding:0 18px; background:var(--surface); text-align:left; touch-action:pan-y; user-select:none; transition:transform .2s ease; }
+.conv.active .conv-main { background:var(--accent-soft); }
+.conv.open .conv-main { transform:translateX(-76px); }
+.conv-del { position:absolute; top:0; right:0; bottom:0; width:76px; background:var(--danger); color:var(--accent-text); display:flex; align-items:center; justify-content:center; }
+.conv-del svg { width:24px; height:24px; }
+.conv-del:focus-visible ~ .conv-main { transform:translateX(-76px); }
+.conv-main .ct { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; display:flex; align-items:center; gap:6px; }
+.conv-main .ct svg { width:1em; height:1em; color:var(--muted); }
+.conv-main .cs { color:var(--muted); font-size:12px; }
+.conv-tools { position:absolute; right:8px; top:50%; transform:translateY(-50%); display:none; gap:4px; z-index:2; }
+.conv-tool { width:32px; height:32px; border-radius:10px; display:inline-flex; align-items:center; justify-content:center; background:var(--surface-2); color:var(--muted); }
+.conv-tool svg { width:16px; height:16px; }
+.conv-tool.danger { color:var(--danger); }
+.conv-rename { position:absolute; inset:6px 8px; z-index:4; border:1px solid var(--accent); border-radius:12px; padding:0 12px; font:inherit; font-weight:600; background:var(--surface); }
+html.fine .conv:hover .conv-tools { display:flex; }
+html.fine .conv-del { display:none; }
+html.fine .conv-main { padding-right:92px; }
+#micBtn { width:40px; height:40px; border-radius:50%; color:var(--muted); display:inline-flex; align-items:center; justify-content:center; flex:none; }
+#micBtn.rec { color:var(--accent-text); background:var(--danger); animation:micpulse 1.2s ease-in-out infinite; }
+@keyframes micpulse { 50% { box-shadow:0 0 0 6px var(--danger-soft); } }
+.conv.empty-row { height:auto; padding:18px; color:var(--muted); font-size:14px; }
+#convMsg { padding:6px 18px; min-height:20px; color:var(--danger); }
+#drawerSpend { margin:4px 14px 0; padding:10px 12px; border-radius:14px; background:var(--surface-2); color:var(--muted); font-size:13px; text-align:left; }
+
+/* browser window */
+#browser { position:fixed; inset:0; background:var(--bg); display:flex; flex-direction:column; z-index:5; }
+#browser .top .btn { white-space:nowrap; }
+#browser .takeover-hint { margin:0; padding:10px 14px calc(8px); background:var(--warn-soft); color:var(--warn); font-weight:600; }
+#browser .top { display:flex; gap:8px; align-items:center; padding:calc(8px + env(safe-area-inset-top)) 10px 8px; }
+#browser .top form { flex:1; display:flex; gap:8px; min-width:0; }
+#stage { flex:1; min-height:0; position:relative; overflow:hidden; background:var(--stage); }
+#screen { touch-action:none; display:block; background:var(--canvas); position:absolute; left:0; top:0; transform-origin:0 0; outline:0; }
+#loadBar { height:3px; background:var(--surface-2); overflow:hidden; }
+#loadBar i { display:block; height:100%; width:40%; background:var(--accent); border-radius:99px; animation:loadslide 1.1s ease-in-out infinite; }
+@keyframes loadslide { from { transform:translateX(-100%); } to { transform:translateX(250%); } }
+#stageNote { position:absolute; left:0; right:0; top:40%; margin:auto; width:fit-content; max-width:80%; padding:10px 16px; border-radius:14px; background:var(--surface); color:var(--text); box-shadow:var(--shadow-pop); font-size:14px; font-weight:600; text-align:center; }
+#fieldHint { font-size:13px; }
+#fillRow.live #fill { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+#fillRow.live + .keys #backBtn { display:none; }
+#browser .tools { padding:8px 10px calc(8px + env(safe-area-inset-bottom)); display:flex; flex-direction:column; gap:8px; }
+#browser .tools .icon-btn { background:var(--surface); border:1px solid var(--line); border-radius:12px; width:44px; height:44px; color:var(--text); }
+#browser .tools .row.keys { justify-content:space-between; }
+@media (min-width: 900px) { #browser .tools { flex-direction:row; align-items:center; } #browser .tools .row:first-child { flex:1; } #browser .tools .row.keys { gap:8px; } #browser #handBack { width:auto; } }
+
+/* ---- motion and feedback ---- */
+body { -webkit-font-smoothing:antialiased; }
+.btn, .icon-btn, .link, nav button, .conv-main, .inbox-item, .check, .glance-item { transition:background-color .15s, color .15s, border-color .15s, box-shadow .15s, opacity .15s, filter .15s, transform .12s var(--ease); }
+.btn:disabled { opacity:.5; cursor:default; }
+html.fine .btn:hover:not(:disabled) { filter:brightness(.95); }
+html.fine .icon-btn:hover { background:var(--surface-2); color:var(--text); }
+html.fine .link:hover { text-decoration:underline; }
+html.fine .conv-main:hover { background:var(--surface-2); }
+html.fine .conv.active .conv-main:hover { background:var(--accent-soft); }
+html.fine .glance-item:hover { box-shadow:var(--shadow); }
+html.fine .inbox-item:hover { background:var(--surface-2); }
+html.fine .pad button:hover { border-color:var(--accent); }
+@keyframes rise { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+@keyframes fadein { from { opacity:0; } to { opacity:1; } }
+@keyframes pop { 40% { transform:scale(1.2); } }
+@keyframes shake { 20%,60% { transform:translateX(-7px); } 40%,80% { transform:translateX(7px); } }
+#feed > .in { animation:rise .32s var(--ease) both; }
+.view:not([hidden]) { animation:fadein .18s ease-out; }
+.dots.shake { animation:shake .36s; }
+.check.on { animation:pop .28s var(--ease); }
+.daymark { align-self:center; font-size:12px; color:var(--muted); padding-top:6px; }
+.bubble-row.user .fileline { color:inherit; opacity:.85; }
+#jump { position:absolute; left:0; right:0; bottom:12px; margin:auto; width:fit-content; z-index:1; height:36px; padding:0 14px 0 10px; border-radius:999px; background:var(--surface); border:1px solid var(--line); box-shadow:var(--shadow); display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; color:var(--accent-ink); animation:rise .2s var(--ease); }
+#jump svg { width:16px; height:16px; }
+#offline { position:absolute; top:8px; left:0; right:0; margin:auto; width:fit-content; z-index:2; padding:7px 14px; border-radius:999px; background:var(--warn-soft); color:var(--warn); font-size:13px; font-weight:600; box-shadow:var(--shadow-1); }
+#toast { position:fixed; left:0; right:0; margin:auto; width:fit-content; max-width:min(88vw,420px); bottom:calc(96px + env(safe-area-inset-bottom)); z-index:70; padding:10px 16px; border-radius:14px; background:var(--text); color:var(--bg); font-size:14px; font-weight:600; box-shadow:var(--shadow-pop); animation:rise .22s var(--ease); }
+#toast.bad { background:var(--danger); color:var(--accent-text); }
+
+/* ---- clerk: a to-do list that reads like a list ---- */
+.sect-head h3 { font-size:13px; font-weight:600; color:var(--muted); letter-spacing:.02em; }
+#draftList { display:flex; flex-direction:column; gap:10px; }
+#todoList { background:var(--surface); border:1px solid var(--line); border-radius:20px; box-shadow:var(--shadow-1); overflow:hidden; }
+#todoList:empty { display:none; }
+.trow { display:flex; align-items:center; gap:12px; padding:12px 8px 12px 14px; }
+.trow + .trow { border-top:1px solid var(--line); }
+.trow .check { margin:0; }
+.trow .tbody { flex:1; min-width:0; }
+.trow .tt { font-weight:600; overflow-wrap:anywhere; }
+.trow .meta { font-size:13px; color:var(--muted); overflow-wrap:anywhere; }
+.trow.finished .tt { text-decoration:line-through; color:var(--muted); font-weight:400; }
+.trow .rm { opacity:.6; }
+.job .actions .btn { flex:1; min-height:38px; font-size:14px; padding:0 12px; }
+
+/* ---- settings ---- */
+.section h3 { display:flex; align-items:center; gap:8px; }
+.section h3 svg { width:18px; height:18px; color:var(--accent-ink); }
+.mem-row { display:flex; align-items:center; gap:10px; padding:8px 4px 8px 12px; border-radius:14px; background:var(--surface-2); font-size:14px; }
+.mem-row .tbody { flex:1; min-width:0; overflow-wrap:anywhere; }
+.mem-row .mini { background:var(--accent-soft); color:var(--accent-ink); flex:none; }
+.mem-row .rm { opacity:.6; width:36px; height:36px; }
+.sect-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.switch { position:relative; width:48px; height:28px; border-radius:999px; background:var(--surface-3); flex:none; transition:background-color .2s; }
+.switch::after { content:''; position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:50%; background:var(--canvas); box-shadow:var(--shadow-1); transition:transform .2s var(--ease); }
+.switch[aria-checked=true] { background:var(--accent); }
+.switch[aria-checked=true]::after { transform:translateX(20px); }
+.seg { display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:4px; padding:4px; border-radius:14px; background:var(--surface-2); }
+.seg button { min-height:36px; border-radius:10px; font-size:14px; font-weight:600; color:var(--muted); transition:background-color .15s, color .15s; }
+.seg button.on { background:var(--surface); color:var(--text); box-shadow:var(--shadow-1); }
+
+/* ---- feature packages on the page ---- */
+.plugin-widget { display:block; border:0; max-width:100%; background:transparent; }
+.slot:empty { display:none; }
+.slot { display:flex; flex-direction:column; align-items:center; gap:10px; width:100%; margin:8px 0; }
+
+/* ---- tabs and history ---- */
+nav button span:first-child { display:inline-flex; padding:3px 18px; border-radius:999px; transition:background-color .2s; }
+nav button.on span:first-child { background:var(--accent-soft); }
+.conv { margin:0 8px 2px; border-radius:14px; }
+.conv-del { top:1px; bottom:1px; right:1px; border-radius:0 13px 13px 0; }
+.card .actions .btn { padding:0 10px; font-size:15px; }
+
+/* ---- a wide screen gets a sidebar instead of a phone in the middle ---- */
+@media (min-width:1000px) {
+  #app { max-width:none; display:grid; grid-template-columns:300px minmax(0,1fr); grid-template-rows:auto minmax(0,1fr) auto auto auto; }
+  #app > nav { grid-column:1; grid-row:1; border-top:0; border-right:1px solid var(--line); padding:10px 10px 6px; gap:4px; }
+  #app > nav button { flex-direction:row; justify-content:center; gap:6px; padding:9px 0; border-radius:12px; font-size:13px; }
+  #app > nav button span:first-child { padding:0; background:none; }
+  #app > nav button.on { background:var(--accent-soft); }
+  #app > nav button svg { width:18px; height:18px; }
+  #app > nav .badge { position:static; }
+  #drawer { position:static; grid-column:1; grid-row:2 / -1; width:auto; transform:none; transition:none; box-shadow:none; border-right:1px solid var(--line); padding-top:8px; z-index:auto; }
+  #scrim, .dhead { display:none; }
+  #app > header { grid-column:2; grid-row:1; }
+  #app > main { grid-column:2; grid-row:2; }
+  #banner { grid-column:2; grid-row:3; }
+  #attachRow { grid-column:2; grid-row:4; }
+  #composer { grid-column:2; grid-row:5; margin-bottom:20px; }
+  #banner, #attachRow, #composer { width:min(760px, calc(100% - 48px)); margin-left:auto; margin-right:auto; }
+  .view { padding-left:max(24px, calc((100% - 760px) / 2)); padding-right:max(24px, calc((100% - 760px) / 2)); }
+  .orb-btn { left:316px; pointer-events:none; }
+  #app.hero .orb-btn { left:calc(300px + (100% - 300px) / 2 - var(--hd, 132px) / 2); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #feed > .in, .view, .dots.shake, .check.on, #toast, #jump { animation:none !important; }
+}
+</style>
+</head>
+<body>
+<section id="login" hidden>
+  <span class="orb big" data-orb data-state="nap"></span>
+  <p class="sub" data-t="loginSub"></p>
+  <div class="dots" id="dots"><i></i><i></i><i></i><i></i></div>
+  <div id="loginMsg" role="status"></div>
+  <div class="pad" id="pad"></div>
+</section>
+
+<section id="app" class="hero" hidden>
+  <button class="orb-btn" id="orbBtn" data-al="menu"><span class="orb" id="hOrb" data-orb data-state="nap"></span></button>
+  <header>
+    <span></span>
+    <div class="title" id="title"></div>
+    <div class="right" id="slotHeader"></div>
+  </header>
+  <main>
+    <div class="view" id="viewChat">
+      <div id="welcome">
+        <h1 id="greet"></h1>
+        <span class="s" data-t="welcomeSub"></span>
+        <div id="glance" hidden></div>
+        <div class="slot" id="slotHome"></div>
+      </div>
+      <div id="feed" aria-live="polite"></div>
+    </div>
+    <div class="view" id="viewClerk" hidden>
+      <div class="slot" id="slotClerk"></div>
+      <div id="draftBox" hidden>
+        <div class="sect-head" id="draftsHead"><h3 data-t="draftsTitle"></h3></div>
+        <div id="draftList"></div>
+      </div>
+      <div class="sect-head" id="todosHead"><h3 data-t="todosTitle"></h3></div>
+      <div id="todoList"></div>
+      <p class="hint empty-note" id="todoEmpty" data-t="todosEmpty" hidden></p>
+      <div class="sect-head" id="jobsHead"><h3 data-t="jobsTitle"></h3></div>
+      <div id="jobList"></div>
+      <p class="hint empty-note" id="jobEmpty" data-t="jobsEmpty" hidden></p>
+      <div class="sect-head" id="inboxHead"><h3 data-t="inboxTitle"></h3><button class="link" id="markRead" data-t="markRead"></button></div>
+      <div id="inboxList"></div>
+    </div>
+    <div class="view" id="viewSettings" hidden>
+      <div class="slot" id="slotSettings"></div>
+      <div class="section">
+        <h3 data-i="moon" data-t="themeTitle"></h3>
+        <div class="seg" id="themeSeg"></div>
+      </div>
+      <div class="section">
+        <h3 data-i="globe" data-t="langTitle"></h3>
+        <select class="field" id="langSel" data-al="langTitle"></select>
+      </div>
+      <div class="section">
+        <h3 data-i="chat" data-t="channelsTitle"></h3>
+        <div id="channelList" class="stack"></div>
+        <details class="add" id="addChannel">
+          <summary data-t="addChannel"></summary>
+          <div class="stack">
+            <select class="field" id="chType" data-al="chType"></select>
+            <p class="hint" id="chHelp"></p>
+            <div class="stack" id="wxLoginBox" hidden>
+              <p class="hint" id="wxLoginMsg"></p>
+              <img id="wxLoginQr" alt="" hidden style="width:220px;height:220px;align-self:center;border-radius:16px;background:var(--canvas)">
+              <button class="btn block" id="wxLoginBtn" data-t="wxLoginBtn"></button>
+            </div>
+            <input class="field" id="chName" autocomplete="off" data-ph="chName" data-al="chName">
+            <input class="field" id="chWebhook" inputmode="url" autocapitalize="off" autocomplete="off" data-ph="chWebhook" data-al="chWebhook">
+            <input class="field" id="chSecret" type="password" autocomplete="off" data-ph="chSecret" data-al="chSecret">
+            <input class="field" id="chToken" type="password" autocomplete="off" data-ph="chToken" data-al="chToken" hidden>
+            <input class="field" id="chChat" autocapitalize="off" autocomplete="off" data-ph="chChat" data-al="chChat" hidden>
+            <button class="btn primary block" id="saveChannel" data-t="save"></button>
+            <p class="hint" id="chMsg" role="status"></p>
+          </div>
+        </details>
+      </div>
+      <div class="section">
+        <h3 data-i="box" data-t="featuresTitle"></h3>
+        <p class="hint" data-t="featuresHint"></p>
+        <div id="featureList" class="stack"></div>
+      </div>
+      <div class="section">
+        <h3 data-i="bookmark" data-t="memoryTitle"></h3>
+        <p class="hint" data-t="memoryHint"></p>
+        <div id="memoryList" class="stack"></div>
+        <p class="hint" id="memoryInsights" hidden></p>
+        <div class="row"><button class="btn" id="memoryDream" data-t="memoryDreamNow"></button><span class="hint" id="memoryLastDream"></span></div>
+        <p class="hint" id="memoryMsg" role="status"></p>
+      </div>
+      <div class="section">
+        <div class="sect-row"><h3 data-i="heart" data-t="proactiveTitle"></h3><button class="switch" type="button" id="toggleProactive" role="switch" aria-checked="false" data-al="proactiveTitle"></button></div>
+        <p class="hint" data-t="proactiveHint"></p>
+        <label class="hint" for="proactiveLevel" data-t="proactiveLevel"></label>
+        <input type="range" id="proactiveLevel" min="0" max="1" step="0.05" style="width:100%;accent-color:var(--accent)">
+        <div class="row" style="justify-content:space-between"><span class="mini" data-t="levelReserved"></span><span class="mini" data-t="levelBalanced"></span><span class="mini" data-t="levelActive"></span><span class="mini" data-t="levelClingy"></span></div>
+        <p class="hint" id="proactiveLevelText"></p>
+        <div class="row"><input class="field" id="proactiveTimes" placeholder="09:00, 18:30" autocapitalize="off" autocomplete="off"><button class="btn" id="saveProactive" data-t="save"></button></div>
+        <div class="row"><button class="btn" id="proactiveNow" data-t="proactiveNow"></button></div>
+        <p class="hint" id="proactiveMsg" role="status"></p>
+      </div>
+      <div class="section">
+        <h3 data-i="phone" data-t="pushTitle"></h3>
+        <div class="keystate none" id="pushState"></div>
+        <p class="hint" id="pushHint" data-t="pushHint"></p>
+        <label class="hint" for="pushChatMode" data-t="pushChatTitle"></label>
+        <select class="field" id="pushChatMode"></select>
+        <p class="hint" data-t="pushChatHint"></p>
+        <p class="hint" id="pushLast"></p>
+        <p class="hint" id="pushDiag" hidden></p>
+        <div class="row">
+          <button class="btn primary" id="pushEnable" data-t="pushEnable"></button>
+          <button class="btn" id="pushTest" data-t="pushTest" hidden></button>
+        </div>
+      </div>
+      <div class="section">
+        <h3 data-i="clock" data-t="zoneTitle"></h3>
+        <div class="row">
+          <input class="field" id="zone" list="cityZones" autocapitalize="off" autocomplete="off" aria-label="Time zone" placeholder="Beijing / Shanghai / Asia/Shanghai">
+          <datalist id="cityZones">
+            <option value="北京 (Asia/Shanghai)">
+            <option value="上海 (Asia/Shanghai)">
+            <option value="深圳 (Asia/Shanghai)">
+            <option value="广州 (Asia/Shanghai)">
+            <option value="香港 (Asia/Hong_Kong)">
+            <option value="台北 (Asia/Taipei)">
+            <option value="新加坡 (Asia/Singapore)">
+            <option value="东京 (Asia/Tokyo)">
+            <option value="首尔 (Asia/Seoul)">
+            <option value="悉尼 (Australia/Sydney)">
+            <option value="伦敦 (Europe/London)">
+            <option value="巴黎 (Europe/Paris)">
+            <option value="柏林 (Europe/Berlin)">
+            <option value="纽约 (America/New_York)">
+            <option value="洛杉矶 (America/Los_Angeles)">
+            <option value="旧金山 (America/Los_Angeles)">
+            <option value="西雅图 (America/Los_Angeles)">
+            <option value="多伦多 (America/Toronto)">
+            <option value="温哥华 (America/Vancouver)">
+            <option value="迪拜 (Asia/Dubai)">
+            <option value="UTC">
+          </datalist>
+          <button class="btn" id="saveZone" data-t="save"></button>
+        </div>
+        <p class="hint" id="zoneMsg" role="status"></p>
+      </div>
+      <div class="section">
+        <h3 data-i="cpu" data-t="modelTitle"></h3>
+        
+        <label class="hint" for="providerSel" data-t="providerLabel"></label>
+        <select class="field" id="providerSel"></select>
+
+        <div class="row" style="margin-top:10px;justify-content:space-between;align-items:center">
+          <label class="hint" for="modelSel" data-t="modelLabel" style="margin:0"></label>
+          <button class="link mini" id="toggleCustomModel" type="button" data-t="manualModel"></button>
+        </div>
+        <select class="field" id="modelSel"></select>
+        <input class="field" id="customModelInput" placeholder="输入模型名称 (如 deepseek-chat)" autocomplete="off" hidden>
+
+        <div id="endpointGroup" style="margin-top:10px">
+          <div class="row" style="justify-content:space-between;align-items:center">
+            <label class="hint" for="cEndpoint" data-t="endpointLabel" style="margin:0"></label>
+            <button class="link mini" id="resetEndpoint" type="button" data-t="resetDefault"></button>
+          </div>
+          <input class="field" id="cEndpoint" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="https://api.deepseek.com/v1">
+        </div>
+
+        <div style="margin-top:10px">
+          <label class="hint" data-t="keyLabel" style="margin:0"></label>
+          <div class="keystate" id="keyState"></div>
+          <input class="field" id="key" type="password" autocomplete="off" placeholder="粘贴 API Key (留空保持已存密钥)">
+        </div>
+
+        <button class="btn primary block" id="saveModel" data-t="save" style="margin-top:14px"></button>
+      </div>
+      <div class="section">
+        <h3 data-i="wallet" data-t="capTitle"></h3>
+        <div class="big-n" id="spentBig"></div>
+        <div class="bar" id="capBar"><i></i></div>
+        <p class="hint" data-t="capLabel"></p>
+        <div class="row"><input class="field" id="cap" type="number" inputmode="decimal" min="0.01" step="0.5" aria-label="Monthly limit"><button class="btn" id="saveCap" data-t="save"></button></div>
+      </div>
+      <div class="section">
+        <h3 data-i="terminal" data-t="extTitle"></h3>
+        <p class="hint" data-t="extHint"></p>
+        <div id="extList"></div>
+        <p class="hint" id="extEmpty" data-t="extEmpty"></p>
+      </div>
+      <p class="hint" id="settingsMsg" role="status"></p>
+      <p class="hint" id="buildInfo"></p>
+      <div class="section">
+        <h3 data-i="lock" data-t="pinTitle"></h3>
+        <p class="hint" data-t="pinHint"></p>
+        <button class="btn danger block" id="logout" data-t="logout"></button>
+      </div>
+    </div>
+    <button id="jump" type="button" data-i="down" data-t="jumpLatest" hidden></button>
+    <div id="offline" role="status" data-t="offline" hidden></div>
+  </main>
+  <button id="banner" hidden></button>
+  <div id="attachRow" hidden></div>
+  <form id="composer" class="empty">
+    <button type="button" class="attach" id="attachBtn" data-al="attach" data-i="clip"></button>
+    <textarea id="text" rows="1" autocomplete="off" enterkeyhint="send" data-ph="placeholder" aria-label="Message"></textarea>
+    <button type="button" class="mic" id="micBtn" data-al="voiceInput" data-i="mic"></button>
+    <button class="send" data-al="send" data-i="send"></button>
+  </form>
+  <div id="fpModal" hidden>
+    <div class="modal-card">
+      <header><b id="fpTitle"></b><button class="icon-btn" id="fpClose" aria-label="close" data-i="cross"></button></header>
+      <iframe id="fpFrame" title="feature" sandbox="allow-scripts allow-forms" src="about:blank"></iframe>
+    </div>
+  </div>
+  <input type="file" id="filePick" multiple hidden accept=".txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.log,.xml,.html,.htm,.yaml,.yml,.ini,.sql,text/*">
+  <nav>
+    <button class="on" data-view="chat"><span data-i="chat"></span><span data-t="tabChat"></span></button>
+    <button data-view="clerk"><span data-i="clock"></span><span data-t="tabClerk"></span><span class="badge" id="badge" hidden></span></button>
+    <button data-view="settings"><span data-i="sliders"></span><span data-t="tabSettings"></span></button>
+  </nav>
+
+  <div id="scrim"></div>
+  <aside id="drawer" aria-label="History">
+    <div class="dhead"><b data-t="history"></b><button class="icon-btn" id="closeDrawer" data-al="close" data-i="cross"></button></div>
+    <button class="btn primary" id="newChat" data-i="plus" data-t="newChat"></button>
+    <ul id="convList"></ul>
+    <p class="hint" id="convMsg" role="status"></p>
+    <button id="drawerSpend"></button>
+  </aside>
+</section>
+
+<div id="toast" role="status" hidden></div>
+
+<section id="browser" hidden>
+  <p class="hint takeover-hint" id="takeoverHint" hidden></p>
+  <div class="top">
+    <button class="icon-btn" id="closeBrowser" data-al="close" data-i="cross"></button>
+    <form id="navForm"><input class="field" id="url" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="https://" aria-label="URL"><button class="btn" id="goBtn" data-t="go" hidden></button></form>
+    <button class="icon-btn" id="reloadBtn" data-al="reload" data-i="reload"></button>
+  </div>
+  <div id="loadBar" hidden><i></i></div>
+  <div id="stage"><canvas id="screen" tabindex="0"></canvas><div id="stageNote" role="status" hidden></div></div>
+  <div class="tools">
+    <p class="hint" id="fieldHint"></p>
+    <div class="row" id="fillRow"><input class="field" id="fill" autocomplete="off" autocapitalize="off" data-ph="fillPh" aria-label="Text to fill"><button class="icon-btn" id="togglePw" data-al="toggle" data-i="eye"></button><button class="btn primary" id="fillBtn" data-t="fill"></button></div>
+    <div class="row keys">
+      <button class="icon-btn" id="pageBack" data-al="pageBack" data-i="back"></button>
+      <button class="icon-btn" id="scrollUp" data-al="up" data-i="up"></button>
+      <button class="icon-btn" id="scrollDown" data-al="down" data-i="down"></button>
+      <button class="icon-btn" id="backBtn" data-al="backspace" data-i="backspace"></button>
+      <button class="icon-btn" id="enterBtn" data-al="enter" data-i="enter"></button>
+      <button class="icon-btn" id="modeBtn" data-al="desktopSite" data-i="monitor" hidden></button>
+      <button class="icon-btn" id="saveShot" data-al="saveShot" data-i="download"></button>
+      <button class="icon-btn" id="fitBtn" data-al="fit" data-i="fit" hidden></button>
+    </div>
+    <button class="btn primary block" id="handBack" data-t="handBack" hidden></button>
+  </div>
+</section>
+
+<script>
+// Languages: every string below is a list in the same order as LANGS. Add a language by adding its code
+// and one more entry to each list; anything missing falls back to English.
+const LANGS = [{ code: 'zh', label: '简体中文' }, { code: 'en', label: 'English' }]
+const savedLang = localStorage.getItem('bobbot.lang') || 'auto'
+const lang = savedLang === 'auto' ? (navigator.language.startsWith('zh') ? 'zh' : 'en') : savedLang
+const langIndex = Math.max(0, LANGS.findIndex(l => l.code === lang))
+const zh = lang === 'zh'
+const I18N = {
+  greetNight:['夜深了','Up late'], greetMorning:['早上好','Good morning'], greetNoon:['中午好','Good afternoon'], greetAfternoon:['下午好','Good afternoon'], greetEvening:['晚上好','Good evening'],
+  glanceDrafts:['待你批准','to approve'], glanceNeeds:['需要你处理','need you'], glanceTodos:['待办','to-dos'], glanceUnread:['未读','unread'],
+  jumpLatest:['最新消息','Latest'], offline:['连接中断，正在重连…','Connection lost. Reconnecting…'], yesterday:['昨天','Yesterday'],
+  themeTitle:['外观','Appearance'], theme_auto:['跟随系统','System'], theme_light:['浅色','Light'], theme_dark:['深色','Dark'],
+  actClick:['点击「{n}」','Click "{n}"'], actTypeEnter:['输入「{n}」并回车','Enter "{n}" and press Enter'], actPressEnter:['在此页面按回车','Press Enter on this page'],
+  pagePrefix:['页面：','Page: '], textPrefix:['文字：','Text: '],
+  draftDone:['已按草稿执行','Done as drafted'], draftFailed:['没能执行，详情在收件箱','Could not finish. See the inbox'], draftDiscarded:['草稿已放弃','Draft discarded'],
+  ch_webpush:['手机通知','Phone notifications'],
+  loginSub:['输入 PIN 进入','Enter your PIN'], welcomeSub:['今天想让我做点什么？','What can I do for you today?'],
+  tabChat:['对话','Chat'], tabClerk:['文员','Clerk'], tabSettings:['设置','Settings'],
+  clerkTitle:['文员','Clerk'], settingsTitle:['设置','Settings'],
+  stateNap:['休息中','Napping'], stateThink:['思考中…','Thinking…'], stateSpeak:['回复中','Replying'], stateWait:['等你确认','Waiting for you'],
+  menu:['历史对话','History'], history:['历史对话','History'], newChat:['新对话','New chat'], noChats:['还没有对话','No chats yet'],
+  delChat:['删除对话','Delete chat'], renameChat:['重命名','Rename'], voiceInput:['语音输入','Voice input'], micDenied:['无法使用麦克风，请检查权限','Cannot use the microphone; check permissions'], cantDelete:['Bob 正在这个对话里工作，暂时不能删除','Bob is working in this chat, so it can\'t be deleted yet'],
+  busyOther:['Bob 正在另一个对话里工作，请稍后再试','Bob is busy in another chat. Try again in a moment'], spendLabel:['本月花费','This month'],
+  needsYouIn:['Bob 在「{n}」里需要你','Bob needs you in "{n}"'],
+  browser:['浏览器','Browser'], send:['发送','Send'], placeholder:['发送消息给 Bob…','Message Bob…'], close:['关闭','Close'],
+  // clerk
+  jobsTitle:['定时任务','Scheduled'], todosTitle:['待办','To-dos'], markDone:['标为完成','Mark done'], undo:['撤销完成','Undo'],
+  jobsEmpty:['还没有定时任务。对 Bob 说「每天早上 8 点看看天气」试试。','No scheduled jobs yet. Tell Bob "every morning at 8, check the weather".'],
+  todosEmpty:['还没有待办。对 Bob 说「提醒我有个会」试试。','No to-dos yet. Tell Bob "remind me about the meeting".'],
+  tagSaved:['已添加','Added'], kindTodo:['待办','To-do'], tagDone:['已完成','Done'],
+  whenLabel:['时间','When'], noteLabel:['备注','Note'], repeatLabel:['重复','Repeats'], nextLabel:['下次','Next'],
+  sendLabel:['发送到','Sends to'], appInbox:['应用内','This app'], firstAtLabel:['首次','First'],
+  langTitle:['语言','Language'], langAuto:['跟随系统','Automatic'],
+  today:['今天','Today'], tomorrow:['明天','Tomorrow'], dayAfter:['后天','In two days'],
+  cancel:['取消','Cancel'], confirm:['确认','Confirm'], confirmAdd:['确认添加','Add it'], confirmDeleteBtn:['确认删除','Delete'], askDelete:['删除','Delete'], askPause:['暂停','Pause'], askResume:['恢复','Resume'],
+  firstAt:['首次 {n}','First {n}'], alsoTo:['同时发到 {n}','Also to {n}'],
+  inboxSent:['已发送至 {n}','Sent to {n}'], inboxNotSent:['未送达','not delivered'],
+  inboxTitle:['收件箱','Inbox'], inboxEmpty:['提醒和任务结果会出现在这里。','Reminders and task results show up here.'], markRead:['全部已读','Mark all read'],
+  channelsTitle:['消息渠道','Channels'], channelsHint:['提醒和结果除了应用内，还可以发到这些渠道。密钥只保存在服务器上。','Reminders and results can also go to these channels. Secrets stay on the server.'],
+  addChannel:['添加渠道','Add a channel'], zoneTitle:['时区','Time zone'],
+  kindTask:['任务','Task'], kindReminder:['提醒','Reminder'], nextRun:['下次：{n}','Next: {n}'], paused:['已暂停','Paused'], neverRun:['还没运行过','Not run yet'],
+  runNow:['立即运行','Run now'], sendNow:['立即发送','Send now'], pause:['暂停','Pause'], resume:['恢复','Resume'], remove:['移除','Remove'], del:['删除','Del'],
+  openRun:['查看过程','See the run'], openClerk:['去文员查看','Open in Clerk'], running:['运行中…','Running…'], inboxTo:['发送到：','Sent to: '],
+  confirmDelete:['确定删除「{n}」？','Delete "{n}"?'], toApp:['应用内','This app'],
+  lastOk:['上次：','Last: '], lastFailed:['上次失败：','Last failed: '], lastMissed:['上次错过：','Last missed: '],
+  lastPartial:['上次部分完成：','Partly done: '], lastNeedsYou:['上次需要你：','Needed you: '],
+  assistBtn:['去处理','Sort it out'], runsTitle:['运行记录','Run history'],
+  draftsTitle:['待批草稿','Waiting for approval'], tagDraft:['草稿','Draft'], draftApprove:['批准并执行','Approve and run'], draftReject:['放弃','Discard'], draftBusy:['Bob 正在忙，请稍后再批准。','Bob is busy. Approve this in a moment.'],
+  lastDrafted:['上次待批准：','Waiting for approval: '], run_drafted:['待批准','Waiting'], runTrial:['试运行','Trial'],
+  saveRoutine:['存为日常任务','Save as a routine'], saveRoutinePrompt:['把刚才做成功的步骤存为日常任务。','Save the steps that just worked as a routine.'],
+  routineCheck:['校验','Check'], routineSteps:['步骤','Steps'], routineMissing:['缺数据时','If data is missing'], trialRunning:['正在试运行，结果会进收件箱。启用前不会定时运行。','Trial run in progress. The result goes to your inbox, and nothing is scheduled until you turn it on.'], trialDone:['试运行结束。看过结果后再启用定时。','Trial finished. Turn it on once the result looks right.'], enableRoutine:['启用定时','Turn on'],
+  run_ok:['完成','Done'], run_partial:['部分完成','Partly done'], run_needs_you:['需要你','Needed you'], run_failed:['失败','Failed'], run_missed:['错过','Missed'],
+  ch_wechat:['微信（官方 iLink）','WeChat (official iLink)'],
+  featuresTitle:['功能扩展','Features'], featuresHint:['Bob 可以给自己加功能：页面上的小部件、新工具、样式或设置面板。新功能先试用几分钟，你点「保留」才留下，否则自动撤销。功能代码在隔离环境里运行，碰不到密钥和登录。','Bob can add to himself: widgets on the page, new tools, styling or a settings panel. A new feature is on trial for a few minutes and stays only if you press Keep. Feature code runs isolated, away from keys and logins.'],
+  trialTitle:['试用中','On trial'], trialKeep:['保留','Keep'], trialUndo:['撤销','Undo'], trialKept:['已保留「{n}」','Kept "{n}"'], trialUndone:['已撤销「{n}」','Undid "{n}"'], trialTimeout:['没有确认，已自动撤销「{n}」','No answer, so "{n}" was undone'], trialCrashed:['「{n}」出错了，已自动撤销','"{n}" broke and was undone'],
+  featuresRestore:['换回上一版','Previous version'], featuresOnPage:['页面部件 {n} 个','{n} on the page'],
+  featuresEmpty:['还没有安装功能包。','No feature packages installed yet.'], featuresOpen:['打开','Open'], featuresFailed:['加载失败','failed to load'],
+  memoryTitle:['记忆','Memory'], memoryHint:['Bob 在夜里会把最近的对话整理成对你的长期记忆；你可以在谈话里让他记住或忘掉事情。','At night Bob folds recent chats into durable memory. You can ask him to remember or forget things in chat.'],
+  memoryEmpty:['还没有记忆。','Nothing remembered yet.'], mem_fact:['事实','Fact'], mem_preference:['偏好','Preference'], mem_pattern:['习惯','Pattern'], mem_open_loop:['待跟进','Follow up'], memoryDreamNow:['现在整理想一次','Dream now'],
+  memoryLastDream:['上次整理：{n}','Last dream: {n}'], memoryDreamed:['整理完成：新增 {n} 条','Done: {n} new memories'],
+  memoryDreamFailed:['整理失败：{n}','Dream failed: {n}'], memoryInsights:['最近观察','Recent observations'],
+  proactiveTitle:['主动关心','Check-ins'],
+  proactiveHint:['在设定的时间，以及主动性档位增加的时间点，Bob 会看一眼你的待办和任务，只有确实值得提醒时才开口；高冷每天最多 1 条，粘人最多 4 条，22:00–08:00 不打扰。','At your set times, plus extra moments at higher levels, Bob checks your to-dos and tasks and speaks only when it is worth it: from 1 message a day (Reserved) to 4 (Clingy), never between 22:00 and 08:00.'],
+  proactiveOff:['已关闭','Off'], proactiveOn:['已开启','On'], proactiveNow:['现在试一次','Try now'],
+  proactiveLevel:['主动性','Proactivity'], levelReserved:['高冷','Reserved'], levelBalanced:['得体','Balanced'], levelActive:['积极','Active'], levelClingy:['粘人','Clingy'],
+  proactiveSent:['已经发了一条主动消息，去对话或收件箱看看。','Sent a check-in; see the chat or inbox.'],
+  proactiveSilent:['这次没有值得打扰你的内容。','Nothing worth interrupting you this time.'],
+  proactiveSkip:['暂时跳过：{n}','Skipped: {n}'],
+  pushTitle:['手机通知','Phone notifications'],
+  pushHint:['把本站添加到主屏幕后，可以从桌面像 App 一样打开；提醒由系统推送，Safari 关掉也能收到。','Add this site to the Home Screen and open it from there; reminders arrive as system notifications even when Safari is closed.'],
+  pushIosHint:['iPhone（iOS 16.4+）：用 Safari 打开 → 分享 → 添加到主屏幕 → 从桌面图标打开，再点“启用通知”。','iPhone (iOS 16.4+): open in Safari → Share → Add to Home Screen → open from the icon → tap Enable.'],
+  pushChatTitle:['聊天里的任务做完时通知我','Notify me when a chat task is done'], pushChatHint:['只在你没有看着 Bob 的时候才通知，内容是他最后说的话。','Only when you are not looking at Bob. The message is the last thing he said.'],
+  chat_long:['耗时较长或步骤较多的任务（推荐）','Long or multi-step tasks (recommended)'], chat_always:['每次回复都通知','Every reply'], chat_off:['不通知','Never'],
+  pushLastOk:['最近一次推送：{n} · 已送达推送服务','Last push: {n} · accepted by the push service'], pushLastBad:['最近一次推送：{n} · 失败：{m}','Last push: {n} · failed: {m}'],
+  pushEnable:['启用通知','Enable notifications'], pushTest:['发送测试通知','Send a test'],
+  pushDiag:['运行方式：{m} · 通知权限：{p}','Mode: {m} · Permission: {p}'],
+  pushModeApp:['主屏 App','Home Screen app'], pushModeTab:['浏览器标签','Browser tab'],
+  pushPermDefault:['未请求','Not asked'], pushPermGranted:['已允许','Allowed'], pushPermDenied:['已拒绝','Denied'],
+  pushGrantedNotSubscribed:['通知权限已允许，点「启用通知」完成订阅。','Notifications are allowed; tap Enable to finish subscribing.'],
+  pushPromptBlocked:['系统没有弹出通知询问。请从主屏幕图标重新打开 Bob 再试；仍然没有的话，去 iOS 设置 → 通知 里看 Bob 是否出现。','iOS did not show the notification prompt. Reopen Bob from its Home Screen icon and retry; if it still does not appear, check Settings → Notifications for Bob.'],
+  pushOn:['已开启，{n} 台设备已订阅','On, {n} device(s) subscribed'], pushOff:['尚未开启','Not enabled yet'],
+  pushDenied:['通知权限被拒绝，请在系统设置 → 通知 → Bob 中允许','Notifications are blocked; allow them in Settings → Notifications → Bob'],
+  pushUnsupported:['这个浏览器不能发通知，或需要先从主屏幕图标打开','This browser cannot show notifications, or the app must be opened from the Home Screen'],
+  wxLoginBtn:['生成登录二维码','Generate login code'], wxRefresh:['重新生成二维码','New code'], wxWorking:['正在生成…','Generating…'],
+  wxNotLogged:['微信桥还没有登录。','The WeChat bridge is not signed in yet.'],
+  wxScanHint:['用手机微信扫码并确认授权，成功后这里会自动变成已登录。','Scan with WeChat and confirm; this switches to signed in automatically.'],
+  wxConnected:['已登录：{n}','Signed in: {n}'], wxLoginFailed:['生成失败：{n}','Could not generate a code: {n}'],
+  help_wechat:['通过官方微信桥发送；第一次需要扫码登录，之后默认发给扫码的人。','Sends through the official WeChat bridge. Sign in with a QR code once; later messages go to the person who scanned it.'],
+  ch_lark:['飞书 / Lark 群机器人','Lark / Feishu group bot'], ch_wecom:['企业微信群机器人','WeCom group bot'], ch_telegram:['Telegram 机器人','Telegram bot'], ch_discord:['Discord Webhook','Discord webhook'],
+  help_lark:['群设置 → 机器人 → 添加自定义机器人，复制 Webhook 地址；如开启了签名校验，再填签名密钥。','In the group: Settings → Bots → Add custom bot. Copy its webhook; add the signing secret if you turned signing on.'],
+  help_wecom:['在群里添加群机器人，复制 Webhook 地址。个人微信没有官方机器人接口，暂不支持。','Add a group bot in the group and copy its webhook. Personal WeChat has no official bot API, so it is not supported.'],
+  help_telegram:['用 @BotFather 建一个机器人，先给它发一条消息，再粘贴令牌。中国大陆的服务器无法访问 Telegram。','Create a bot with @BotFather, send it a message, then paste its token. Servers in mainland China cannot reach Telegram.'],
+  help_discord:['频道设置 → 整合 → Webhook，复制地址。中国大陆的服务器无法访问 Discord。','Channel settings → Integrations → Webhooks, copy the URL. Servers in mainland China cannot reach Discord.'],
+  chName:['渠道名称（Bob 会用它来指定）','Channel name (Bob will use it)'], chWebhook:['Webhook 地址','Webhook URL'], chSecret:['签名密钥（可选）','Signing secret (optional)'],
+  chToken:['机器人令牌','Bot token'], chChat:['聊天 ID（可留空，自动查找）','Chat ID (optional, found automatically)'], chType:['渠道类型','Channel type'],
+  test:['发测试消息','Send a test'], testOk:['已发送','Sent'], testFail:['失败：{n}','Failed: {n}'], signed:['已签名','signed'],
+  err_BAD_WEBHOOK:['Webhook 地址不对','That webhook address is not valid for this service'], err_BAD_TOKEN:['令牌不对','That token is not valid'], err_BAD_NAME:['请填写名称（40 字以内）','Enter a name (up to 40 characters)'],
+  err_NAME_TAKEN:['已有同名渠道','A channel with that name exists'], err_BAD_CHAT_ID:['聊天 ID 格式不对','Invalid chat ID'], err_SEND_A_MESSAGE_FIRST:['请先给这个机器人发一条消息','Send the bot a message first'],
+  err_UNREACHABLE:['服务器连不上这个服务','This server cannot reach that service'], err_BAD_TIMEZONE:['时区名称无效，例如 Asia/Shanghai','Invalid time zone, for example Asia/Shanghai'],
+  err_BUSY:['Bob 正在忙，稍后再试','Bob is busy, try again in a moment'], err_RUNNING:['正在运行，暂时不能删除','It is running, so it cannot be deleted yet'],
+  // extensions
+  extTitle:['扩展','Extensions'], extHint:['对 Bob 说“帮我装某某工具”即可，他会先让你确认。工具服务器的密钥在这里填写，不要发在聊天里。','Tell Bob "install such-and-such tool" and he will ask you to confirm. Enter any secrets for a tool server here, never in chat.'],
+  extEmpty:['还没有安装扩展。','Nothing installed yet.'], mcpLabel:['工具服务器','Tool server'], skillLabel:['技能','Skill'],
+  secretSet:['已设置','set'], secretNeeded:['需要填写','needed'], secretPh:['{n} 的值','Value for {n}'], setSecret:['保存','Set'], secretSaved:['已保存，Bob 会重启后生效','Saved. Bob restarts to use it'],
+  // approvals
+  allow:['允许','Allow'], reject:['拒绝','Reject'], approved:['已允许','Allowed'], rejected:['已拒绝','Rejected'], expired:['已过期','Expired'],
+  tagApprove:['待确认','Needs approval'], tagHelp:['待处理','Needs you'],
+  needsApproval:['Bob 想执行这个操作','Bob wants to do this'], needsYou:['Bob 需要你帮忙','Bob needs your help'],
+  actCommand:['运行命令','Run a command'], actRead:['读取文件','Read file'], actList:['查看文件夹','List folder'], actWrite:['写入文件','Write file'], inFolder:['运行位置：{n}','Runs in: {n}'],
+  actInstall:['安装软件包','Install packages'], actMcpAdd:['添加工具服务器','Add a tool server'], actMcpRemove:['移除工具服务器','Remove a tool server'], actSkillAdd:['添加技能','Add a skill'], actSkillRemove:['移除技能','Remove a skill'],
+  actTask:['添加定时任务','Add a scheduled task'], actReminder:['添加提醒','Add a reminder'], actClerkDelete:['删除','Delete'], actClerkPause:['暂停','Pause'], actClerkResume:['恢复','Resume'],
+  firstRun:['首次运行：{n}','First run: {n}'], sendTo:['发送到：{n}','Send to: {n}'],
+  openWindow:['打开浏览器窗口','Open browser window'], doneTakeover:['已交还给 Bob','Handed back to Bob'],
+  takeoverHint:['Bob 需要你完成登录或验证。处理好后点下方「交还」按钮。','Bob needs you to sign in or verify something. When done, tap “Hand back” below.'],
+  // steps
+  step_browser_navigate:['打开网页','Opening page'], step_browser_snapshot:['查看页面','Reading page'], step_browser_click:['点击','Clicking'],
+  step_browser_select:['选择选项','Choosing an option'], step_browser_hover:['查看菜单','Opening a menu'], step_browser_press_key:['按键','Pressing a key'],
+  step_browser_back:['返回上一页','Going back'], step_browser_wait:['等待页面','Waiting for the page'], step_browser_read:['阅读全文','Reading the page'],
+  step_browser_tabs:['查看标签页','Checking tabs'], step_browser_switch_tab:['切换标签页','Switching tabs'], step_browser_close_tab:['关闭标签页','Closing a tab'],
+  step_browser_downloads:['查看下载','Checking downloads'], step_browser_upload:['上传文件','Uploading a file'],
+  step_browser_type:['输入文字','Typing'], step_browser_scroll:['滚动页面','Scrolling'], step_browser_request_human:['请你协助','Asking you for help'],
+  step_list_files:['查看文件夹','Listing files'], step_read_file:['读取文件','Reading a file'], step_write_file:['写入文件','Writing a file'], step_run_command:['运行命令','Running a command'],
+  step_todo_add:['添加待办','Adding a to-do'], step_todo_list:['查看待办','Checking to-dos'], step_todo_done:['更新待办','Updating a to-do'], step_todo_remove:['删除待办','Removing a to-do'], step_show_card:['整理信息','Preparing a card'],
+  step_web_fetch:['读取网页','Reading the web'], step_clerk_create:['设置提醒或任务','Scheduling'], step_clerk_list:['查看日程','Checking the schedule'], step_clerk_list_channels:['查看渠道','Checking channels'],
+  step_clerk_delete:['删除日程','Removing a schedule'], step_clerk_update:['修改日程','Changing a schedule'], step_install_package:['安装软件包','Installing packages'],
+  step_mcp_add:['添加工具服务器','Adding a tool server'], step_mcp_remove:['移除工具服务器','Removing a tool server'], step_skill_create:['编写技能','Writing a skill'], step_skill_install:['安装技能','Installing a skill'],
+  step_skill_remove:['移除技能','Removing a skill'], step_ext_list:['查看扩展','Checking extensions'], step_skill:['使用技能','Using a skill'],
+  stepsCount:['共 {n} 步','{n} steps'],
+  // model, budget, account
+  modelTitle:['模型与服务商','Model & Provider'], providerLabel:['服务商 (Provider)','Provider'], modelLabel:['模型 (Model)','Model'],
+  manualModel:['手动输入模型名','Custom Model Name'], selectPresetModel:['选择预设模型','Select Preset Model'], endpointLabel:['接口地址 (Base URL)','Base URL'], resetDefault:['恢复默认','Reset Default'], keyLabel:['API 密钥 (API Key)','API Key'],
+  keySaved:['密钥已配置','Key configured'], keyEnv:['由服务器环境提供','Set by server env'], replaceKey:['更换','Change'], keyNone:['未配置密钥 (请在下方填入)','No key configured (enter below)'],
+  customHint:['支持标准 OpenAI / Gemini 兼容格式（自动请求 /chat/completions）。','Supports standard OpenAI / Gemini compatible endpoints (/chat/completions).'],
+  cEndpoint:['接口地址（https）','Endpoint (https)'], cModel:['模型名称','Model name'], cKey:['API Key（留空沿用已保存）','API key (blank keeps saved)'],
+  priceWhy:['价格用于统计月度花费上限','Prices are used for the monthly spending limit'], cIn:['输入价格（美元/百万 tokens）','Input price (USD per 1M tokens)'], cOut:['输出价格（美元/百万 tokens）','Output price (USD per 1M tokens)'],
+  capTitle:['本月花费','This month'], capLabel:['每月模型花费上限（美元）','Monthly model spending limit (USD)'],
+  pinTitle:['账号','Account'], pinHint:['PIN 只能在服务器上修改：npm run set-pin -- 1234','The PIN can only be changed on the server: npm run set-pin -- 1234'],
+  save:['保存','Save'], logout:['退出登录','Log out'], saved:['已保存','Saved'], noKey:['请先填入 API Key','Add an API key first'],
+  build:['版本','Build'],
+  // browser window
+  go:['前往','Go'], fill:['填入','Fill'], fillPh:['在这里打字','Type here'],
+  typingInto:['正在输入：{n}。这里打的字会直接出现在页面上。','Typing into: {n}. What you type here appears on the page.'], thisField:['页面上的输入框','the field on the page'],
+  tapField:['先点一下页面上要填的输入框，再在下面打字。','Tap the field on the page first, then type below.'],
+  reload:['刷新','Reload'], pageBack:['上一页','Back'], saveShot:['保存画面（可在微信里识别二维码）','Save picture (to scan a QR code from your album)'], shotSaved:['画面已保存','Picture saved'],
+  reconnecting:['连接中断，正在重连…','Connection lost. Reconnecting…'], openedElsewhere:['这个窗口已在另一台设备上打开','This window was opened on another device'],
+  takeoverWhy:['Bob 需要你：{n}。处理好后点下方「交还」。','Bob needs you to: {n}. Tap “Hand back” below when done.'],
+  toggle:['显示或隐藏','Show or hide'], up:['向上滚动','Scroll up'], down:['向下滚动','Scroll down'], backspace:['退格','Backspace'], enter:['回车','Enter'],
+  desktopSite:['电脑版网页','Desktop site'], mobileSite:['手机版网页','Mobile site'], fit:['还原缩放','Reset zoom'],
+  handBack:['我已处理好，交还给 Bob','Done, hand back to Bob'],
+  attach:['添加附件','Attach file'],
+  fileUnsupported:['暂只支持文本类文件（txt、md、csv、json 等）：{n}','Text files only for now (txt, md, csv, json…): {n}'],
+  fileBig:['文件太大（单个上限约 200KB）：{n}','File too large (about 200KB each): {n}'], fileBinary:['无法读取为文本：{n}','Cannot read as text: {n}'],
+  filesMany:['最多添加 5 个文件','At most 5 files'], filesTotal:['附件总量过大（合计上限约 500KB）','Attachments are too large in total (about 500KB)'],
+  err_TOO_MANY_MCP:['工具服务器数量已达上限（10 个）','Too many tool servers (at most 10)'], err_TOO_MANY_SKILLS:['技能数量已达上限（50 个）','Too many skills (at most 50)'],
+  extensionsBroken:['有一个扩展没能启动，已临时停用所有扩展，Bob 仍在正常工作。可在设置里移除有问题的扩展。','An extension failed to start, so all extensions were turned off for now. Bob keeps working; remove the broken one in Settings.'],
+  err_UNKNOWN_MODEL:['不支持这个模型','Unknown model'], err_BAD_MODEL:['模型名称无效','Invalid model name'], err_BAD_PRICE:['价格无效','Invalid price'],
+  err_HTTPS_REQUIRED:['接口地址必须以 https:// 开头','The endpoint must start with https://'], err_BAD_ENDPOINT:['接口地址无法使用（不能是本机或内网地址）','Endpoint not allowed (no local or private addresses)'],
+  err_NO_KEY:['请填写 API Key','Enter an API key'], err_INVALID_KEY:['API Key 无效','Invalid API key'], err_NO_PRICE:['这个模型没有价格，无法统计花费','No price for this model, so spending cannot be counted'],
+  err_TOO_MANY_FILES:['最多添加 5 个文件','At most 5 files'], err_FILE_TOO_LARGE:['有文件太大','A file is too large'], err_FILES_TOO_LARGE:['附件总量过大','Attachments are too large in total'], err_NOT_TEXT:['有文件不是文本','A file is not text'],
+  budgetNear:['本月花费已超过上限的 80%','You have used over 80% of this month\'s limit'], budgetExceeded:['已达到本月花费上限，Bob 已停止。可在设置中提高上限。','Monthly limit reached, so Bob has stopped. You can raise it in Settings.'],
+  wrongPin:['PIN 错误，还可尝试 {n} 次','Wrong PIN, {n} tries left'], locked:['尝试次数过多，请 {n} 分钟后再试','Too many tries. Try again in {n} min'],
+  noPin:['尚未设置 PIN，请在服务器运行 npm run set-pin -- 1234','No PIN yet. On the server run: npm run set-pin -- 1234'],
+  failed:['操作失败：','Failed: '],
+}
+const t = (k, n) => {
+  const text = I18N[k]?.[langIndex] ?? I18N[k]?.[1] ?? k
+  if (n && typeof n === 'object') return text.replace(/\{(\w+)\}/g, (_, key) => n[key] ?? `{${key}}`)
+  return text.replace('{n}', n)
+}
+const $ = id => document.getElementById(id)
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e }
+document.documentElement.lang = zh ? 'zh-CN' : lang === 'en' ? 'en' : lang
+// Hover buttons only on devices with a real pointer; touch keeps the swipe.
+document.documentElement.classList.toggle('fine', window.matchMedia('(hover: hover) and (pointer: fine)').matches)
+
+const ICONS = {
+  globe:'<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/>',
+  send:'<path d="M12 19V5M5 12l7-7 7 7"/>', chat:'<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+  check:'<path d="M22 11.1V12a10 10 0 1 1-5.9-9.1M22 4 12 14l-3-3"/>', clock:'<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  sliders:'<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
+  back:'<path d="M15 18l-6-6 6-6"/>', up:'<path d="M12 19V5M5 12l7-7 7 7"/>', down:'<path d="M12 5v14M5 12l7 7 7-7"/>',
+  enter:'<path d="M9 10l-5 5 5 5M20 4v7a4 4 0 0 1-4 4H4"/>',
+  backspace:'<path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM18 9l-6 6M12 9l6 6"/>',
+  eye:'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/>',
+  eyeoff:'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/><path d="M3 3l18 18"/>',
+  shield:'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM12 8v4M12 16h.01"/>',
+  hand:'<path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v7M10 10.5V6a2 2 0 0 0-4 0v8M18 8a2 2 0 0 1 4 0v6a8 8 0 0 1-8 8h-2c-2.5 0-4-1-5.4-2.4L3 15.6a2 2 0 0 1 3-2.6L8 15"/>',
+  terminal:'<path d="M4 17l6-6-6-6M12 19h8"/>', box:'<path d="M21 8 12 3 3 8v8l9 5 9-5zM3 8l9 5 9-5M12 13v8"/>',
+  clip:'<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+  file:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6"/>',
+  list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>', plus:'<path d="M12 5v14M5 12h14"/>', tick:'<path d="M20 6 9 17l-5-5"/>', cross:'<path d="M18 6 6 18M6 6l12 12"/>',
+  monitor:'<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>', phone:'<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/>',
+  fit:'<path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/>',
+  bell:'<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+  pencil:'<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  trash:'<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>',
+  mic:'<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4M8 21h8"/>',
+  reload:'<path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/>', download:'<path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>',
+  calendar:'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  heart:'<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21.2l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/>',
+  cpu:'<rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/>',
+  wallet:'<path d="M3 7a2 2 0 0 1 2-2h13v4"/><path d="M3 7v10a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1H5a2 2 0 0 1-2-2z"/><path d="M17 14h.01"/>',
+  lock:'<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  moon:'<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+  bookmark:'<path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
+}
+const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`
+const ORB = '<i class="drop"><i class="body"><i class="hl"></i><i class="tx"></i><i class="warm"></i></i></i>'
+
+document.querySelectorAll('[data-t]').forEach(e => { e.textContent = t(e.dataset.t) })
+document.querySelectorAll('[data-ph]').forEach(e => { e.placeholder = t(e.dataset.ph) })
+document.querySelectorAll('[data-al]').forEach(e => { e.setAttribute('aria-label', t(e.dataset.al)); e.title = t(e.dataset.al) })
+document.querySelectorAll('[data-i]').forEach(e => e.insertAdjacentHTML('afterbegin', icon(e.dataset.i)))
+document.querySelectorAll('[data-orb]').forEach(e => { e.innerHTML = ORB })
+
+const post = async (url, body) => {
+  const res = await fetch(url, { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(body ?? {}) })
+  return { status:res.status, data: await res.json().catch(() => ({})) }
+}
+const getJson = async url => { const res = await fetch(url); return res.ok ? res.json() : null }
+const errText = (data, status) => I18N['err_' + data.error] ? t('err_' + data.error) : t('failed') + (data.error ?? status)
+
+// ---- PIN ----
+let entered = ''
+const drawDots = () => [...$('dots').children].forEach((d, i) => d.classList.toggle('on', i < entered.length))
+async function submitPin() {
+  const { status, data } = await post('/api/login', { pin: entered })
+  entered = ''
+  drawDots()
+  if (status === 200) return boot()
+  $('dots').classList.remove('shake'); void $('dots').offsetWidth; $('dots').classList.add('shake')
+  $('loginMsg').textContent = data.error === 'LOCKED' ? t('locked', Math.ceil(data.retryAfter / 60)) : data.error === 'PIN_NOT_SET' ? t('noPin') : t('wrongPin', data.remaining)
+}
+const press = d => {
+  if (entered.length >= 4) return
+  entered += d
+  drawDots()
+  $('loginMsg').textContent = ''
+  if (entered.length === 4) submitPin()
+}
+;['1','2','3','4','5','6','7','8','9',null,'0','del'].forEach(k => {
+  const b = document.createElement('button')
+  if (k === null) { b.style.visibility = 'hidden'; b.tabIndex = -1 }
+  else if (k === 'del') { b.className = 'ghost'; b.textContent = t('del'); b.onclick = () => { entered = entered.slice(0, -1); drawDots() } }
+  else { b.textContent = k; b.onclick = () => press(k) }
+  $('pad').append(b)
+})
+addEventListener('keydown', e => {
+  if (!$('login').hidden && /^\d$/.test(e.key)) press(e.key)
+  if (e.key === 'Escape') closeDrawer()
+})
+
+// ---- views ----
+const VIEWS = ['chat', 'clerk', 'settings']
+let currentView = 'chat'
+let persistView = false
+function show(view) {
+  currentView = view
+  if (persistView && (view === 'chat' || view === 'clerk')) localStorage.setItem('bobbot.lastView', view)
+  VIEWS.forEach(v => { $('view' + v[0].toUpperCase() + v.slice(1)).hidden = v !== view })
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.view === view))
+  $('composer').hidden = view !== 'chat'
+  if (view !== 'chat') { $('attachRow').hidden = true; $('jump').hidden = true }
+  else drawAttachments()
+  if (view === 'chat') atEnd()
+  if (view === 'clerk') loadClerk()
+  if (view === 'settings') { loadModelCard().catch(() => {}); loadExtensions(); loadClerk(); loadPushState(); loadFeatures(); loadProactive(); loadMemory() }
+  refreshOrb(); refreshBanner(); setHero()
+}
+document.querySelectorAll('nav button').forEach(b => { b.onclick = () => show(b.dataset.view) })
+
+/** Nudge the drop: it gives a little and springs back, like water touched in zero gravity. */
+function poke() {
+  for (const orb of document.querySelectorAll('[data-orb]:not(.static)')) {
+    orb.classList.remove('poke'); void orb.offsetWidth; orb.classList.add('poke')
+  }
+}
+document.addEventListener('animationend', e => { if (e.animationName === 'poke') e.target.closest('.orb')?.classList.remove('poke') })
+
+// The empty page is laid out from the space really left between the header and the composer (which shrinks when the
+// phone keyboard opens): the drop is sized from that height, and the drop with its words sits centred in it.
+function layoutHero() {
+  const app = $('app'), view = $('viewChat'), H = view.clientHeight
+  if (!H) return
+  const tight = H < 240
+  app.classList.toggle('tight', tight)
+  const D = Math.round(Math.max(28, Math.min(144, H * 0.38)))
+  const gap = tight ? 10 : 22
+  const words = [...$('welcome').children].filter(c => !c.hidden && c.offsetHeight).reduce((sum, c) => sum + c.offsetHeight + 6, 0)
+  const top = Math.max(tight ? 4 : 12, (H - (D + gap + words)) / 2)
+  app.style.setProperty('--hd', D + 'px')
+  app.style.setProperty('--htop', (view.offsetTop + view.parentElement.offsetTop + top) + 'px')
+  app.style.setProperty('--wtop', (top + D + gap) + 'px')
+}
+new ResizeObserver(layoutHero).observe($('viewChat'))
+// On a phone the keyboard covers the page without resizing it, so the app follows the visible part of the screen.
+;(() => {
+  const vv = window.visualViewport
+  if (!vv) return
+  const fit = () => {
+    const app = $('app')
+    const covered = Math.round(window.innerHeight - vv.height) > 0
+    app.style.height = covered ? vv.height + 'px' : ''
+    app.style.transform = covered && vv.offsetTop ? `translateY(${vv.offsetTop}px)` : ''
+  }
+  vv.addEventListener('resize', fit)
+  vv.addEventListener('scroll', fit)
+})()
+
+// The orb is large in the middle of a new chat, and moves to the top left, small, once there is something to read.
+function setHero() {
+  const hero = currentView === 'chat' && feed.children.length <= 1
+  $('app').classList.toggle('hero', hero)
+  $('welcome').hidden = !hero
+  if (hero) {
+    const hour = new Date().getHours()
+    $('greet').textContent = t(hour < 5 ? 'greetNight' : hour < 11 ? 'greetMorning' : hour < 13 ? 'greetNoon' : hour < 18 ? 'greetAfternoon' : 'greetEvening')
+    layoutHero()
+  }
+}
+
+// ---- the orb: napping, thinking, speaking, waiting ----
+const cards = new Map(), open = new Map() // approval and takeover cards, and the ones still waiting for an answer
+let runningCid = null, speakUntil = 0, speakTimer = null
+function refreshOrb() {
+  const mine = Boolean(runningCid) && runningCid === activeCid
+  const state = Date.now() < speakUntil ? 'speak' : open.size ? 'wait' : mine ? 'think' : 'nap'
+  const mood = t({ nap: 'stateNap', think: 'stateThink', speak: 'stateSpeak', wait: 'stateWait' }[state])
+  document.querySelectorAll('[data-orb]').forEach(orb => { orb.dataset.state = state; orb.setAttribute('aria-label', mood) })
+  // The mood is drawn by the orb itself, so the header stays quiet.
+  $('title').textContent = currentView === 'chat' ? '' : t(currentView === 'clerk' ? 'clerkTitle' : 'settingsTitle')
+  typing.hidden = !mine
+  if (mine) { feed.append(typing); follow() }
+}
+function speak(text) {
+  const ms = Math.min(5000, 1200 + text.length * 25)
+  speakUntil = Date.now() + ms
+  refreshOrb()
+  clearTimeout(speakTimer)
+  speakTimer = setTimeout(refreshOrb, ms + 50)
+}
+
+// ---- feed ----
+const feed = $('feed'), scroller = $('viewChat')
+const typing = el('div', 'bubble-row')
+typing.append(el('div', 'spacer'))
+const typingBubble = el('div', 'msg typing'); typingBubble.append(el('i'), el('i'), el('i')); typing.append(typingBubble)
+typing.hidden = true
+feed.append(typing)
+// New content follows the bottom only while the reader is there. Someone reading back is offered a button instead.
+let stick = true
+const atEnd = () => { scroller.scrollTop = scroller.scrollHeight; stick = true; $('jump').hidden = true }
+const follow = () => { if (stick) atEnd(); else if (currentView === 'chat') $('jump').hidden = false }
+scroller.addEventListener('scroll', () => {
+  stick = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 120
+  if (stick) $('jump').hidden = true
+}, { passive: true })
+$('jump').onclick = atEnd
+let lastKind = null, stepsBox = null
+let quiet = false // true while old history is drawn, so only new things animate in
+let lastStamp = 0
+function stamp(at) {
+  if (!at) return
+  const day = d => new Date(d).toDateString()
+  if (at - lastStamp > 30 * 60e3 || day(at) !== day(lastStamp)) {
+    const time = new Date(at).toLocaleTimeString(zh ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    const date = day(at) === day(Date.now()) ? '' : day(at) === day(Date.now() - 86400e3) ? t('yesterday') : new Date(at).toLocaleDateString(zh ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric' })
+    feed.insertBefore(el('div', 'daymark', `${date} ${time}`.trim()), typing)
+    lastKind = null
+  }
+  lastStamp = at
+}
+let activeCid // undefined: not chosen yet. null: a new chat that has no messages yet.
+const updateWelcome = () => { setHero(); refreshOrb() }
+function add(node, kind) {
+  if (!quiet) node.classList.add('in')
+  feed.insertBefore(node, typing)
+  lastKind = kind
+  if (kind !== 'steps') stepsBox = null
+  updateWelcome()
+  if (kind === 'user') atEnd(); else follow()
+}
+function clearFeed() {
+  ;[...feed.children].forEach(c => { if (c !== typing) c.remove() })
+  cards.clear(); lastKind = null; stepsBox = null; lastStamp = 0
+  updateWelcome()
+}
+function inlineMd(node, s) {
+  for (const part of s.split(/(\*\*[^*]+\*\*|`[^`]+`)/)) {
+    if (!part) continue
+    if (part.startsWith('**')) node.append(el('strong', '', part.slice(2, -2)))
+    else if (part.startsWith('`')) node.append(el('code', '', part.slice(1, -1)))
+    else node.append(document.createTextNode(part))
+  }
+}
+function renderMd(parent, text) { // bold, code, bullets and headings only, built without innerHTML
+  let list = null
+  for (const line of text.split('\n')) {
+    const bullet = /^\s*[-*]\s+(.*)$/.exec(line)
+    if (bullet) { if (!list) { list = el('ul', 'md-list'); parent.append(list) } const li = el('li'); inlineMd(li, bullet[1]); list.append(li); continue }
+    list = null
+    if (!line.trim()) continue
+    const p = el('p'); inlineMd(p, line.replace(/^#{1,6}\s+/, '')); parent.append(p)
+  }
+}
+function message(role, text, files = []) {
+  const row = el('div', 'bubble-row' + (role === 'user' ? ' user' : ''))
+  if (role !== 'user') {
+    if (lastKind === 'assistant') row.append(el('div', 'spacer'))
+    else { const a = el('span', 'orb static'); a.innerHTML = ORB; row.append(a) }
+  }
+  const bubble = el('div', 'msg' + (role === 'user' ? '' : ' md'))
+  if (role === 'user') bubble.textContent = text
+  else renderMd(bubble, text)
+  for (const f of files) {
+    const line = el('div', 'fileline'); line.insertAdjacentHTML('afterbegin', icon('file')); line.append(el('span', '', f.name))
+    bubble.append(line)
+  }
+  row.append(bubble)
+  add(row, role === 'user' ? 'user' : 'assistant')
+}
+const stepLabel = name => I18N['step_' + name] ? t('step_' + name) : name.replace(/^mcp__/, '').replace('__', ' › ')
+function step(name) {
+  const label = stepLabel(name)
+  if (!stepsBox) {
+    const box = el('details', 'steps')
+    const sum = el('summary'); sum.insertAdjacentHTML('afterbegin', icon(/_file|command|package|mcp_|skill/.test(name) ? 'terminal' : /clerk/.test(name) ? 'clock' : 'globe')); sum.append(el('span', 'now'))
+    box.append(sum, el('ul'))
+    box.count = 0
+    add(box, 'steps'); stepsBox = box
+  }
+  stepsBox.count += 1
+  stepsBox.querySelector('ul').append(el('li', '', label))
+  stepsBox.querySelector('.now').textContent = `${label} · ${t('stepsCount', stepsBox.count)}`
+  lastKind = 'steps'
+  follow()
+}
+function notice(text, err) { add(el('div', 'notice' + (err ? ' err' : ''), text), 'notice') }
+
+// ---- schedules, in the user's language ----
+const DAYS = [['日','一','二','三','四','五','六'], ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']]
+function describeSchedule(s) {
+  if (zh) {
+    if (s.type === 'daily') return `每天 ${s.time}`
+    if (s.type === 'weekly') return `每周${s.days.map(d => DAYS[0][d]).join('、')} ${s.time}`
+    if (s.type === 'monthly') return `每月 ${s.day} 日 ${s.time}`
+    return `仅一次 ${s.at.replace('T', ' ')}`
+  }
+  if (s.type === 'daily') return `Every day at ${s.time}`
+  if (s.type === 'weekly') return `Every ${s.days.map(d => DAYS[1][d]).join(', ')} at ${s.time}`
+  if (s.type === 'monthly') return `Monthly on day ${s.day} at ${s.time}`
+  return `Once, ${s.at.replace('T', ' ')}`
+}
+const fmtWhen = (ms, tz) => new Intl.DateTimeFormat(zh ? 'zh-CN' : 'en-US', { timeZone: tz, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(ms)
+
+// Friendly times: "today 15:00", "tomorrow 09:00", otherwise a short date, always in the owner's zone.
+const dayKey = (ms, tz) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(ms)
+const hmText = (ms, tz) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(ms)
+const dateText = (ms, tz) => new Intl.DateTimeFormat(zh ? 'zh-CN' : 'en-US', { timeZone: tz, month: 'short', day: 'numeric' }).format(ms)
+function whenText(ms, tz) {
+  const shift = Math.round((Date.parse(dayKey(ms, tz)) - Date.parse(dayKey(Date.now(), tz))) / 86400000)
+  const hm = hmText(ms, tz)
+  if (shift === 0) return `${t('today')} ${hm}`
+  if (shift === 1) return `${t('tomorrow')} ${hm}`
+  if (shift === 2) return `${t('dayAfter')} ${hm}`
+  return `${dateText(ms, tz)} ${hm}`
+}
+function dueText(due, tz) {
+  const [day, hm] = due.split('T')
+  const shift = Math.round((Date.parse(day) - Date.parse(dayKey(Date.now(), tz))) / 86400000)
+  if (shift === 0) return `${t('today')} ${hm}`
+  if (shift === 1) return `${t('tomorrow')} ${hm}`
+  if (shift === 2) return `${t('dayAfter')} ${hm}`
+  return `${dateText(Date.parse(day + 'T12:00:00Z'), tz)} ${hm}`
+}
+
+// ---- cards Bob shows: schedules and organized information ----
+const tile = name => { const ic = el('span', 'chipicon'); ic.innerHTML = icon(name); return ic }
+const kv = (label, value) => { const row = el('div', 'kv'); row.append(el('span', 'k', label), el('span', 'v', value)); return row }
+const rowsOf = pairs => {
+  const box = el('div', 'rows')
+  for (const [label, value] of pairs) if (value) box.append(kv(label, value))
+  return box
+}
+function todoCard(todo, tz, created = false) {
+  const c = el('div', 'card todo' + (todo.done ? ' finished' : '') + (created ? ' saved' : ''))
+  const top = el('div', 'card-top')
+  const tag = el('span', 'tag', todo.done ? t('tagDone') : created ? t('tagSaved') : t('kindTodo'))
+  top.append(tile('check'), tag)
+  c.append(top, el('div', 'what', todo.title))
+  const rows = rowsOf([[t('whenLabel'), todo.due ? dueText(todo.due, tz) : ''], [t('noteLabel'), todo.note]])
+  if (rows.children.length) c.append(rows)
+  const actions = el('div', 'actions')
+  const done = el('button', 'btn' + (todo.done ? '' : ' primary'), t(todo.done ? 'undo' : 'markDone'))
+  done.onclick = async () => {
+    const r = await post('/api/clerk/todo/toggle', { id: todo.id, done: !todo.done })
+    if (r.status !== 200) return
+    todo.done = !todo.done
+    c.classList.toggle('finished', todo.done)
+    done.textContent = t(todo.done ? 'undo' : 'markDone')
+    done.className = 'btn' + (todo.done ? '' : ' primary')
+    tag.textContent = todo.done ? t('tagDone') : t('kindTodo')
+  }
+  const rm = el('button', 'btn danger', t('remove'))
+  rm.onclick = async () => { const r = await post('/api/clerk/todo/delete', { id: todo.id }); if (r.status === 200) c.remove() }
+  actions.append(done, rm)
+  c.append(actions)
+  return c
+}
+function infoCard(card) {
+  const c = el('div', 'card info')
+  const top = el('div', 'card-top')
+  top.append(tile('list'))
+  if (card.tag) top.append(el('span', 'tag', card.tag))
+  c.append(top, el('div', 'what', card.title))
+  if (card.subtitle) c.append(el('div', 'lead', card.subtitle))
+  if (card.fields?.length) {
+    const rows = el('div', 'rows')
+    for (const f of card.fields) rows.append(kv(f.label, f.value))
+    c.append(rows)
+  }
+  if (card.items?.length) {
+    const list = el('ul', 'info-items')
+    for (const item of card.items) list.append(el('li', '', item))
+    c.append(list)
+  }
+  if (card.note) c.append(el('div', 'where', card.note))
+  return c
+}
+
+// ---- cards ----
+const ACTIONS = { command:'actCommand', read:'actRead', list:'actList', write:'actWrite' }
+const baseName = p => String(p).split('/').filter(Boolean).pop() ?? p
+function cardTitle(e) {
+  if (e.kind === 'command') return [t('actCommand')]
+  if (ACTIONS[e.kind]) return [`${t(ACTIONS[e.kind])}: ${baseName(e.target)}`]
+  if (e.kind === 'install') return [`${t('actInstall')}: ${e.packages?.join(', ')}`]
+  if (e.kind === 'mcp') return [`${t(e.action === 'remove' ? 'actMcpRemove' : 'actMcpAdd')}: ${e.target}`]
+  if (e.kind === 'skill') return [`${t(e.action === 'remove' ? 'actSkillRemove' : 'actSkillAdd')}: ${e.target}`]
+  if (e.kind === 'clerk') {
+    const verb = e.action === 'create' ? t(e.jobKind === 'task' ? 'actTask' : 'actReminder') : t({ delete: 'actClerkDelete', pause: 'actClerkPause', resume: 'actClerkResume' }[e.action])
+    const lines = [`${verb}: ${e.target}`]
+    if (e.schedule) lines.push(`${describeSchedule(e.schedule)} · ${e.timezone ?? ''}`.trim())
+    if (e.firstRun) lines.push(t('firstRun', fmtWhen(e.firstRun, e.timezone)))
+    if (e.to) lines.push(t('sendTo', e.to.replace('in-app inbox', t('toApp'))))
+    return lines
+  }
+  return [actionText(e.summary)]
+}
+/** The server describes page actions in English. Show them in the reader's language. */
+function actionText(summary) {
+  let m
+  if ((m = /^Click "(.*)"$/.exec(summary))) return t('actClick', m[1])
+  if ((m = /^Enter "(.*)" and press Enter$/.exec(summary))) return t('actTypeEnter', m[1])
+  if ((m = /^Write file (.*)$/.exec(summary))) return `${t('actWrite')}: ${baseName(m[1])}`
+  if (summary === 'Run a command') return t('actCommand')
+  if (summary === 'Press Enter on this page') return t('actPressEnter')
+  return summary
+}
+let toastTimer
+function toast(text, bad = false) {
+  const box = $('toast')
+  box.hidden = true // restart the entrance when one toast replaces another
+  box.textContent = text
+  box.className = bad ? 'bad' : ''
+  void box.offsetWidth
+  box.hidden = false
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { box.hidden = true }, 2800)
+}
+function buildCard(e, kind) {
+  const c = el('div', 'card ' + (kind === 'approval' ? 'ask' : 'help'))
+  const top = el('div', 'card-top')
+  const ic = el('span', 'chipicon'); ic.innerHTML = icon(kind === 'takeover' ? 'hand' : e.kind === 'command' ? 'terminal' : e.kind === 'clerk' ? 'clock' : /install|mcp|skill/.test(e.kind ?? '') ? 'box' : 'shield')
+  top.append(ic, el('span', 'tag', t(kind === 'approval' ? 'tagApprove' : 'tagHelp')),
+    el('span', 'time', new Date(e.at).toLocaleTimeString(zh ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })))
+  c.append(top)
+  if (kind === 'takeover') c.append(el('div', 'lead', t('needsYou')))
+  if (kind === 'takeover') c.append(el('div', 'what', e.reason))
+  else if (e.kind === 'clerk') {
+    // A reminder or a scheduled task: the words, and when it happens in plain language. No ids, no zone names.
+    const verb = e.action === 'create' ? '' : t({ delete: 'askDelete', pause: 'askPause', resume: 'askResume' }[e.action])
+    c.append(el('div', 'what', verb ? `${verb}「${e.target}」` : e.target))
+    c.append(rowsOf([
+      [t('repeatLabel'), describeSchedule(e.schedule)],
+      [t('firstAtLabel'), e.firstRun ? whenText(e.firstRun, e.timezone) : ''],
+      [t('sendLabel'), e.channels?.length ? e.channels.join('、') : t('appInbox')],
+    ]))
+    if (e.detail) c.append(el('div', 'quote', e.detail))
+  }
+  else { const [first, ...rest] = cardTitle(e); c.append(el('div', 'what', first)); for (const line of rest) if (line) c.append(el('div', 'where', line)) }
+  // Show what matters to the owner: the words to be saved, or the command itself. Paths, sizes and package commands stay out of sight.
+  let detail = e.detail
+  if (e.kind === 'clerk') detail = '' // already shown as a quote above
+  else if (e.kind === 'write') detail = (e.detail ?? '').split('\n').slice(1).join('\n').replace(/^#+\s*/gm, '').replace(/\*\*/g, '')
+  else if (e.kind === 'mcp' && e.action === 'add') detail = (e.detail ?? '').split('\n').slice(1).join('\n')
+  else if (e.kind === 'install' || e.kind === 'read' || e.kind === 'list') detail = ''
+  if (detail) c.append(el('pre', 'detail' + (e.kind === 'command' ? '' : ' soft'), detail))
+  if (e.screenshot) { const img = new Image(); img.alt = ''; img.src = 'data:image/jpeg;base64,' + e.screenshot; c.append(img) }
+  const row = el('div', 'actions')
+  if (kind === 'approval') {
+    const go = async allow => {
+      const { status } = await post('/api/approve', { id: e.id, allow })
+      if (status === 404) closeCard(e.id, t('expired'), false)
+    }
+    const no = el('button', 'btn', t('cancel')); no.onclick = () => go(false)
+    const yesLabel = e.kind === 'clerk' ? (e.action === 'create' ? t('confirmAdd') : e.action === 'delete' ? t('confirmDeleteBtn') : t('confirm')) : t('allow')
+    const yes = el('button', 'btn primary', yesLabel); yes.onclick = () => go(true)
+    row.append(no, yes)
+  } else {
+    const openBtn = el('button', 'btn primary', t('openWindow')); openBtn.onclick = openBrowser
+    row.append(openBtn)
+  }
+  c.append(row)
+  const list = cards.get(e.id) ?? []
+  list.push({ c, row }); cards.set(e.id, list)
+  return c
+}
+function closeCard(id, label, ok = true) {
+  open.delete(id)
+  for (const { c, row } of cards.get(id) ?? []) {
+    row.className = 'done' + (ok ? '' : ' no')
+    row.innerHTML = ''
+    row.insertAdjacentHTML('afterbegin', icon(ok ? 'tick' : 'cross'))
+    row.append(el('span', '', label))
+    c.querySelector('img')?.remove()
+  }
+  refreshBanner()
+}
+// Approvals wait in their own chat. When Bob needs you in a different chat from the one you are looking at, say so.
+function refreshBanner() {
+  const elsewhere = [...open.values()].find(x => x.e.cid && x.e.cid !== activeCid)
+  const b = $('banner')
+  b.hidden = !elsewhere || currentView === 'settings'
+  if (b.hidden) return
+  b.textContent = ''
+  b.insertAdjacentHTML('afterbegin', icon('hand'))
+  const name = convs.find(c => c.id === elsewhere.e.cid)?.title ?? ''
+  b.append(el('span', '', t('needsYouIn', name)))
+  b.onclick = () => selectConv(elsewhere.e.cid)
+}
+
+// ---- live events from the server ----
+let activeTakeover = null
+function track(e) { // approvals and takeovers belong to every conversation, because the browser and server are shared
+  if (e.type === 'approval' || e.type === 'takeover') {
+    open.set(e.id, { e, kind: e.type })
+    if (e.type === 'takeover') { activeTakeover = e.id; $('handBack').hidden = false; openBrowser() }
+    refreshBanner(); refreshOrb()
+  } else if (e.type === 'approval_done' || e.type === 'takeover_done') {
+    open.delete(e.id)
+    if (e.type === 'takeover_done' && activeTakeover === e.id) { activeTakeover = null; $('handBack').hidden = true; closeBrowser() }
+    refreshBanner(); refreshOrb()
+  }
+}
+let streamBubble = null
+function streamDelta(text) {
+  if (!streamBubble) {
+    const row = el('div', 'bubble-row')
+    if (lastKind === 'assistant') row.append(el('div', 'spacer'))
+    else { const a = el('span', 'orb static'); a.innerHTML = ORB; row.append(a) }
+    streamBubble = el('div', 'msg md')
+    row.append(streamBubble)
+    add(row, 'assistant')
+  }
+  streamBubble.textContent = ''
+  renderMd(streamBubble, text)
+  const sc = $('feed').parentElement
+  if (sc && sc.scrollHeight - sc.scrollTop - sc.clientHeight < 160) sc.scrollTop = sc.scrollHeight
+}
+function render(e) {
+  if (e.type === 'delta') { streamDelta(e.text); return }
+  if (e.type === 'message') {
+    if (e.role === 'assistant' && streamBubble) {
+      streamBubble.textContent = ''
+      renderMd(streamBubble, e.text)
+      streamBubble = null
+      return
+    }
+    streamBubble = null
+    stamp(e.at); message(e.role, e.text, e.files ?? [])
+  }
+  else if (e.type === 'step') { streamBubble = null; step(e.name) }
+  else if (e.type === 'error') { streamBubble = null; notice(e.text, true) }
+  else if (e.type === 'notice') notice(t(e.code === 'BUDGET_NEAR' ? 'budgetNear' : e.code === 'EXTENSIONS_BROKEN' ? 'extensionsBroken' : 'budgetExceeded'), true)
+  else if (e.type === 'card') add(e.card.kind === 'job' ? jobCard(e.card.job, e.card.timezone, true, e.card.created) : e.card.kind === 'todo' ? todoCard(e.card.todo, e.card.timezone, e.card.created) : infoCard(e.card), 'card')
+  else if (e.type === 'approval' || e.type === 'takeover') {
+    add(buildCard(e, e.type), 'card')
+    if (!open.has(e.id)) closeCard(e.id, t('expired'), false) // an old request nobody can answer any more
+  }
+  else if (e.type === 'approval_done') closeCard(e.id, t(e.allowed ? 'approved' : 'rejected'), e.allowed)
+  else if (e.type === 'takeover_done') closeCard(e.id, t('doneTakeover'))
+}
+let workSteps = 0 // real work done in this turn, which is what makes a turn worth saving as a routine
+function offerRoutine() {
+  const link = el('button', 'link', t('saveRoutine'))
+  link.onclick = () => { link.remove(); setText(t('saveRoutinePrompt')); $('composer').requestSubmit() }
+  add(link, 'notice')
+}
+function route(e) {
+  track(e)
+  if (e.cid !== activeCid) return
+  if (e.type === 'step' && /browser_(navigate|click|type|select|read)|web_fetch|_file|run_command|mcp__/.test(e.name)) workSteps += 1
+  render(e)
+  if (e.type === 'message' && e.role === 'assistant') speak(e.text)
+}
+
+function showBudget(b) {
+  const pct = Math.min(100, (b.spentUsd / b.capUsd) * 100)
+  const level = b.exceeded ? 'over' : b.near ? 'warn' : ''
+  $('drawerSpend').textContent = `${t('spendLabel')}  $${b.spentUsd.toFixed(3)} / $${b.capUsd}`
+  $('spentBig').innerHTML = ''
+  $('spentBig').append(`$${b.spentUsd.toFixed(3)} `, el('small', '', `/ $${b.capUsd}`))
+  $('capBar').className = 'bar ' + level
+  $('capBar').firstElementChild.style.width = pct + '%'
+  if (document.activeElement !== $('cap')) $('cap').value = b.capUsd
+}
+
+// ---- conversations and the history drawer ----
+let convs = []
+let convTimer
+const refreshConvs = () => { clearTimeout(convTimer); convTimer = setTimeout(loadConvs, 150) }
+async function loadConvs() {
+  const data = await getJson('/api/conversations')
+  if (!data) return
+  convs = data.items; runningCid = data.running
+  drawConvs(); refreshOrb(); refreshBanner()
+}
+async function loadHistory(cid) {
+  streamBubble = null
+  const res = await fetch('/api/conversations/' + encodeURIComponent(cid))
+  if (activeCid !== cid) return false
+  if (!res.ok) return false
+  const { events } = await res.json()
+  if (activeCid !== cid) return false
+  clearFeed()
+  quiet = true
+  try { events.forEach(render) } finally { quiet = false }
+  refreshOrb(); updateWelcome(); atEnd()
+  return true
+}
+const STALE_SESSION_MS = 3 * 60 * 60 * 1000
+let restoredOnce = false
+// A chat that has been quiet for three hours starts a new session; otherwise come back to where you were.
+/** Opens what a notification was about, from the address it started with or from a message sent to an open app. */
+async function openFromLink(link) {
+  let params
+  try { params = new URL(link, location.origin).searchParams } catch { return false }
+  const cid = params.get('c'), view = params.get('v')
+  if (cid && !convs.some(c => c.id === cid)) await loadConvs() // a chat that began a moment ago
+  let went = false
+  if (cid && convs.some(c => c.id === cid)) { await selectConv(cid); went = true }
+  else if (VIEWS.includes(view)) { show(view); went = true }
+  if (went) { try { localStorage.setItem('bobbot.lastView', currentView) } catch { /* private mode */ } }
+  return went
+}
+async function restoreLastPage() {
+  if (location.search && await openFromLink(location.href)) { history.replaceState(null, '', '/'); persistView = true; return } // opened by a notification
+  history.replaceState(null, '', '/')
+  let lastCid = ''
+  let savedView = 'chat'
+  try { lastCid = localStorage.getItem('bobbot.lastCid') || ''; savedView = localStorage.getItem('bobbot.lastView') || 'chat' } catch { /* private mode */ }
+  const target = convs.find(c => c.id === lastCid)
+  const stale = !target || Date.now() - (target.updatedAt ?? 0) > STALE_SESSION_MS
+  if (stale) newChat()
+  else await selectConv(target.id)
+  if (savedView === 'clerk') show('clerk')
+  persistView = true
+}
+async function selectConv(cid) {
+  try { localStorage.setItem('bobbot.lastCid', cid); localStorage.setItem('bobbot.lastAt', String(Date.now())) } catch { /* private mode */ }
+  activeCid = cid
+  closeDrawer(); show('chat'); clearFeed(); drawConvs(); refreshOrb()
+  if (!await loadHistory(cid) && activeCid === cid) { activeCid = null; drawConvs(); refreshOrb() }
+  refreshBanner()
+}
+function newChat() {
+  try { localStorage.removeItem('bobbot.lastCid') } catch { /* private mode */ }
+  activeCid = null
+  closeDrawer(); show('chat'); clearFeed(); drawConvs(); refreshOrb(); refreshBanner()
+  $('text').focus()
+}
+function fmtTime(ts) {
+  const d = new Date(ts)
+  return d.toDateString() === new Date().toDateString()
+    ? d.toLocaleTimeString(zh ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    : d.toLocaleDateString(zh ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric' })
+}
+const REVEAL = 76
+const closeRows = except => document.querySelectorAll('.conv.open').forEach(r => { if (r !== except) r.classList.remove('open') })
+function drawConvs() {
+  const ul = $('convList')
+  ul.textContent = ''
+  if (!convs.length) { ul.append(el('li', 'conv empty-row', t('noChats'))); return }
+  for (const c of convs) ul.append(convRow(c))
+}
+function convRow(c) {
+  const li = el('li', 'conv' + (c.id === activeCid ? ' active' : ''))
+  const del = el('button', 'conv-del'); del.type = 'button'; del.innerHTML = icon('cross')
+  del.setAttribute('aria-label', t('delChat')); del.title = t('delChat')
+  const main = el('button', 'conv-main'); main.type = 'button'
+  const title = el('span', 'ct')
+  if (c.job) title.insertAdjacentHTML('afterbegin', icon('clock'))
+  title.append(el('span', '', c.title || t('newChat')))
+  main.append(title, el('span', 'cs', fmtTime(c.updatedAt) + (c.id === runningCid ? ' · ' + t('stateThink') : '')))
+  del.onclick = () => deleteConv(c.id, li)
+
+  // desktop: hover shows rename and delete on the right
+  const tools = el('div', 'conv-tools')
+  const edit = el('button', 'conv-tool'); edit.type = 'button'; edit.innerHTML = icon('pencil')
+  edit.title = t('renameChat'); edit.setAttribute('aria-label', t('renameChat'))
+  edit.onclick = event => { event.stopPropagation(); startRename(c, li) }
+  const remove = el('button', 'conv-tool danger'); remove.type = 'button'; remove.innerHTML = icon('trash')
+  remove.title = t('delChat'); remove.setAttribute('aria-label', t('delChat'))
+  remove.onclick = event => { event.stopPropagation(); deleteConv(c.id, li) }
+  tools.append(edit, remove)
+
+  // touch: long press the row to rename it, swipe left still deletes
+  let press = null
+  const cancel = () => { clearTimeout(press); press = null }
+  main.addEventListener('pointerdown', () => { cancel(); press = setTimeout(() => { press = null; startRename(c, li) }, 650) })
+  main.addEventListener('pointermove', cancel)
+  main.addEventListener('pointerup', cancel)
+  main.addEventListener('pointercancel', cancel)
+  main.addEventListener('dblclick', event => { event.preventDefault(); startRename(c, li) })
+
+  swipe(li, main, () => selectConv(c.id))
+  li.append(del, main, tools)
+  return li
+}
+
+function startRename(c, li) {
+  if (li.querySelector('.conv-rename')) return
+  const input = el('input', 'conv-rename')
+  input.value = c.title || ''
+  input.maxLength = 60
+  input.setAttribute('aria-label', t('renameChat'))
+  li.append(input)
+  input.focus(); input.select()
+  let done = false
+  const finish = async save => {
+    if (done) return
+    done = true
+    const title = input.value.replace(/\s+/g, ' ').trim()
+    input.remove()
+    if (!save || !title || title === c.title) return
+    const result = await post('/api/conversations/rename', { id: c.id, title })
+    if (result.status === 200) { c.title = title; convs = convs.map(x => (x.id === c.id ? { ...x, title } : x)); drawConvs() }
+  }
+  input.addEventListener('keydown', event => {
+    if (event.key === 'Enter') finish(true)
+    else if (event.key === 'Escape') { event.stopPropagation(); finish(false) }
+  })
+  input.addEventListener('blur', () => finish(true))
+  input.addEventListener('click', event => event.stopPropagation())
+}
+
+// Swipe a row left to reveal the red cross. Works with touch and mouse; the delete button is also reachable with the keyboard.
+function swipe(li, main, onTap) {
+  let startX = 0, startY = 0, base = 0, id = null, dragging = false, moved = false
+  main.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    id = e.pointerId; startX = e.clientX; startY = e.clientY; dragging = false; moved = false
+    base = li.classList.contains('open') ? -REVEAL : 0
+  })
+  main.addEventListener('pointermove', e => {
+    if (id !== e.pointerId) return
+    const dx = e.clientX - startX, dy = e.clientY - startY
+    if (!dragging) {
+      if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.2) { dragging = true; main.setPointerCapture(e.pointerId); closeRows(li); main.style.transition = 'none' }
+      else return
+    }
+    moved = true
+    main.style.transform = `translateX(${Math.max(-REVEAL, Math.min(0, base + dx))}px)`
+  })
+  const finish = e => {
+    if (id !== e.pointerId) return
+    id = null
+    if (!dragging) return
+    const x = new DOMMatrix(getComputedStyle(main).transform).m41
+    main.style.transition = ''; main.style.transform = ''
+    li.classList.toggle('open', x < -REVEAL / 2)
+  }
+  main.addEventListener('pointerup', finish)
+  main.addEventListener('pointercancel', finish)
+  main.addEventListener('click', () => {
+    if (moved) { moved = false; return }
+    if (li.querySelector('.conv-rename')) return
+    if (li.classList.contains('open')) { li.classList.remove('open'); return }
+    onTap()
+  })
+}
+async function deleteConv(id, li) {
+  $('convMsg').textContent = ''
+  const { status } = await post('/api/conversations/delete', { id })
+  if (status === 409) { $('convMsg').textContent = t('cantDelete'); li.classList.remove('open'); return }
+  if (status !== 200 && status !== 404) { $('convMsg').textContent = t('failed') + status; return }
+  convs = convs.filter(c => c.id !== id)
+  li.classList.add('gone')
+  setTimeout(drawConvs, 200)
+  if (activeCid === id) { activeCid = null; clearFeed(); refreshOrb() }
+}
+function openDrawer() {
+  closeRows()
+  $('convMsg').textContent = ''
+  $('drawer').inert = false
+  $('drawer').classList.add('open'); $('scrim').classList.add('on')
+  loadConvs()
+}
+// On a wide screen the history is a sidebar that is always there.
+const wide = matchMedia('(min-width: 1000px)')
+function closeDrawer() {
+  $('drawer').classList.remove('open'); $('scrim').classList.remove('on')
+  $('drawer').inert = !wide.matches
+}
+$('drawer').inert = !wide.matches
+wide.addEventListener('change', () => { closeDrawer(); drawConvs() })
+$('orbBtn').onclick = openDrawer
+$('orbBtn').addEventListener('pointerdown', () => poke())
+$('closeDrawer').onclick = closeDrawer
+$('scrim').onclick = closeDrawer
+$('newChat').onclick = newChat
+$('drawerSpend').onclick = () => { closeDrawer(); show('settings') }
+
+let source
+function connect() {
+  source?.close()
+  source = new EventSource('/api/events')
+  source.onerror = () => { $('offline').hidden = false } // the browser reconnects by itself
+  source.onmessage = async m => {
+    const e = JSON.parse(m.data)
+    if (e.type === 'hello') {
+      $('offline').hidden = true
+      open.clear()
+      for (const p of e.pending) open.set(p.id, { e: p, kind: p.type })
+      activeTakeover = [...open.values()].find(x => x.kind === 'takeover')?.e.id ?? null
+      $('handBack').hidden = !activeTakeover
+      showBudget(e.budget); runningCid = e.running; setBadge(e.unread)
+      await loadConvs()
+      if (activeCid === undefined && !restoredOnce) { restoredOnce = true; await restoreLastPage() }
+      else if (activeCid) await loadHistory(activeCid) // catch up after a dropped connection
+      refreshBanner()
+    }
+    else if (e.type === 'conversations') refreshConvs()
+    else if (e.type === 'clerk') loadClerk()
+    else if (e.type === 'extensions') { if (currentView === 'settings') loadExtensions() }
+    else if (e.type === 'features') loadFeatures()
+    else if (e.type === 'trial_done') toast(t(e.kept ? 'trialKept' : e.reason === 'timeout' ? 'trialTimeout' : e.reason === 'crashed' ? 'trialCrashed' : 'trialUndone', e.title), !e.kept && e.reason !== 'rejected')
+    else if (e.type === 'memory') { if (currentView === 'settings') loadMemory() }
+    else if (e.type === 'budget') showBudget(e)
+    else if (e.type === 'status') {
+      if (e.status === 'running') { if (runningCid !== e.cid) workSteps = 0; runningCid = e.cid }
+      else if (runningCid === e.cid) {
+        runningCid = null
+        if (e.cid === activeCid && workSteps >= 2 && !clerkData?.jobs.some(j => j.cid === e.cid)) offerRoutine()
+        workSteps = 0
+      }
+      refreshOrb()
+      if (!$('drawer').inert) drawConvs()
+    }
+    else route(e)
+  }
+}
+
+function prefill(text) { show('chat'); setText(text); $('text').focus() }
+
+// ---- the clerk: scheduled tasks, reminders, inbox and channels ----
+let clerkData = null
+function setBadge(n) { $('badge').hidden = !n; $('badge').textContent = n }
+async function loadClerk() {
+  const data = await getJson('/api/clerk')
+  if (!data) return
+  clerkData = data
+  setBadge(data.unread)
+  drawGlance()
+  if (!data.timezoneChosen) post('/api/clerk/timezone', { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }) // the first visit sets it from this device
+  if (currentView === 'clerk' || currentView === 'settings') drawClerk()
+}
+function jobCard(job, tz = clerkData?.timezone, compact = false, created = false) {
+  const c = el('div', 'card job' + (job.enabled ? '' : ' paused') + (created ? ' saved' : ''))
+  const top = el('div', 'card-top')
+  top.append(tile(job.kind === 'task' ? 'clock' : 'bell'),
+    el('span', 'tag', created ? t('tagSaved') : t(job.kind === 'task' ? 'kindTask' : 'kindReminder')))
+  if (job.running) top.append(el('span', 'mini good', t('running')))
+  c.append(top, el('div', 'what', job.title))
+  c.append(rowsOf([
+    [t('repeatLabel'), describeSchedule(job.schedule)],
+    [t('nextLabel'), job.enabled && job.nextRun ? whenText(job.nextRun, tz) : t('paused')],
+    [t('sendLabel'), job.channels?.length ? job.channels.join('、') : t('appInbox')],
+  ]))
+  if (job.kind === 'reminder' && job.text && job.text !== job.title) c.append(el('div', 'quote', job.text))
+  if (job.lastStatus) {
+    const prefix = t({ ok: 'lastOk', missed: 'lastMissed', partial: 'lastPartial', needs_you: 'lastNeedsYou', drafted: 'lastDrafted' }[job.lastStatus] ?? 'lastFailed')
+    const tone = job.lastStatus === 'ok' ? '' : ['partial', 'needs_you', 'drafted'].includes(job.lastStatus) ? ' warn' : ' failed'
+    c.append(el('div', 'last' + tone, `${prefix}${fmtWhen(job.lastRun, tz)} · ${job.lastResult ?? ''}`))
+  }
+  const actions = el('div', 'actions')
+  if (compact) { // inside the chat a job card only points to the Clerk tab, where it can be changed
+    const openTab = el('button', 'btn', t('openClerk')); openTab.onclick = () => show('clerk')
+    actions.append(openTab); c.append(actions)
+    return c
+  }
+  const run = el('button', 'btn', t(job.kind === 'task' ? 'runNow' : 'sendNow')); run.disabled = job.running
+  run.onclick = async () => { const r = await post('/api/clerk/job/run', { id: job.id }); if (r.status !== 200) { c.append(el('div', 'last failed', errText(r.data, r.status))) } }
+  const trialOver = job.playbook && job.trial === 'done' && !job.enabled
+  const trialOn = job.trial === 'pending' || job.trial === 'running'
+  const toggle = el('button', trialOver ? 'btn primary' : 'btn', t(trialOver ? 'enableRoutine' : job.enabled ? 'pause' : 'resume'))
+  toggle.disabled = trialOn
+  toggle.onclick = () => post('/api/clerk/job/toggle', { id: job.id, enabled: !job.enabled })
+  const del = el('button', 'btn danger', t('remove'))
+  del.onclick = async () => { if (confirm(t('confirmDelete', job.title))) { const r = await post('/api/clerk/job/delete', { id: job.id }); if (r.status !== 200) c.append(el('div', 'last failed', errText(r.data, r.status))) } }
+  actions.append(run, toggle, del)
+  if (job.playbook) {
+    c.append(rowsOf([[t('routineCheck'), job.playbook.check], [t('routineMissing'), job.playbook.onMissing]]))
+    const how = el('details', 'runs')
+    how.append(el('summary', '', `${t('routineSteps')} · ${job.playbook.steps.length}`))
+    job.playbook.steps.forEach((text, i) => how.append(el('p', 'step', `${i + 1}. ${text}`)))
+    c.append(how)
+    if (trialOn || trialOver) c.append(el('div', 'last warn', t(trialOn ? 'trialRunning' : 'trialDone')))
+  }
+  if (job.assist) {
+    const help = el('div', 'assist')
+    const go = el('button', 'btn primary', t('assistBtn'))
+    go.disabled = job.running
+    go.onclick = async () => { const r = await post('/api/clerk/job/assist', { id: job.id }); if (r.status !== 200) c.append(el('div', 'last failed', errText(r.data, r.status))) }
+    help.append(el('span', '', job.assist.reason), go)
+    c.append(help)
+  }
+  c.append(actions)
+  if (job.runs?.length) c.append(runHistory(job, tz))
+  if (job.cid) { const see = el('button', 'link', t('openRun')); see.onclick = () => selectConv(job.cid); c.append(see) }
+  return c
+}
+/** The front page stays quiet; it only says what is waiting for the owner to decide. */
+function drawGlance() {
+  const d = clerkData
+  const items = [
+    [(d.drafts ?? []).length, 'glanceDrafts', ' warn'],
+    [d.jobs.filter(j => j.assist).length, 'glanceNeeds', ' warn'],
+  ].filter(([count]) => count > 0)
+  $('glance').hidden = !items.length
+  $('glance').replaceChildren(...items.map(([count, key, tone]) => {
+    const b = el('button', 'glance-item' + tone); b.type = 'button'
+    b.append(el('b', '', String(count)), el('span', '', t(key)))
+    b.onclick = () => show('clerk')
+    return b
+  }))
+}
+function todoRow(todo, tz) {
+  const row = el('div', 'trow' + (todo.done ? ' finished' : ''))
+  const check = el('button', 'check' + (todo.done ? ' on' : '')); check.type = 'button'
+  check.innerHTML = icon('tick')
+  check.setAttribute('role', 'checkbox')
+  const paint = () => {
+    row.classList.toggle('finished', todo.done); check.classList.toggle('on', todo.done)
+    check.setAttribute('aria-checked', String(todo.done)); check.setAttribute('aria-label', t(todo.done ? 'undo' : 'markDone'))
+  }
+  paint()
+  check.onclick = async () => {
+    todo.done = !todo.done; paint() // show it at once, and put it back if the server says no
+    const r = await post('/api/clerk/todo/toggle', { id: todo.id, done: todo.done })
+    if (r.status !== 200) { todo.done = !todo.done; paint(); toast(errText(r.data, r.status), true) }
+  }
+  const body = el('div', 'tbody')
+  body.append(el('div', 'tt', todo.title))
+  const meta = [todo.due ? dueText(todo.due, tz) : '', todo.note].filter(Boolean).join(' · ')
+  if (meta) body.append(el('div', 'meta', meta))
+  const rm = el('button', 'icon-btn rm'); rm.type = 'button'; rm.innerHTML = icon('trash')
+  rm.title = t('remove'); rm.setAttribute('aria-label', t('remove'))
+  rm.onclick = async () => { const r = await post('/api/clerk/todo/delete', { id: todo.id }); if (r.status === 200) row.remove(); else toast(errText(r.data, r.status), true) }
+  row.append(check, body, rm)
+  return row
+}
+function draftCard(d) {
+  const c = el('div', 'card ask')
+  const top = el('div', 'card-top')
+  top.append(tile('clock'), el('span', 'tag', t('tagDraft')), el('span', 'mini', d.jobTitle))
+  c.append(top, el('div', 'what', actionText(d.summary)))
+  if (d.detail) c.append(el('div', 'quote', d.detail.replace(/^Page: /m, t('pagePrefix')).replace(/^Text: /m, t('textPrefix'))))
+  if (d.hasShot) { const img = new Image(); img.alt = ''; img.src = `/api/clerk/draft/shot?id=${encodeURIComponent(d.id)}`; c.append(img) }
+  const yes = el('button', 'btn primary', t('draftApprove')), no = el('button', 'btn', t('draftReject'))
+  const decide = async allow => {
+    yes.disabled = no.disabled = true
+    const r = await post('/api/clerk/draft/decide', { id: d.id, allow })
+    if (r.status === 200) {
+      const worked = r.data.status === 'done'
+      toast(t(!allow ? 'draftDiscarded' : worked ? 'draftDone' : 'draftFailed'), allow && !worked)
+      return
+    }
+    yes.disabled = no.disabled = false
+    c.append(el('div', 'last failed', r.status === 409 ? t('draftBusy') : errText(r.data, r.status)))
+  }
+  yes.onclick = () => decide(true)
+  no.onclick = () => decide(false)
+  const actions = el('div', 'actions')
+  actions.append(yes, no)
+  c.append(actions)
+  return c
+}
+function runHistory(job, tz) {
+  const box = el('details', 'runs')
+  box.append(el('summary', '', `${t('runsTitle')} · ${job.runs.length}`))
+  for (const r of job.runs) {
+    const cost = r.costUsd > 0 ? ` · $${r.costUsd.toFixed(3)}` : ''
+    const took = r.ms ? ` · ${Math.max(1, Math.round(r.ms / 1000))}s` : ''
+    const row = el('div', 'run')
+    row.append(el('b', r.status === 'ok' ? '' : ['partial', 'needs_you', 'drafted'].includes(r.status) ? 'warn' : 'failed', (r.trial ? `${t('runTrial')} · ` : '') + t('run_' + r.status)), el('span', '', `${fmtWhen(r.at, tz)}${took}${cost}`), el('p', '', r.summary ?? ''))
+    box.append(row)
+  }
+  return box
+}
+function inboxItem(n) {
+  const item = el('button', 'inbox-item' + (n.read ? '' : ' unread')); item.type = 'button'
+  const top = el('div', 'top')
+  top.append(el('span', 'title', n.title), el('time', '', fmtWhen(n.at, clerkData.timezone)))
+  item.append(top)
+  if (n.text) item.append(el('div', 'body', n.text))
+  for (const card of n.cards ?? []) item.append(infoCard(card))
+  // Where it went, in one quiet line; only a failure gets its own line and colour.
+  const delivery = n.delivery ?? []
+  const reached = delivery.filter(d => d.ok).map(d => d.channel)
+  const note = (text, bad) => { const line = el('div', 'sent' + (bad ? ' bad' : '')); line.insertAdjacentHTML('afterbegin', icon(bad ? 'cross' : 'tick')); line.append(el('span', '', text)); item.append(line) }
+  if (reached.length) note(t('inboxSent', reached.join('、')), false)
+  for (const d of delivery.filter(x => !x.ok)) note(`${d.channel} ${t('inboxNotSent')}${d.error ? `：${d.error}` : ''}`, true)
+  item.onclick = () => item.classList.toggle('open')
+  return item
+}
+const CHANNEL_TYPES = ['wechat', 'lark', 'wecom', 'telegram', 'discord']
+function channelRow(ch) {
+  const row = el('div', 'channel')
+  const top = el('div', 'ch-top')
+  const badge = el('span', 'badge-t')
+  const letter = { lark: 'L', wecom: 'W', telegram: 'T', discord: 'D' }[ch.type]
+  if (letter) badge.textContent = letter
+  else badge.innerHTML = icon(ch.type === 'webpush' ? 'bell' : 'chat')
+  top.append(badge, el('b', '', ch.name))
+  const del = el('button', 'icon-btn'); del.innerHTML = icon('cross'); del.title = t('remove'); del.setAttribute('aria-label', t('remove'))
+  del.onclick = () => { if (confirm(t('confirmDelete', ch.name))) post('/api/channels/delete', { id: ch.id }) }
+  top.append(del)
+  const res = el('span', 'res')
+  const actions = el('div', 'ch-actions')
+  const test = el('button', 'btn small', t('test'))
+  test.onclick = async () => {
+    res.className = 'res'; res.textContent = '…'
+    const r = await post('/api/channels/test', { id: ch.id })
+    res.className = 'res ' + (r.data.ok ? 'good' : 'bad')
+    res.textContent = r.data.ok ? t('testOk') : t('testFail', r.data.error ?? r.status)
+  }
+  actions.append(test, res)
+  row.append(top, el('div', 'ch-meta', `${t('ch_' + ch.type)} · ${ch.hint}${ch.signed ? ' · ' + t('signed') : ''}`), actions)
+  return row
+}
+function drawClerk() {
+  const d = clerkData
+  const drafts = d.drafts ?? []
+  $('draftBox').hidden = drafts.length === 0
+  $('draftList').replaceChildren(...drafts.map(draftCard))
+  $('draftsHead').querySelector('h3').textContent = `${t('draftsTitle')} · ${drafts.length}`
+  // Two different things live here: to-dos (things to do, open ones first) and scheduled jobs (recurring or timed work).
+  const todos = [...d.todos].sort((a, b) => Number(a.done) - Number(b.done))
+  $('todoList').replaceChildren(...todos.map(todo => todoRow(todo, d.timezone)))
+  $('todosHead').querySelector('h3').textContent = `${t('todosTitle')} · ${d.todos.length}`
+  $('todoEmpty').hidden = d.todos.length > 0
+  $('jobList').replaceChildren(...d.jobs.map(j => jobCard(j)))
+  $('jobsHead').querySelector('h3').textContent = `${t('jobsTitle')} · ${d.jobs.length}`
+  $('jobEmpty').hidden = d.jobs.length > 0
+  $('inboxList').replaceChildren(...d.inbox.slice(0, 30).map(inboxItem))
+  $('inboxHead').hidden = d.inbox.length === 0
+  $('markRead').hidden = d.unread === 0
+  $('channelList').replaceChildren(...d.channels.map(channelRow))
+  if (document.activeElement !== $('zone')) $('zone').value = d.timezone
+}
+$('langSel').append(new Option(t('langAuto'), 'auto'), ...LANGS.map(l => new Option(l.label, l.code)))
+$('langSel').value = savedLang
+function drawTheme() {
+  let current = 'auto'
+  try { current = localStorage.getItem('bobbot.theme') || 'auto' } catch { /* private mode */ }
+  $('themeSeg').replaceChildren(...['auto', 'light', 'dark'].map(choice => {
+    const b = el('button', choice === current ? 'on' : '', t('theme_' + choice)); b.type = 'button'
+    b.setAttribute('aria-pressed', String(choice === current))
+    b.onclick = () => {
+      try { if (choice === 'auto') localStorage.removeItem('bobbot.theme'); else localStorage.setItem('bobbot.theme', choice) } catch { /* private mode */ }
+      post('/api/prefs', { theme: choice }).catch(() => {})
+      applyTheme(); drawTheme()
+    }
+    return b
+  }))
+}
+drawTheme()
+$('langSel').onchange = async () => {
+  const value = $('langSel').value
+  if (value === 'auto') localStorage.removeItem('bobbot.lang'); else localStorage.setItem('bobbot.lang', value)
+  try { await post('/api/prefs', { lang: value }) } catch {}
+  location.reload()
+}
+CHANNEL_TYPES.forEach(k => $('chType').append(new Option(t('ch_' + k), k)))
+async function loadMemory() {
+  const data = await getJson('/api/memory')
+  if (!data) return
+  const list = $('memoryList')
+  list.replaceChildren()
+  if (!data.items.length) { list.append(el('p', 'hint', t('memoryEmpty'))) }
+  for (const item of data.items) {
+    const row = el('div', 'mem-row')
+    const body = el('div', 'tbody')
+    body.append(el('div', '', item.text))
+    const remove = el('button', 'icon-btn rm'); remove.type = 'button'; remove.innerHTML = icon('trash')
+    remove.title = t('remove'); remove.setAttribute('aria-label', t('remove'))
+    remove.onclick = async () => { await post('/api/memory/delete', { id: item.id }); loadMemory() }
+    row.append(el('span', 'mini', t('mem_' + item.kind)), body, remove)
+    list.append(row)
+  }
+  const insights = $('memoryInsights')
+  insights.hidden = !data.insights.length
+  insights.textContent = data.insights.length ? `${t('memoryInsights')}: ` + data.insights.map(i => i.text).join(' · ') : ''
+  $('memoryLastDream').textContent = data.lastDream?.failed ? t('memoryDreamFailed', data.lastDream.reason) : data.lastDreamAt ? t('memoryLastDream', whenText(data.lastDreamAt, clerkData?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone)) : ''
+}
+$('memoryDream').onclick = async () => {
+  $('memoryMsg').textContent = '…'
+  const result = await post('/api/memory/dream', {})
+  const data = result.data ?? {}
+  $('memoryMsg').textContent = result.status === 200 && data.ok ? t('memoryDreamed', data.added ?? 0) : t('memoryDreamFailed', data.reason ?? result.status)
+  loadMemory()
+}
+let proactiveState = { enabled: false, times: [] }
+async function loadProactive() {
+  const data = await getJson('/api/proactive')
+  if (!data) return
+  proactiveState = data
+  $('toggleProactive').setAttribute('aria-checked', String(Boolean(data.enabled)))
+  if (document.activeElement !== $('proactiveTimes')) $('proactiveTimes').value = data.times.join(', ')
+  const level = Number(data.level ?? 0.35)
+  if (document.activeElement !== $('proactiveLevel')) $('proactiveLevel').value = String(level)
+  $('proactiveLevelText').textContent = `${levelName(level)} · ${Math.round(level * 100)}%`
+}
+const levelName = level => t(level < 0.25 ? 'levelReserved' : level < 0.5 ? 'levelBalanced' : level < 0.75 ? 'levelActive' : 'levelClingy')
+$('proactiveLevel').oninput = () => {
+  const level = Number($('proactiveLevel').value)
+  $('proactiveLevelText').textContent = `${levelName(level)} · ${Math.round(level * 100)}%`
+}
+$('proactiveLevel').onchange = async () => {
+  await post('/api/proactive', { level: Number($('proactiveLevel').value) })
+  loadProactive()
+}
+$('saveProactive').onclick = async () => {
+  const times = $('proactiveTimes').value.split(/[,，\s]+/).filter(Boolean)
+  const result = await post('/api/proactive', { times })
+  $('proactiveMsg').textContent = result.status === 200 ? t('saved') : (result.data.error ?? t('failed'))
+  loadProactive()
+}
+$('toggleProactive').onclick = async () => {
+  await post('/api/proactive', { enabled: !proactiveState.enabled })
+  loadProactive()
+}
+$('proactiveNow').onclick = async () => {
+  $('proactiveMsg').textContent = '…'
+  const result = await post('/api/proactive/run', {})
+  const data = result.data ?? {}
+  $('proactiveMsg').textContent = data.sent ? t('proactiveSent') : data.ok ? t('proactiveSilent') : t('proactiveSkip', data.reason ?? result.status)
+  loadProactive()
+}
+// ---- feature packages: widgets in sandboxed frames, scoped styling, and the trial control ----
+const SLOTS = { 'header-right': '#slotHeader', home: '#slotHome', 'clerk-top': '#slotClerk', 'settings-top': '#slotSettings' }
+const OFF_LIMITS = '.card.ask, .card.help, #trialHost, #login, #browser' // a feature never draws inside what asks for a decision
+const FRAME_VARS = ['--bg', '--surface', '--surface-2', '--surface-3', '--text', '--muted', '--line', '--accent', '--accent-text', '--accent-soft', '--accent-ink', '--danger', '--ok', '--warn']
+const frameTheme = () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light')
+// What a widget last saved with bob.save, kept on this device, so it can draw something real the moment it loads.
+const MAX_WIDGET_STATE = 8000
+const stateKey = frame => `bobbot.w.${frame.dataset.plugin}.${frame.dataset.widget || 'panel'}`
+function widgetState(frame) {
+  try { const raw = localStorage.getItem(stateKey(frame)); return raw ? JSON.parse(raw) : null } catch { return null }
+}
+function frameInit(frame) {
+  const style = getComputedStyle(document.documentElement)
+  return { bob: 'init', theme: frameTheme(), lang, state: widgetState(frame), vars: Object.fromEntries(FRAME_VARS.map(v => [v, style.getPropertyValue(v).trim()])) }
+}
+function sizeWidget(frame, width, height) {
+  const inHeader = frame.dataset.anchor === 'header-right'
+  const fit = (value, low, high, fallback) => Math.min(high, Math.max(low, Number.isFinite(Number(value)) ? Math.round(Number(value)) : fallback))
+  frame.style.width = `${fit(width, 20, inHeader ? 160 : 1200, inHeader ? 44 : 320)}px`
+  frame.style.height = `${fit(height, 20, inHeader ? 40 : 600, inHeader ? 36 : 120)}px`
+}
+let mounted = ''
+function mountFeatures(items) {
+  const live = items.filter(f => f.status === 'ok')
+  const key = JSON.stringify(live.map(f => [f.name, f.version, f.widgets, f.style]))
+  if (key === mounted) return // nothing changed: leave running widgets alone
+  mounted = key
+  document.querySelectorAll('.plugin-widget, link[data-plugin]').forEach(node => node.remove())
+  for (const f of live) {
+    if (f.style) {
+      const link = el('link'); link.rel = 'stylesheet'; link.href = `/f/${f.name}/style.css?v=${f.version}`; link.dataset.plugin = f.name
+      document.head.append(link)
+    }
+    for (const w of f.widgets) {
+      let target = null
+      try { target = document.querySelector(SLOTS[w.anchor] ?? w.anchor) } catch { /* not a selector this page understands */ }
+      if (!target || target.closest(OFF_LIMITS)) continue
+      const frame = el('iframe', 'plugin-widget')
+      frame.setAttribute('sandbox', 'allow-scripts allow-forms')
+      frame.setAttribute('allowtransparency', 'true')
+      frame.style.background = 'transparent'
+      frame.style.colorScheme = 'normal'
+      frame.title = f.title; frame.dataset.plugin = f.name; frame.dataset.widget = w.id; frame.dataset.anchor = w.anchor
+      frame.style.visibility = 'hidden' // not seen until its document is up, so whatever the browser paints behind a loading frame never shows
+      sizeWidget(frame, w.width, w.height)
+      frame.src = `/f/${f.name}/widget-${w.id}.html?v=${f.version}&t=${frameTheme()}`
+      const place = target.closest('#feed') ? 'before' : w.place // the chat feed manages its own children
+      if (place === 'start') target.prepend(frame); else if (place === 'before') target.before(frame); else if (place === 'after') target.after(frame); else target.append(frame)
+    }
+  }
+}
+// When the theme changes, by the owner's choice or because the phone switched, every open frame follows at once.
+new MutationObserver(() => document.querySelectorAll('.plugin-widget, #fpFrame').forEach(frame => frame.contentWindow?.postMessage(frameInit(frame), '*')))
+  .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+// A frame has no login of its own. It asks the page, and the page only ever calls that feature's own routes.
+addEventListener('message', async e => {
+  const m = e.data
+  if (!m || typeof m.bob !== 'string') return
+  const frame = [...document.querySelectorAll('.plugin-widget'), $('fpFrame')].find(f => f.contentWindow === e.source)
+  const name = frame?.dataset.plugin
+  if (!name) return
+  const reply = data => e.source.postMessage(data, '*')
+  if (m.bob === 'ready') { reply(frameInit(frame)); frame.style.visibility = '' }
+  else if (m.bob === 'save') {
+    try { const text = JSON.stringify(m.value ?? null); if (text.length <= MAX_WIDGET_STATE) localStorage.setItem(stateKey(frame), text) } catch { /* private mode, or not serialisable */ }
+  }
+  else if (m.bob === 'resize' && frame !== $('fpFrame')) sizeWidget(frame, m.width, m.height)
+  else if (m.bob === 'prefill') prefill(String(m.text ?? '').slice(0, 2000))
+  else if (m.bob === 'toast') toast(String(m.text ?? '').slice(0, 120))
+  else if (m.bob === 'call') {
+    const route = String(m.path ?? '')
+    if (!/^\/[\w\-./]*(\?[\w\-.=&%+,]*)?$/.test(route) || route.includes('..')) return reply({ bob: 'result', id: m.id, ok: false, error: 'bad path' })
+    try {
+      const res = await fetch(`/api/f/${name}${route}`, m.body === undefined || m.body === null ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(m.body) })
+      const data = await res.json().catch(() => null)
+      reply({ bob: 'result', id: m.id, ok: res.ok, data, error: res.ok ? '' : (data?.message ?? data?.error ?? String(res.status)) })
+    } catch (error) { reply({ bob: 'result', id: m.id, ok: false, error: error.message }) }
+  }
+})
+
+// The trial control lives in a closed shadow tree with its own inline styles, so no feature styling can hide,
+// move or disguise the two buttons that decide whether a change stays.
+const trialHost = el('div'); trialHost.id = 'trialHost'
+const TRIAL_BOX = 'all:initial !important; position:fixed !important; top:calc(env(safe-area-inset-top) + 60px) !important; right:10px !important; z-index:90 !important; ' // under the header, so it never covers what is being tried there
+trialHost.style.cssText = TRIAL_BOX + 'display:none !important;'
+const trialRoot = trialHost.attachShadow({ mode: 'closed' })
+const trialStyle = el('style')
+trialStyle.textContent = `.box { display:flex; align-items:center; gap:8px; padding:6px 6px 6px 12px; border-radius:999px; background:var(--surface,#fff); color:var(--text,#171c28); border:1px solid var(--line,#e4e7ee); box-shadow:var(--shadow-pop,0 12px 40px rgba(16,24,40,.16)); font:600 13px/1.2 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; max-width:calc(100vw - 20px); }
+.name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.left { color:var(--muted,#667085); font-variant-numeric:tabular-nums; flex:none; }
+button { font:inherit; border:0; cursor:pointer; min-height:32px; padding:0 14px; border-radius:999px; flex:none; background:var(--surface-2,#eef0f6); color:var(--text,#171c28); }
+button.keep { background:var(--accent,#2f6bff); color:var(--accent-text,#fff); }
+button:disabled { opacity:.5; }`
+const trialBox = el('div', 'box'), trialName = el('span', 'name'), trialLeft = el('span', 'left')
+const trialKeep = el('button', 'keep', t('trialKeep')), trialUndo = el('button', '', t('trialUndo'))
+trialKeep.type = trialUndo.type = 'button'
+trialBox.append(trialName, trialLeft, trialUndo, trialKeep)
+trialRoot.append(trialStyle, trialBox)
+document.body.append(trialHost)
+let trialEnds = 0, trialTick = null
+function drawTrial(trial) {
+  clearInterval(trialTick)
+  trialHost.style.cssText = TRIAL_BOX + (trial ? 'display:block !important;' : 'display:none !important;')
+  if (!trial) return
+  trialKeep.disabled = trialUndo.disabled = false
+  trialName.textContent = `${t('trialTitle')} · ${trial.title}`
+  trialEnds = Date.now() + trial.remainingMs // counted on this device's clock, from what the server says is left
+  const paint = () => {
+    const left = Math.max(0, Math.ceil((trialEnds - Date.now()) / 1000))
+    trialLeft.textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`
+  }
+  paint(); trialTick = setInterval(paint, 1000)
+}
+const decideTrial = async keep => { trialKeep.disabled = trialUndo.disabled = true; await post('/api/features/trial', { keep }); loadFeatures() }
+trialKeep.onclick = () => decideTrial(true)
+trialUndo.onclick = () => decideTrial(false)
+
+async function loadFeatures() {
+  const data = await getJson('/api/features')
+  if (!data) return
+  mountFeatures(data.items)
+  drawTrial(data.trial)
+  const list = $('featureList')
+  list.replaceChildren()
+  if (!data.items.length) { list.append(el('p', 'hint', t('featuresEmpty'))); return }
+  for (const feature of data.items) {
+    const row = el('div', 'feature-row')
+    const info = el('div', 'feature-info')
+    const notes = [feature.name, feature.trial ? t('trialTitle') : '', feature.status === 'error' ? t('featuresFailed') : '', feature.widgets.length ? t('featuresOnPage', feature.widgets.length) : ''].filter(Boolean)
+    info.append(el('b', '', feature.title), el('small', '', notes.join(' · ')))
+    if (feature.description) info.append(el('div', 'hint', feature.description))
+    if (feature.error) info.append(el('div', 'hint err', feature.error))
+    const actions = el('div', 'row')
+    if (feature.panel) {
+      const open = el('button', 'btn small', t('featuresOpen'))
+      open.onclick = () => { $('fpTitle').textContent = feature.title; $('fpFrame').dataset.plugin = feature.name; $('fpFrame').dataset.widget = 'panel'; $('fpFrame').src = `/f/${feature.name}/${feature.panel}?v=${feature.version}&t=${frameTheme()}`; $('fpModal').hidden = false }
+      actions.append(open)
+    }
+    if (feature.hasPrevious && !data.trial) {
+      const back = el('button', 'btn small', t('featuresRestore'))
+      back.onclick = async () => { const r = await post('/api/features/restore', { name: feature.name }); if (r.status !== 200) toast(errText(r.data, r.status), true); loadFeatures() }
+      actions.append(back)
+    }
+    if (!feature.trial) {
+      const remove = el('button', 'btn small danger', t('remove'))
+      remove.onclick = async () => { if (!confirm(t('confirmDelete', feature.title))) return; await post('/api/features/remove', { name: feature.name }); loadFeatures() }
+      actions.append(remove)
+    }
+    row.append(info, actions)
+    list.append(row)
+  }
+}
+$('fpClose').onclick = () => { $('fpModal').hidden = true; $('fpFrame').src = 'about:blank'; delete $('fpFrame').dataset.plugin }
+let pushConfig = null
+const isInstalled = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
+const urlB64ToBytes = base64 => {
+  const padded = (base64 + '='.repeat((4 - (base64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/')
+  const raw = atob(padded)
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)))
+}
+async function loadPushState() {
+  const can = 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window
+  pushConfig = (await getJson('/api/push/config')) ?? pushConfig
+  const count = pushConfig?.subscriptions ?? 0
+  const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+  const box = $('pushState'), enable = $('pushEnable'), test = $('pushTest')
+  enable.disabled = false
+  box.className = 'keystate ' + (count > 0 ? '' : 'none')
+  box.textContent = count > 0 ? t('pushOn', count) : t('pushOff')
+  test.hidden = count === 0
+  const diag = $('pushDiag')
+  diag.hidden = false
+  const perm = !('Notification' in window) ? t('pushPermDenied') : Notification.permission === 'granted' ? t('pushPermGranted') : Notification.permission === 'denied' ? t('pushPermDenied') : t('pushPermDefault')
+  const caps = ['Notification' in window ? 'Notification' : '', 'PushManager' in window ? 'PushManager' : '', 'serviceWorker' in navigator ? 'SW' : ''].filter(Boolean).join(' / ') || t('pushUnsupported')
+  const mode = $('pushChatMode')
+  if (!mode.options.length) { for (const v of ['long', 'always', 'off']) mode.append(new Option(t('chat_' + v), v)); mode.onchange = () => post('/api/notify', { chat: mode.value }) }
+  mode.value = pushConfig?.chat ?? 'long'
+  const last = pushConfig?.last
+  $('pushLast').textContent = !last ? '' : last.ok ? t('pushLastOk', fmtTime(last.at)) : t('pushLastBad', fmtTime(last.at)).replace('{m}', last.detail)
+  diag.textContent = t('pushDiag', { m: isInstalled() ? t('pushModeApp') : t('pushModeTab'), p: perm }) + ' · ' + caps
+  if (iOS && !isInstalled()) { $('pushHint').textContent = t('pushIosHint'); enable.disabled = true }
+  else if (!can) { $('pushHint').textContent = t('pushUnsupported'); enable.disabled = true }
+  else if (Notification.permission === 'denied') { $('pushHint').textContent = t('pushDenied'); enable.disabled = true }
+  else if (Notification.permission === 'granted' && count === 0) $('pushHint').textContent = t('pushGrantedNotSubscribed')
+  else $('pushHint').textContent = t('pushHint')
+}
+$('pushEnable').onclick = async () => {
+  // iOS only shows the permission prompt when requestPermission runs inside the tap itself.
+  let permission = 'Notification' in window ? Notification.permission : 'denied'
+  if (permission === 'default') {
+    try { permission = await Notification.requestPermission() } catch (error) { $('pushHint').textContent = String(error?.message ?? error); return }
+  }
+  if (permission !== 'granted') {
+    if ('Notification' in window && Notification.permission === 'default') $('pushHint').textContent = t('pushPromptBlocked')
+    loadPushState()
+    return
+  }
+  try {
+    if (!pushConfig) await loadPushState()
+    const reg = await navigator.serviceWorker.register('/sw.js')
+    await navigator.serviceWorker.ready
+    let sub = await reg.pushManager.getSubscription()
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToBytes(pushConfig.publicKey) })
+    }
+    const saved = await post('/api/push/subscribe', { subscription: sub.toJSON() })
+    if (saved.status !== 200) throw new Error(saved.data.error ?? 'subscribe failed')
+    // the config was cached when Settings opened, so trust the count the server just returned
+    pushConfig = { ...(pushConfig ?? {}), subscriptions: saved.data.subscriptions ?? 1 }
+    await post('/api/push/test')
+    loadClerk()
+    loadPushState()
+  } catch (error) {
+    $('pushHint').textContent = String(error?.message ?? error)
+  }
+}
+$('pushTest').onclick = async () => {
+  const r = await post('/api/push/test')
+  $('pushHint').textContent = r.status === 200 ? t('pushTest') : (r.data.error ?? t('failed'))
+  loadPushState()
+}
+
+// Tell the server whether this device is being looked at, so a finished task only notifies when the owner is away.
+// A page that is visible but not focused (a tab left open on another monitor) does not count.
+const deviceId = (() => { try { return localStorage.getItem('bobbot.device') || (localStorage.setItem('bobbot.device', crypto.randomUUID()), localStorage.getItem('bobbot.device')) } catch { return 'anon' } })()
+const here = () => document.visibilityState === 'visible' && document.hasFocus()
+let reportedHere = null
+function reportPresence(force = false) {
+  if ($('app').hidden) return // not signed in yet
+  const now = here()
+  if (!force && !now && reportedHere === false) return // already told them we are away
+  reportedHere = now
+  fetch('/api/presence', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: deviceId, here: now }), keepalive: true }).catch(() => {})
+}
+setInterval(() => { if (here()) reportPresence(true) }, 15000)
+document.addEventListener('visibilitychange', () => reportPresence())
+for (const name of ['focus', 'blur', 'pagehide', 'pageshow']) addEventListener(name, () => reportPresence())
+// A notification tapped while the app is open: go there without a reload.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.onmessage = event => {
+    if (event.data?.type === 'open' && !$('app').hidden) openFromLink(String(event.data.url ?? '/'))
+  }
+  // Keeps the worker current, so a fix to what a tap does reaches a phone that has already subscribed.
+  if ('Notification' in window && Notification.permission === 'granted') navigator.serviceWorker.register('/sw.js').catch(() => {})
+}
+let wxLoginTimer = null
+async function loadWechatLogin() {
+  clearTimeout(wxLoginTimer)
+  const data = await getJson('/api/wechat/status')
+  if (!data) return
+  const box = $('wxLoginBox')
+  if (box.hidden) return
+  const img = $('wxLoginQr')
+  if (data.connected) {
+    $('wxLoginMsg').textContent = t('wxConnected', data.owner || data.accountId || 'WeChat')
+    img.hidden = true
+    $('wxLoginBtn').hidden = true
+    return
+  }
+  $('wxLoginBtn').hidden = false
+  $('wxLoginBtn').textContent = data.qr ? t('wxRefresh') : t('wxLoginBtn')
+  if (data.qr) {
+    $('wxLoginMsg').textContent = t('wxScanHint')
+    img.src = data.qr; img.hidden = false
+  } else {
+    $('wxLoginMsg').textContent = data.installed ? t('wxNotLogged') : t('wxLoginFailed', 'bridge missing')
+    img.hidden = true
+  }
+  wxLoginTimer = setTimeout(loadWechatLogin, 3000)
+}
+$('wxLoginBtn').onclick = async () => {
+  const button = $('wxLoginBtn')
+  button.disabled = true
+  $('wxLoginMsg').textContent = t('wxWorking')
+  const result = await post('/api/wechat/login')
+  button.disabled = false
+  if (result.status !== 200) $('wxLoginMsg').textContent = t('wxLoginFailed', result.data.message ?? result.data.error)
+  loadWechatLogin()
+}
+function showChannelFields() {
+  const type = $('chType').value
+  $('chHelp').textContent = t('help_' + type)
+  const wechatType = type === 'wechat'
+  $('wxLoginBox').hidden = !wechatType
+  if (wechatType) loadWechatLogin()
+  $('chWebhook').hidden = type === 'telegram' || wechatType
+  $('chSecret').hidden = type !== 'lark'
+  $('chToken').hidden = type !== 'telegram'
+  $('chChat').hidden = type !== 'telegram'
+}
+$('chType').onchange = showChannelFields
+showChannelFields()
+$('saveChannel').onclick = async () => {
+  $('chMsg').textContent = '…'
+  const type = $('chType').value
+  const body = { type, name: $('chName').value, webhook: $('chWebhook').value, secret: $('chSecret').value, token: $('chToken').value, chatId: $('chChat').value }
+  const { status, data } = await post('/api/channels', body)
+  $('chMsg').textContent = status === 200 ? t('saved') : errText(data, status)
+  if (status === 200) { ;['chName', 'chWebhook', 'chSecret', 'chToken', 'chChat'].forEach(id => { $(id).value = '' }); $('addChannel').open = false }
+}
+$('markRead').onclick = () => post('/api/clerk/inbox/read')
+$('saveZone').onclick = async () => {
+  const { status, data } = await post('/api/clerk/timezone', { timezone: $('zone').value.trim() })
+  if (status === 200 && data?.timezone) {
+    $('zone').value = data.timezone
+    $('zoneMsg').textContent = `${t('saved')} (${data.timezone})`
+  } else {
+    $('zoneMsg').textContent = errText(data, status)
+  }
+}
+
+// ---- extensions: tool servers and skills that Bob installed ----
+async function loadExtensions() {
+  const data = await getJson('/api/extensions')
+  if (!data) return
+  const list = $('extList')
+  list.replaceChildren()
+  for (const s of data.mcp) {
+    const box = el('div', 'ext')
+    const head = el('div', 'head'); head.append(el('span', 'mini', t('mcpLabel')), el('b', '', s.name))
+    const rm = el('button', 'btn small danger', t('remove'))
+    rm.onclick = async () => { if (confirm(t('confirmDelete', s.name))) await post('/api/extensions/mcp/delete', { name: s.name }) }
+    head.append(rm)
+    box.append(head, el('code', '', s.summary))
+    for (const secret of s.secrets) {
+      const row = el('div', 'row')
+      const input = el('input', 'field'); input.type = 'password'; input.autocomplete = 'off'; input.placeholder = t('secretPh', secret.name); input.setAttribute('aria-label', secret.name)
+      const status = el('span', 'mini ' + (secret.set ? 'good' : 'bad'), t(secret.set ? 'secretSet' : 'secretNeeded'))
+      const set = el('button', 'btn small', t('setSecret'))
+      set.onclick = async () => {
+        if (!input.value) return
+        const r = await post('/api/extensions/secret', { server: s.name, name: secret.name, value: input.value })
+        input.value = ''
+        $('settingsMsg').textContent = r.status === 200 ? t('secretSaved') : errText(r.data, r.status)
+      }
+      row.append(input, status, set)
+      box.append(row)
+    }
+    list.append(box)
+  }
+  for (const k of data.skills) {
+    const box = el('div', 'ext')
+    const head = el('div', 'head'); head.append(el('span', 'mini', t('skillLabel')), el('b', '', k.name))
+    const rm = el('button', 'btn small danger', t('remove'))
+    rm.onclick = async () => { if (confirm(t('confirmDelete', k.name))) await post('/api/extensions/skill/delete', { name: k.name }) }
+    head.append(rm)
+    box.append(head, el('code', '', k.description))
+    list.append(box)
+  }
+  $('extEmpty').hidden = data.mcp.length + data.skills.length > 0
+}
+
+// ---- attachments (text files) ----
+const MAX_FILES = 5, MAX_FILE_CHARS = 200000, MAX_TOTAL_CHARS = 500000
+const TEXT_NAME = /\.(txt|md|markdown|csv|tsv|json|jsonl|log|xml|html?|ya?ml|ini|sql)$/i
+let attachments = []
+const kb = n => (n < 1024 ? n + ' B' : Math.round(n / 1024) + ' KB')
+function drawAttachments() {
+  $('composer').classList.toggle('empty', !$('text').value.trim() && !attachments.length)
+  const row = $('attachRow')
+  row.textContent = ''
+  row.hidden = attachments.length === 0 || $('composer').hidden
+  attachments.forEach((f, i) => {
+    const chip = el('span', 'file-chip')
+    chip.insertAdjacentHTML('afterbegin', icon('file'))
+    const x = el('button'); x.type = 'button'; x.title = t('remove'); x.setAttribute('aria-label', t('remove')); x.innerHTML = icon('cross')
+    x.onclick = () => { attachments.splice(i, 1); drawAttachments() }
+    chip.append(el('span', 'n', f.name), el('small', '', kb(f.text.length)), x)
+    row.append(chip)
+  })
+}
+async function readText(file) {
+  const buf = await file.arrayBuffer()
+  let text
+  try { text = new TextDecoder('utf-8', { fatal: true }).decode(buf) }
+  catch { try { text = new TextDecoder('gbk').decode(buf) } catch { return null } } // Excel in China often saves CSV as GBK
+  return /\u0000/.test(text) ? null : text.replace(/^﻿/, '')
+}
+$('attachBtn').onclick = () => $('filePick').click()
+
+// ---- voice input: the browser's own dictation, no audio leaves the device for Safari ----
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+let speech = null
+let speechOn = false
+let speechBase = ''
+if (!SpeechRecognition) $('micBtn').hidden = true
+else {
+  speech = new SpeechRecognition()
+  speech.lang = zh ? 'zh-CN' : 'en-US'
+  speech.interimResults = true
+  speech.continuous = false
+  speech.onresult = event => {
+    let said = ''
+    for (let i = 0; i < event.results.length; i++) said += event.results[i][0].transcript
+    setText((speechBase + said).slice(0, 4000))
+  }
+  speech.onend = () => { speechOn = false; $('micBtn').classList.remove('rec') }
+  speech.onerror = event => {
+    speechOn = false
+    $('micBtn').classList.remove('rec')
+    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') notice(t('micDenied'), true)
+  }
+  $('micBtn').onclick = () => {
+    if (speechOn) { speech.stop(); return }
+    speechBase = $('text').value ? $('text').value.replace(/\s+$/, '') + ' ' : ''
+    try { speech.start(); speechOn = true; $('micBtn').classList.add('rec') } catch { speechOn = false; $('micBtn').classList.remove('rec') }
+  }
+}
+$('filePick').onchange = async () => {
+  const picked = [...$('filePick').files]
+  $('filePick').value = ''
+  for (const file of picked) {
+    if (attachments.length >= MAX_FILES) { notice(t('filesMany'), true); break }
+    if (!TEXT_NAME.test(file.name) && !file.type.startsWith('text/')) { notice(t('fileUnsupported', file.name), true); continue }
+    if (file.size > MAX_FILE_CHARS * 4) { notice(t('fileBig', file.name), true); continue }
+    const text = await readText(file)
+    if (text === null) { notice(t('fileBinary', file.name), true); continue }
+    if (text.length > MAX_FILE_CHARS) { notice(t('fileBig', file.name), true); continue }
+    if (attachments.reduce((n, f) => n + f.text.length, 0) + text.length > MAX_TOTAL_CHARS) { notice(t('filesTotal'), true); continue }
+    attachments.push({ name: file.name, text })
+  }
+  drawAttachments()
+}
+/** The message box grows with what is typed, up to a few lines. */
+function fitText() {
+  const box = $('text')
+  box.style.height = 'auto'
+  box.style.height = `${Math.max(42, Math.min(box.scrollHeight, 160))}px`
+  $('composer').classList.toggle('empty', !box.value.trim() && !attachments.length)
+}
+function setText(value) { $('text').value = value; fitText() }
+$('text').addEventListener('input', fitText)
+$('text').addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return // Shift+Enter is a new line; Enter while choosing Chinese characters is not a send
+  e.preventDefault()
+  $('composer').requestSubmit()
+})
+$('composer').onsubmit = async e => {
+  e.preventDefault()
+  const text = $('text').value.trim()
+  if (!text && !attachments.length) return
+  poke()
+  const files = attachments
+  setText('')
+  attachments = []; drawAttachments()
+  const restore = () => { setText(text); attachments = files; drawAttachments() } // keep the draft so nothing is lost
+  if (!activeCid) {
+    const made = await post('/api/conversations')
+    if (made.status !== 200) { restore(); notice(errText(made.data, made.status), true); return }
+    activeCid = made.data.id
+  }
+  const { status, data } = await post('/api/chat', { cid: activeCid, text, files })
+  if (status === 200) { refreshConvs(); return }
+  restore()
+  if (data.error === 'NO_KEY') { $('settingsMsg').textContent = t('noKey'); show('settings') }
+  else if (data.error === 'BUDGET_EXCEEDED') notice(t('budgetExceeded'), true)
+  else if (data.error === 'BUSY_OTHER') notice(t('busyOther'), true)
+  else notice(errText(data, status), true)
+}
+
+// ---- settings ----
+let appState = {}
+const PRESET_PROVIDERS = {
+  gemini: {
+    group: 'overseas',
+    name: { zh: 'Google Gemini (4 Neon / 4 Carbon)', en: 'Google Gemini (4 Neon / 4 Carbon)' },
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    models: [
+      { id: 'gemini-4-neon', zh: 'gemini-4-neon (推荐 · 速度与深度兼备)', en: 'gemini-4-neon (Recommended · Fast & Deep)' },
+      { id: 'gemini-4-carbon', zh: 'gemini-4-carbon (Gemini 4 最强推理旗舰)', en: 'gemini-4-carbon (Gemini 4 Flagship Reasoning)' },
+      { id: 'gemini-4-argon', zh: 'gemini-4-argon (Gemini 4 Argon)', en: 'gemini-4-argon (Gemini 4 Argon)' },
+      { id: 'gemini-3.8-flash', zh: 'gemini-3.8-flash (3.8 Flash 轻量高吞吐)', en: 'gemini-3.8-flash (3.8 Flash Lightweight)' }
+    ],
+    defaultModel: 'gemini-4-neon',
+    placeholder: 'AIzaSy... (Google AI Studio Key)'
+  },
+  openai: {
+    group: 'overseas',
+    name: { zh: 'OpenAI (GPT-6.2 Astra / Sol)', en: 'OpenAI (GPT-6.2 Astra / Sol)' },
+    baseUrl: 'https://api.openai.com/v1',
+    models: [
+      { id: 'gpt-6.2-sol', zh: 'gpt-6.2-sol (推荐 · 6.2 世代高效主力)', en: 'gpt-6.2-sol (Recommended · 6.2 Efficient)' },
+      { id: 'gpt-6.2-astra', zh: 'gpt-6.2-astra (6.2 世代前沿复杂推理旗舰)', en: 'gpt-6.2-astra (6.2 Flagship Reasoning)' },
+      { id: 'gpt-5.6-tera', zh: 'gpt-5.6-tera (5.6 世代高性价比均衡)', en: 'gpt-5.6-tera (5.6 Balanced)' },
+      { id: 'gpt-5.6-luna', zh: 'gpt-5.6-luna (5.6 世代超轻量)', en: 'gpt-5.6-luna (5.6 Ultra-Light)' }
+    ],
+    defaultModel: 'gpt-6.2-sol',
+    placeholder: 'sk-...'
+  },
+  openrouter: {
+    group: 'overseas',
+    name: { zh: 'OpenRouter (多模型聚合)', en: 'OpenRouter (Multi-Model Gateway)' },
+    baseUrl: 'https://openrouter.ai/api/v1',
+    models: [
+      { id: 'google/gemini-4-neon', zh: 'google/gemini-4-neon', en: 'google/gemini-4-neon' },
+      { id: 'google/gemini-4-carbon', zh: 'google/gemini-4-carbon', en: 'google/gemini-4-carbon' },
+      { id: 'openai/gpt-6.2-astra', zh: 'openai/gpt-6.2-astra', en: 'openai/gpt-6.2-astra' },
+      { id: 'openai/gpt-6.2-sol', zh: 'openai/gpt-6.2-sol', en: 'openai/gpt-6.2-sol' },
+      { id: 'anthropic/claude-opus-5', zh: 'anthropic/claude-opus-5', en: 'anthropic/claude-opus-5' },
+      { id: 'qwen/qwen4-max', zh: 'qwen/qwen4-max', en: 'qwen/qwen4-max' },
+      { id: 'deepseek/deepseek-v4.1-flash', zh: 'deepseek/deepseek-v4.1-flash', en: 'deepseek/deepseek-v4.1-flash' }
+    ],
+    defaultModel: 'google/gemini-4-neon',
+    placeholder: 'sk-or-v1-...'
+  },
+  xai: {
+    group: 'overseas',
+    name: { zh: 'xAI (Grok 4.7)', en: 'xAI (Grok 4.7)' },
+    baseUrl: 'https://api.x.ai/v1',
+    models: [
+      { id: 'grok-4.7', zh: 'grok-4.7 (最新多模态旗舰 · 可调推理深度)', en: 'grok-4.7 (Latest Multimodal Flagship)' },
+      { id: 'grok-4.6', zh: 'grok-4.6 (500K 上下文旗舰)', en: 'grok-4.6 (500K Context Flagship)' },
+      { id: 'grok-4.3', zh: 'grok-4.3 (主力版)', en: 'grok-4.3 (Standard)' }
+    ],
+    defaultModel: 'grok-4.7',
+    placeholder: 'xai-...'
+  },
+  deepseek: {
+    group: 'domestic',
+    name: { zh: 'DeepSeek (V4.1 Flash / V4 Pro)', en: 'DeepSeek (V4.1 Flash / V4 Pro)' },
+    baseUrl: 'https://api.deepseek.com/v1',
+    models: [
+      { id: 'deepseek-flash', zh: 'deepseek-flash (推荐 · V4.1-Flash 默认主力)', en: 'deepseek-flash (Recommended · V4.1-Flash)' },
+      { id: 'deepseek-v4-pro', zh: 'deepseek-v4-pro (V4 Pro 旗舰推理)', en: 'deepseek-v4-pro (V4 Pro Flagship Reasoning)' }
+    ],
+    defaultModel: 'deepseek-flash',
+    placeholder: 'sk-... (DeepSeek API Key)'
+  },
+  moonshot: {
+    group: 'domestic',
+    name: { zh: 'Moonshot / Kimi (K3.1 Pro)', en: 'Moonshot / Kimi (K3.1 Pro)' },
+    baseUrl: 'https://api.moonshot.cn/v1',
+    models: [
+      { id: 'kimi-k3.1-pro', zh: 'kimi-k3.1-pro (最新旗舰 · 百万上下文)', en: 'kimi-k3.1-pro (Flagship · 1M Context)' },
+      { id: 'kimi-k3.1-pro-highspeed', zh: 'kimi-k3.1-pro-highspeed (极速版)', en: 'kimi-k3.1-pro-highspeed (High-Speed)' },
+      { id: 'kimi-k3.1', zh: 'kimi-k3.1 (标准版)', en: 'kimi-k3.1 (Standard)' },
+      { id: 'kimi-k3', zh: 'kimi-k3 (K3 长程思考)', en: 'kimi-k3 (K3 Deep Thinking)' }
+    ],
+    defaultModel: 'kimi-k3.1-pro',
+    placeholder: 'sk-... (Moonshot API Key)'
+  },
+  qwen: {
+    group: 'domestic',
+    name: { zh: '阿里通义千问 (Qwen 4 Max / 3.8)', en: 'Alibaba Qwen (Qwen 4 Max / 3.8)' },
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    models: [
+      { id: 'qwen4-max', zh: 'qwen4-max (Qwen 4 旗舰 · 多模态深度推理)', en: 'qwen4-max (Qwen 4 Flagship · Multimodal)' },
+      { id: 'qwen3.8-flash', zh: 'qwen3.8-flash (极速高并发 · 1M 上下文)', en: 'qwen3.8-flash (Fast · 1M Context)' },
+      { id: 'qwen3.8-max', zh: 'qwen3.8-max (Q3.8 旗舰)', en: 'qwen3.8-max (Q3.8 Flagship)' }
+    ],
+    defaultModel: 'qwen4-max',
+    placeholder: 'sk-... (DashScope API Key)'
+  },
+  zhipu: {
+    group: 'domestic',
+    name: { zh: '智谱 AI (GLM-5.3 / Flash)', en: 'Zhipu AI (GLM-5.3 / Flash)' },
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    models: [
+      { id: 'glm-5.3-flash', zh: 'glm-5.3-flash (推荐 · 极速多模态高并发)', en: 'glm-5.3-flash (Recommended · Fast Multimodal)' },
+      { id: 'glm-5.3', zh: 'glm-5.3 (旗舰 · 1M 上下文)', en: 'glm-5.3 (Flagship · 1M Context)' },
+      { id: 'glm-5.3-flashx-legal', zh: 'glm-5.3-flashx-legal (法律文档专项)', en: 'glm-5.3-flashx-legal (Legal Specialist)' }
+    ],
+    defaultModel: 'glm-5.3-flash',
+    placeholder: 'your-zhipu-api-key'
+  },
+  doubao: {
+    group: 'domestic',
+    name: { zh: '火山引擎 (豆包 Seed 2.1)', en: 'Volcengine Doubao (Seed 2.1)' },
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    models: [
+      { id: 'doubao-seed-2-1-turbo-260813', zh: 'doubao-seed-2-1-turbo-260813 (2.1 Turbo)', en: 'doubao-seed-2-1-turbo-260813 (2.1 Turbo)' },
+      { id: 'doubao-seed-2-0-code-260813', zh: 'doubao-seed-2-0-code-260813 (编程专用)', en: 'doubao-seed-2-0-code-260813 (Coding)' },
+      { id: 'doubao-seed-2-0-mini-260215', zh: 'doubao-seed-2-0-mini-260215 (轻量快速)', en: 'doubao-seed-2-0-mini-260215 (Lightweight)' }
+    ],
+    defaultModel: 'doubao-seed-2-1-turbo-260813',
+    placeholder: 'your-volcengine-api-key'
+  },
+  custom: {
+    group: 'custom',
+    name: { zh: '自定义 OpenAI 兼容接口', en: 'Custom OpenAI-Compatible API' },
+    baseUrl: '',
+    models: [],
+    defaultModel: '',
+    placeholder: 'API Key'
+  }
+}
+
+function populateProviderSelect() {
+  const sel = $('providerSel')
+  const prev = sel.value
+  sel.textContent = ''
+  const groups = [
+    { key: 'overseas', label: lang === 'zh' ? '国外主流' : 'Global Providers' },
+    { key: 'domestic', label: lang === 'zh' ? '国内主流' : 'China Providers' },
+    { key: 'custom', label: lang === 'zh' ? '自定义' : 'Custom' },
+  ]
+  for (const g of groups) {
+    const og = document.createElement('optgroup')
+    og.label = g.label
+    for (const [pKey, p] of Object.entries(PRESET_PROVIDERS)) {
+      if (p.group === g.key) {
+        og.append(new Option(lang === 'zh' ? p.name.zh : p.name.en, pKey))
+      }
+    }
+    sel.append(og)
+  }
+  if (prev && PRESET_PROVIDERS[prev]) sel.value = prev
+}
+populateProviderSelect()
+
+let isManualModel = false
+
+function showBuild(s) {
+  const b = s?.build
+  if (!b?.commit) return
+  const commit = b.commit === 'dev' ? 'dev' : b.commit.slice(0, 7)
+  $('buildInfo').textContent = t('build') + ' ' + commit + (b.at ? ' · ' + b.at : '')
+}
+
+function syncProviderUI(keepEndpoint) {
+  const pKey = $('providerSel').value
+  const preset = PRESET_PROVIDERS[pKey] || PRESET_PROVIDERS.custom
+  
+  if (!keepEndpoint || !$('cEndpoint').value) {
+    $('cEndpoint').value = preset.baseUrl || ''
+  }
+  
+  const sel = $('modelSel')
+  sel.textContent = ''
+  for (const m of preset.models) {
+    sel.append(new Option(lang === 'zh' ? (m.zh || m.id) : (m.en || m.id), m.id))
+  }
+  
+  if (preset.models.length > 0) {
+    $('toggleCustomModel').hidden = false
+    if (!isManualModel) {
+      $('modelSel').hidden = false
+      $('customModelInput').hidden = true
+      $('toggleCustomModel').textContent = t('manualModel')
+    }
+  } else {
+    isManualModel = true
+    $('modelSel').hidden = true
+    $('customModelInput').hidden = false
+    $('toggleCustomModel').hidden = true
+  }
+  
+  $('key').placeholder = preset.placeholder || 'API Key'
+  renderKeyState()
+}
+
+function renderKeyState() {
+  const pKey = $('providerSel').value
+  const pInfo = appState.savedProviders?.[pKey] || (appState.provider === pKey ? { hasKey: appState.hasKey, keyHint: appState.keyHint } : null)
+  const has = !!(pInfo && pInfo.hasKey)
+  
+  const ks = $('keyState')
+  ks.className = 'keystate' + (has ? '' : ' none')
+  ks.textContent = ''
+  ks.insertAdjacentHTML('afterbegin', icon(has ? 'tick' : 'shield'))
+  ks.append(el('span', '', t(has ? 'keySaved' : 'keyNone')))
+  if (has && pInfo.keyHint) ks.append(el('code', '', pInfo.keyHint))
+}
+
+async function loadModelCard() {
+  try {
+    appState = await (await fetch('/api/state')).json()
+  } catch (e) {
+    appState = {}
+  }
+  showBuild(appState)
+  
+  const activeP = appState.provider || 'gemini'
+  $('providerSel').value = activeP
+  syncProviderUI(true)
+  
+  if (appState.model) {
+    const opts = Array.from($('modelSel').options)
+    if (opts.some(o => o.value === appState.model)) {
+      $('modelSel').value = appState.model
+      isManualModel = false
+      $('modelSel').hidden = false
+      $('customModelInput').hidden = true
+      $('toggleCustomModel').textContent = t('manualModel')
+    } else {
+      isManualModel = true
+      $('modelSel').hidden = true
+      $('customModelInput').hidden = false
+      $('customModelInput').value = appState.model
+      $('toggleCustomModel').textContent = t('selectPresetModel')
+    }
+  }
+  if (appState.baseUrl) {
+    $('cEndpoint').value = appState.baseUrl
+  }
+  if (appState.budget && $('cap') && document.activeElement !== $('cap')) {
+    $('cap').value = String(appState.budget.capUsd ?? 100)
+  }
+  if (appState.lang && appState.lang !== 'auto') {
+    const curLocal = localStorage.getItem('bobbot.lang')
+    if (!curLocal) {
+      localStorage.setItem('bobbot.lang', appState.lang)
+      if (appState.lang !== lang) { location.reload(); return }
+    }
+  }
+  renderKeyState()
+}
+
+$('providerSel').onchange = () => {
+  isManualModel = false
+  syncProviderUI(false)
+  const pKey = $('providerSel').value
+  const pInfo = appState.savedProviders?.[pKey]
+  if (pInfo && pInfo.model) {
+    const opts = Array.from($('modelSel').options)
+    if (opts.some(o => o.value === pInfo.model)) {
+      $('modelSel').value = pInfo.model
+    } else {
+      isManualModel = true
+      $('modelSel').hidden = true
+      $('customModelInput').hidden = false
+      $('customModelInput').value = pInfo.model
+      $('toggleCustomModel').textContent = t('selectPresetModel')
+    }
+    if (pInfo.baseUrl) $('cEndpoint').value = pInfo.baseUrl
+  } else if (PRESET_PROVIDERS[pKey]?.defaultModel) {
+    $('modelSel').value = PRESET_PROVIDERS[pKey].defaultModel
+  }
+}
+
+$('toggleCustomModel').onclick = () => {
+  isManualModel = !isManualModel
+  $('modelSel').hidden = isManualModel
+  $('customModelInput').hidden = !isManualModel
+  $('toggleCustomModel').textContent = t(isManualModel ? 'selectPresetModel' : 'manualModel')
+  if (isManualModel) {
+    $('customModelInput').value = $('modelSel').value
+    $('customModelInput').focus()
+  }
+}
+
+$('resetEndpoint').onclick = () => {
+  const pKey = $('providerSel').value
+  const preset = PRESET_PROVIDERS[pKey] || PRESET_PROVIDERS.custom
+  $('cEndpoint').value = preset.baseUrl || ''
+}
+
+$('saveModel').onclick = async () => {
+  const provider = $('providerSel').value
+  const model = isManualModel ? $('customModelInput').value.trim() : $('modelSel').value
+  const baseUrl = $('cEndpoint').value.trim()
+  const key = $('key').value.trim()
+  
+  if (!model) {
+    $('settingsMsg').textContent = lang === 'zh' ? '请选择或输入模型名称' : 'Please select or enter a model name'
+    return
+  }
+  
+  const { status, data } = await post('/api/model', { provider, model, baseUrl, key })
+  if (status === 200) {
+    $('key').value = ''
+    await loadModelCard()
+    $('settingsMsg').textContent = t('saved')
+  } else {
+    $('settingsMsg').textContent = errText(data, status)
+  }
+}
+$('saveCap').onclick = async () => {
+  const { status, data } = await post('/api/budget', { capUsd: Number($('cap').value) })
+  $('settingsMsg').textContent = status === 200 ? t('saved') : t('failed') + (data.error ?? status)
+}
+$('logout').onclick = async () => { await post('/api/logout'); location.reload() }
+
+// ---- the browser window: it takes the shape of the device that opens it ----
+// A phone gets a phone-sized page, a mobile site and touch. A PC gets a desktop page, a mouse and the keyboard.
+// "Desktop site" lays the page out wide for sites with no mobile version, and two fingers zoom and move it.
+const canvas = $('screen'), ctx = canvas.getContext('2d')
+let ws, spec = null, desktopSite = false, remoteZoomed = false // remoteZoomed: the cloud page itself is zoomed in on a field
+const zoom = { z: 1, x: 0, y: 0 }
+const isPhone = () => matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 700
+const sendWs = m => { if (ws?.readyState === 1) ws.send(JSON.stringify(m)) }
+function measure() {
+  const r = $('stage').getBoundingClientRect()
+  const w = Math.max(Math.floor(r.width), 200), h = Math.max(Math.floor(r.height), 200)
+  const phone = isPhone()
+  const lang = (navigator.languages?.length ? navigator.languages : [navigator.language]).slice(0, 4).map((l, i) => (i ? `${l};q=${(1 - i * 0.1).toFixed(1)}` : l)).join(',')
+  if (phone && desktopSite) return { device: 'desktop', w: 1280, h: Math.round(1280 * h / w), dpr: 2, lang, cw: w, ch: h }
+  return { device: phone ? 'phone' : 'desktop', w, h, dpr: Math.min(window.devicePixelRatio || 1, 2), lang, cw: w, ch: h }
+}
+function setZoom(z, x, y) {
+  const w = canvas.clientWidth, h = canvas.clientHeight
+  zoom.z = Math.min(Math.max(z, 1), 4)
+  zoom.x = Math.min(0, Math.max(x, w - w * zoom.z))
+  zoom.y = Math.min(0, Math.max(y, h - h * zoom.z))
+  canvas.style.transform = zoom.z === 1 ? '' : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`
+  $('fitBtn').hidden = !remoteZoomed && zoom.z <= 1.01
+}
+function sendViewport() {
+  spec = measure()
+  canvas.style.width = spec.cw + 'px'; canvas.style.height = spec.ch + 'px'
+  setZoom(1, 0, 0)
+  sendWs({ t: 'viewport', device: spec.device, w: spec.w, h: spec.h, dpr: spec.dpr, lang: spec.lang })
+}
+let wantWindow = false // true while the owner has the window open, so a dropped connection comes back by itself
+let remoteField = null // the field on the page that has the keyboard
+function openBrowser() {
+  $('browser').hidden = false
+  const hint = $('takeoverHint')
+  const why = open.get(activeTakeover)?.e.reason
+  hint.hidden = !activeTakeover
+  hint.textContent = activeTakeover ? (why ? t('takeoverWhy', why) : t('takeoverHint')) : ''
+  $('modeBtn').hidden = !isPhone()
+  wantWindow = true
+  showField(null)
+  connectWindow()
+}
+function connectWindow() {
+  ws = new WebSocket(location.origin.replace(/^http/, 'ws') + '/ws/browser')
+  ws.binaryType = 'blob'
+  ws.onopen = () => { $('stageNote').hidden = true; sendViewport() }
+  ws.onmessage = async m => {
+    if (typeof m.data === 'string') { const e = JSON.parse(m.data); if (e.t === 'state') pageState(e); else if (e.error) toast(e.error, true); return }
+    const bmp = await createImageBitmap(m.data)
+    if (canvas.width !== bmp.width || canvas.height !== bmp.height) { canvas.width = bmp.width; canvas.height = bmp.height }
+    ctx.drawImage(bmp, 0, 0); bmp.close()
+  }
+  ws.onclose = e => {
+    if (!wantWindow) return
+    $('stageNote').hidden = false
+    if (e.code === 4001) { $('stageNote').textContent = t('openedElsewhere'); return }
+    $('stageNote').textContent = t('reconnecting')
+    setTimeout(() => { if (wantWindow) connectWindow() }, 1200)
+  }
+}
+function closeBrowser() { wantWindow = false; ws?.close(); ws = null; $('browser').hidden = true; $('stageNote').hidden = true; setZoom(1, 0, 0) }
+
+// Typing: the box below the page is a real text box, so the phone keyboard, Chinese input, paste and SMS codes all work.
+// While a field on the page has the keyboard, whatever the box says is what that field says.
+function showField(field) {
+  const changed = (field?.key ?? '') !== (remoteField?.key ?? '')
+  remoteField = field
+  $('fillRow').classList.toggle('live', Boolean(field))
+  $('fillBtn').hidden = Boolean(field)
+  $('fieldHint').textContent = field ? t('typingInto', field.label || t('thisField')) : t('tapField')
+  if (!changed) return
+  const box = $('fill')
+  box.type = field?.kind === 'secret' ? 'password' : 'text'
+  box.inputMode = field && (field.kind === 'code' || field.kind === 'number') ? 'numeric' : 'text'
+  box.autocomplete = field?.kind === 'code' ? 'one-time-code' : 'off'
+  box.value = field?.value ?? ''
+  $('togglePw').innerHTML = icon(box.type === 'password' ? 'eyeoff' : 'eye')
+  if (field && isPhone()) box.focus({ preventScroll: true }) // some phones only raise the keyboard on a tap; the highlight shows where to tap
+}
+function pageState(state) {
+  if (document.activeElement !== $('url')) $('url').value = state.url === 'about:blank' ? '' : state.url
+  $('loadBar').hidden = !state.loading
+  remoteZoomed = Boolean(state.zoomed)
+  $('fitBtn').hidden = !remoteZoomed && zoom.z <= 1.01
+  showField(state.focus)
+}
+let typeTimer
+const sendTyped = () => { clearTimeout(typeTimer); if (remoteField) sendWs({ t: 'set', v: $('fill').value }) }
+$('fill').addEventListener('input', e => { if (!remoteField || e.isComposing) return; clearTimeout(typeTimer); typeTimer = setTimeout(sendTyped, 120) })
+$('fill').addEventListener('compositionend', () => { if (remoteField) sendTyped() })
+$('fill').addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || e.isComposing) return
+  e.preventDefault()
+  if (remoteField) { sendTyped(); sendWs({ t: 'key', k: 'Enter' }) } else $('fillBtn').click()
+})
+$('url').addEventListener('focus', () => { $('goBtn').hidden = false })
+$('url').addEventListener('blur', () => setTimeout(() => { $('goBtn').hidden = true }, 200))
+$('reloadBtn').onclick = () => sendWs({ t: 'reload' })
+$('pageBack').onclick = () => sendWs({ t: 'back' })
+// A phone cannot scan its own screen, but WeChat and Alipay can read a QR code from a saved picture.
+$('saveShot').onclick = () => canvas.toBlob(async blob => {
+  if (!blob) return
+  const file = new File([blob], 'bob-screen.png', { type: 'image/png' })
+  if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file] }); return } catch { /* cancelled: fall back to a download */ } }
+  const link = el('a'); link.href = URL.createObjectURL(blob); link.download = 'bob-screen.png'
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(link.href), 5000)
+  toast(t('shotSaved'))
+}, 'image/png')
+let resizeTimer
+addEventListener('resize', () => {
+  if ($('browser').hidden) return
+  // The phone keyboard opening is not a new screen size: keep the page as it is and keep the field in view.
+  if (document.activeElement === $('fill') && isPhone()) return
+  clearTimeout(resizeTimer); resizeTimer = setTimeout(sendViewport, 300)
+})
+// the browser opens only when the agent asks for a human takeover
+$('closeBrowser').onclick = closeBrowser
+$('handBack').onclick = async () => {
+  const id = activeTakeover
+  closeBrowser()
+  await post('/api/takeover/done')
+  if (id) { closeCard(id, t('doneTakeover')); activeTakeover = null; $('handBack').hidden = true }
+}
+$('modeBtn').onclick = () => {
+  desktopSite = !desktopSite
+  $('modeBtn').innerHTML = icon(desktopSite ? 'phone' : 'monitor')
+  const label = t(desktopSite ? 'mobileSite' : 'desktopSite')
+  $('modeBtn').title = label; $('modeBtn').setAttribute('aria-label', label)
+  sendViewport()
+}
+$('fitBtn').onclick = () => { sendWs({ t: 'fit' }); setZoom(1, 0, 0) }
+
+// pointer input. The position is a fraction of the page picture, so zooming needs no special handling.
+const norm = e => {
+  const r = canvas.getBoundingClientRect()
+  return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) }
+}
+const sendPt = (k, e) => sendWs({ t: 'pointer', k, ...norm(e) })
+let moveQueued = null
+function queueMove(kind, e) {
+  const first = moveQueued === null
+  moveQueued = { kind, p: norm(e) }
+  if (first) requestAnimationFrame(() => { const m = moveQueued; moveQueued = null; sendWs({ t: 'pointer', k: m.kind, ...m.p }) })
+}
+const touches = new Map()
+let g = null, pinch = null, pinchLock = false
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y)
+const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
+function startPinch() {
+  if (g?.timer) clearTimeout(g.timer)
+  if (g?.down) sendPt('up', g.last) // the first finger had already touched the page: let go of it
+  g = null
+  const [a, b] = [...touches.values()]
+  const r = $('stage').getBoundingClientRect()
+  pinch = { d0: dist(a, b), z0: zoom.z, x0: zoom.x, y0: zoom.y, c0: { x: mid(a, b).x - r.left, y: mid(a, b).y - r.top } }
+}
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId)
+  canvas.focus({ preventScroll: true })
+  if (e.pointerType === 'mouse') { sendPt('down', e); return }
+  touches.set(e.pointerId, { x: e.clientX, y: e.clientY })
+  if (pinchLock) return
+  if (touches.size === 2) { startPinch(); return }
+  g = { id: e.pointerId, sx: e.clientX, sy: e.clientY, last: e, down: false, scrolling: false }
+  // On a phone, wait a moment before touching the page, in case this is the first finger of a pinch.
+  if (spec?.device === 'phone') g.timer = setTimeout(() => { if (g && !pinch) { g.down = true; sendPt('down', { clientX: g.sx, clientY: g.sy }) } }, 70)
+})
+canvas.addEventListener('pointermove', e => {
+  if (e.pointerType === 'mouse') { queueMove(e.buttons ? 'move' : 'hover', e); return }
+  if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY })
+  if (pinch && touches.size >= 2) {
+    const [a, b] = [...touches.values()]
+    const r = $('stage').getBoundingClientRect()
+    const c = { x: mid(a, b).x - r.left, y: mid(a, b).y - r.top }
+    const z = Math.min(Math.max(pinch.z0 * dist(a, b) / pinch.d0, 1), 4)
+    const px = (pinch.c0.x - pinch.x0) / pinch.z0, py = (pinch.c0.y - pinch.y0) / pinch.z0 // the page point that was under the fingers
+    setZoom(z, c.x - px * z, c.y - py * z)
+    return
+  }
+  if (!g || g.id !== e.pointerId || pinchLock) return
+  g.last = e
+  const moved = Math.hypot(e.clientX - g.sx, e.clientY - g.sy)
+  if (spec?.device === 'phone') {
+    if (!g.down && moved > 6) { clearTimeout(g.timer); g.down = true; sendPt('down', { clientX: g.sx, clientY: g.sy }) }
+    if (g.down) queueMove('move', e)
+  } else { // a desktop page on a phone: a drag scrolls it, a tap clicks
+    if (!g.scrolling && moved > 8) { g.scrolling = true; g.px = e.clientX; g.py = e.clientY }
+    if (g.scrolling) {
+      const toPage = (spec?.w ?? canvas.clientWidth) / canvas.getBoundingClientRect().width
+      sendWs({ t: 'wheel', d: -(e.clientY - g.py) * toPage, dx: -(e.clientX - g.px) * toPage })
+      g.px = e.clientX; g.py = e.clientY
+    }
+  }
+})
+function endTouch(e) {
+  if (e.pointerType === 'mouse') { sendPt('up', e); return }
+  touches.delete(e.pointerId)
+  if (pinch && touches.size < 2) { pinch = null; pinchLock = true }
+  if (touches.size === 0) pinchLock = false
+  if (!g || g.id !== e.pointerId) return
+  clearTimeout(g.timer)
+  if (spec?.device === 'phone') {
+    if (!g.down) sendPt('down', { clientX: g.sx, clientY: g.sy }) // a quick tap
+    sendPt('up', e)
+  } else if (!g.scrolling) { sendPt('down', { clientX: g.sx, clientY: g.sy }); sendPt('up', { clientX: g.sx, clientY: g.sy }) }
+  g = null
+}
+canvas.addEventListener('pointerup', endTouch)
+canvas.addEventListener('pointercancel', endTouch)
+canvas.addEventListener('wheel', e => { e.preventDefault(); sendWs({ t: 'wheel', d: e.deltaY, dx: e.deltaX }) }, { passive: false })
+const KEYS = ['Enter', 'Backspace', 'Tab', 'Escape', 'Delete', 'ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']
+canvas.addEventListener('keydown', e => { // a PC keyboard types straight into the page; Chinese goes through the box below
+  if (isPhone() || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return
+  if (KEYS.includes(e.key)) { e.preventDefault(); sendWs({ t: 'key', k: e.key }) }
+  else if (e.key.length === 1) { e.preventDefault(); sendWs({ t: 'text', v: e.key }) }
+})
+const scrollStep = () => Math.round((spec?.h ?? $('stage').clientHeight) * .7)
+$('scrollUp').onclick = () => sendWs({ t: 'wheel', d: -scrollStep() })
+$('scrollDown').onclick = () => sendWs({ t: 'wheel', d: scrollStep() })
+$('navForm').onsubmit = e => { e.preventDefault(); if ($('url').value.trim()) sendWs({ t: 'nav', url: $('url').value.trim() }) }
+$('fillBtn').onclick = () => { if ($('fill').value) { sendWs({ t: 'text', v: $('fill').value }); $('fill').value = '' } }
+$('enterBtn').onclick = () => sendWs({ t: 'key', k: 'Enter' })
+$('backBtn').onclick = () => sendWs({ t: 'key', k: 'Backspace' })
+$('togglePw').onclick = () => {
+  const f = $('fill'), hide = f.type !== 'password'
+  f.type = hide ? 'password' : 'text'
+  $('togglePw').innerHTML = icon(hide ? 'eyeoff' : 'eye')
+}
+
+async function boot() {
+  const s = await (await fetch('/api/state')).json()
+  $('login').hidden = s.authed
+  $('app').hidden = !s.authed
+  if (!s.authed) { if (!s.pinSet) $('loginMsg').textContent = t('noPin'); return }
+  appState = s
+  showBuild(s)
+  setBadge(s.unread)
+  show('chat')
+  if (!s.hasKey) { $('settingsMsg').textContent = t('noKey'); show('settings') }
+  connect()
+  reportPresence(true)
+  loadClerk() // the front page shows what is waiting
+  loadFeatures() // widgets and styling the owner has kept
+}
+boot()
+</script>
+</body>
+</html>
