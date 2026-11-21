@@ -637,12 +637,7 @@ function todoTool(name, args) {
     }
     const title = String(args.title ?? '').trim()
     if (!title) throw new Error('A title is required.')
-    let job = null
-    if (due && nextRun({ type: 'once', at: due }, clerk.timezone, Date.now()) !== null) {
-      job = clerk.addJob({ title, kind: 'reminder', text: title, schedule: { type: 'once', at: due }, channels: [] })
-    }
-    const todo = clerk.addTodo({ title, note: args.note, due, jobId: job?.id ?? null })
-    if (job) clerk.update(job, { todoId: todo.id })
+    const todo = clerk.addTodo({ title, note: args.note, due })
     pushTodoCard(todo, true)
     broadcast({ type: 'clerk' })
     return 'Saved and shown to the user as a card. Reply with at most one short, friendly sentence; do not repeat the title, the date or the id.'
@@ -791,10 +786,10 @@ const dayIn = tz => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'nume
 
 function workLines() {
   const lines = []
-  const open = clerk.todos.filter(t => !t.done)
+  const open = clerk.followUpTodos()
   if (open.length) {
     lines.push('Open to-dos:')
-    for (const t of open.slice(0, 6)) lines.push(`- ${t.title}${t.due ? ` (due ${t.due.replace('T', ' ')})` : ''}${t.note ? ` — ${t.note}` : ''}`)
+    for (const t of open) lines.push(`- ${t.title}${t.due ? ` (due ${t.due.replace('T', ' ')})` : ''}${t.note ? ` — ${t.note}` : ''}`)
   }
   const jobs = clerk.jobs.filter(j => j.enabled && !j.todoId).slice(0, 5)
   if (jobs.length) {
@@ -1066,7 +1061,7 @@ async function deliver(job, text, cards = []) {
   const content = [text, ...cards.map(cardText)].filter(Boolean).join('\n\n')
   const body = content === job.title ? content : `${job.title}\n${content}`
   const delivery = []
-  for (const id of job.trial === 'running' ? [] : job.channels) { // a trial result stays in the app
+  for (const id of clerk.deliveryChannels(job)) {
     const channel = clerk.channel(id)
     if (!channel) continue
     const sent = channel.type === 'webpush'
@@ -1341,12 +1336,20 @@ async function tick() {
     const now = Date.now()
     const { run, missed } = clerk.due(now)
     for (const job of missed) {
+      if (!job.enabled || clerk.job(job.id) !== job) continue
       const was = job.nextRun
       clerk.advance(job, now)
+      if (job.todoId && !clerk.todo(job.todoId)?.done) {
+        const text = `${job.title} · ${formatLocal(was, clerk.timezone)}`
+        await deliver(job, text)
+        recordRun(job, 'ok', text)
+        continue
+      }
       await deliver(job, `Missed: "${job.title}" was due at ${humanTime(was)} but the server was off or busy for too long, so it was skipped. It runs again at its next time.`)
       recordRun(job, 'missed', 'Skipped: the server was off or busy.')
     }
     for (const job of run) {
+      if (!job.enabled || clerk.job(job.id) !== job) continue
       if (job.kind === 'task' && (runningCid || activeRun)) continue // Bob is busy: try again on the next tick
       const due = job.nextRun
       clerk.advance(job, now) // move on first, so a slow run can never fire twice

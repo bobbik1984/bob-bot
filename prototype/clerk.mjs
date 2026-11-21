@@ -161,20 +161,11 @@ export class Clerk {
       const title = String(task.title ?? '').trim().slice(0, 100)
       const quote = String(task.quote ?? '').trim()
       if (!title || !quote || !item.text.includes(quote)) throw fail('NO_SOURCE')
-      const todo = { id: `t${crypto.randomBytes(4).toString('hex')}`, title, note: quote.slice(0,300), due: task.due || null,
-        done: false, createdAt: Date.now(), jobId: null }
-      if (todo.due) {
-        const schedule = normalizeSchedule({ type: 'once', at: todo.due })
-        const next = nextRun(schedule, this.timezone, Date.now())
-        if (next !== null) {
-          todo.jobId = `j${crypto.randomBytes(4).toString('hex')}`
-          jobs.push({ id: todo.jobId, title, text: title, kind: 'reminder', schedule, channels: [], todoId: todo.id,
-            enabled: true, cid: null, createdAt: todo.createdAt, nextRun: next, lastRun: null, lastStatus: null, lastResult: null })
-        }
-      }
+      const { todo, job } = this.#todoAndReminder(title, quote, task.due || null, Date.now())
+      if (job) jobs.push(job)
       todos.push(todo)
     }
-    if (this.todos.length + todos.length > 200 || this.jobs.length + jobs.length > MAX_JOBS) throw fail('CAPTURE_FULL')
+    if (this.todos.length + todos.length > 200) throw fail('CAPTURE_FULL')
     this.todos.unshift(...todos)
     this.jobs.push(...jobs)
     item.status = todos.length ? 'done' : 'review'
@@ -220,7 +211,7 @@ export class Clerk {
 
   // ---- jobs ----
   addJob({ title, kind, text, schedule, channels = [], todoId = null }, now = Date.now()) {
-    if (this.jobs.length >= MAX_JOBS) throw fail('TOO_MANY_JOBS')
+    if (this.jobs.filter(j => !j.todoId).length >= MAX_JOBS) throw fail('TOO_MANY_JOBS')
     if (kind !== 'task' && kind !== 'reminder') throw fail('BAD_KIND')
     const cleanTitle = String(title ?? '').trim().slice(0, 60)
     const cleanText = String(text ?? '').trim().slice(0, 4000)
@@ -292,22 +283,59 @@ export class Clerk {
   }
 
   // ---- to-dos: things to remember or do, with an optional due time ----
-  addTodo({ title, note = '', due = null, jobId = null }, now = Date.now()) {
+  #todoAndReminder(title, note, due, now) {
     const clean = String(title ?? '').trim().slice(0, 100)
     if (!clean) throw fail('EMPTY')
-    if (due !== null && !AT.test(due)) throw fail('BAD_AT')
+    const todo = { id: `t${crypto.randomBytes(4).toString('hex')}`, title: clean, note: String(note ?? '').trim().slice(0, 300),
+      due, done: false, createdAt: now, jobId: null }
+    if (!due) return { todo, job: null }
+    const schedule = normalizeSchedule({ type: 'once', at: due })
+    const next = nextRun(schedule, this.timezone, now)
+    if (next === null) return { todo, job: null }
+    todo.jobId = `j${crypto.randomBytes(4).toString('hex')}`
+    const job = { id: todo.jobId, title: clean, text: clean, kind: 'reminder', schedule, channels: [], todoId: todo.id,
+      enabled: true, cid: null, createdAt: now, nextRun: next, lastRun: null, lastStatus: null, lastResult: null }
+    return { todo, job }
+  }
+  addTodo({ title, note = '', due = null }, now = Date.now()) {
     if (this.todos.length >= 200) throw fail('TOO_MANY_TODOS')
-    const todo = { id: `t${crypto.randomBytes(4).toString('hex')}`, title: clean, note: String(note ?? '').trim().slice(0, 300), due, done: false, createdAt: now, jobId }
+    const { todo, job } = this.#todoAndReminder(title, note, due, now)
     this.todos.unshift(todo)
-    this.#save()
+    if (job) this.jobs.push(job)
+    try { this.#save() } catch (error) {
+      this.todos.shift()
+      if (job) this.jobs.pop()
+      throw error
+    }
     return todo
   }
+  // Resolve on delivery, including reminders created before the phone was subscribed.
+  deliveryChannels(job) {
+    if (job.trial === 'running') return []
+    const channels = new Set(job.channels)
+    const phone = job.todoId && this.channels.find(c => c.type === 'webpush')
+    if (phone) channels.add(phone.id)
+    return [...channels]
+  }
+  followUpTodos(now = Date.now()) {
+    const local = formatLocal(now, this.timezone).replace(' ', 'T')
+    const open = this.todos.filter(t => !t.done)
+    const dated = open.filter(t => t.due).sort((a, b) => a.due.localeCompare(b.due))
+    const undated = open.filter(t => !t.due).sort((a, b) => a.createdAt - b.createdAt)
+    const overdue = dated.filter(t => t.due <= local).reverse()
+    const upcoming = dated.filter(t => t.due > local)
+    const first = [...overdue.slice(0, 2), ...upcoming.slice(0, 2), ...undated.slice(0, 2)]
+    return [...new Set([...first, ...overdue, ...upcoming, ...undated])].slice(0, 6)
+  }
   todo(id) { return this.todos.find(t => t.id === id) }
-  setTodoDone(id, done) {
+  setTodoDone(id, done, now = Date.now()) {
     const todo = this.todo(id)
     todo.done = Boolean(done)
     const job = todo.jobId ? this.job(todo.jobId) : null
-    if (job && todo.done) { job.enabled = false; job.nextRun = null } // finished, so no reminder
+    if (job) {
+      job.nextRun = todo.done ? null : nextRun(job.schedule, this.timezone, now)
+      job.enabled = job.nextRun !== null
+    }
     this.#save()
     return todo
   }
