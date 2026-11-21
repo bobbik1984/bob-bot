@@ -16,11 +16,11 @@
 (() => {
   const system = matchMedia('(prefers-color-scheme: dark)')
   const apply = () => {
-    let choice = 'auto'
-    try { choice = localStorage.getItem('bobbot.theme') || 'auto' } catch { /* private mode */ }
+    let choice = 'light'
+    try { choice = localStorage.getItem('bobbot.theme') || 'light' } catch { /* private mode */ }
     const dark = choice === 'dark' || (choice === 'auto' && system.matches)
     document.documentElement.dataset.theme = dark ? 'dark' : 'light'
-    document.querySelector('meta[name=theme-color]').content = dark ? '#0e1117' : '#f5f6fa'
+    document.querySelector('meta[name=theme-color]').content = dark ? '#0e1117' : '#f7f9fc'
     document.querySelector('meta[name=color-scheme]').content = dark ? 'dark' : 'light'
   }
   window.applyTheme = apply
@@ -31,13 +31,18 @@
 <style>
 :root {
   color-scheme: light;
-  --bg:#f5f6fa; --surface:#ffffff; --surface-2:#eef0f6; --surface-3:#e2e6ef; --text:#171c28; --muted:#667085; --line:#e4e7ee;
-  --accent:#2f6bff; --accent-text:#ffffff; --accent-soft:#e8efff; --accent-ink:#2152cc; --bubble-user:#2f6bff; --bubble-user-text:#ffffff;
+  --bg:#f7f9fc; --surface:#ffffff; --surface-2:#f0f4fa; --surface-3:#e4ebf5; --text:#182030; --muted:#667085; --line:#e6ebf3;
+  --accent:#2563eb; --accent-text:#ffffff; --accent-soft:#ebf2ff; --accent-ink:#1d4ed8; --bubble-user:#2563eb; --bubble-user-text:#ffffff;
   --danger:#d64545; --danger-soft:#fdeceb; --ok:#1f9d6b; --ok-soft:#e3f6ee; --warn:#a96a12; --warn-soft:#fff3dc;
-  --shadow-1:0 1px 2px rgba(16,24,40,.05); --shadow:0 1px 2px rgba(16,24,40,.04), 0 8px 24px rgba(16,24,40,.06); --shadow-pop:0 12px 40px rgba(16,24,40,.16);
-  --shade:rgba(15,23,42,.45); --stage:#0b0f1a; --canvas:#ffffff;
+  --shadow-1:0 1px 2px rgba(16,24,40,.04); --shadow:0 2px 10px rgba(37,99,235,.05), 0 8px 24px rgba(16,24,40,.06); --shadow-pop:0 12px 36px rgba(16,24,40,.12), 0 2px 8px rgba(37,99,235,.06);
+  --shade:rgba(15,23,42,.38); --stage:#0b0f1a; --canvas:#ffffff;
   --ease:cubic-bezier(.2,.8,.2,1);
 }
+html { scrollbar-gutter:stable; }
+::-webkit-scrollbar { width:6px; height:6px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--line); border-radius:999px; }
+::-webkit-scrollbar-thumb:hover { background:var(--surface-3); }
 html[data-theme=dark] {
   color-scheme: dark;
   --bg:#0e1117; --surface:#161a22; --surface-2:#1f242e; --surface-3:#2b313d; --text:#e8ebf2; --muted:#98a2b3; --line:#272d39;
@@ -351,8 +356,24 @@ select.field { appearance:none; background-image:linear-gradient(45deg,transpare
 #composer .send:active { transform:scale(.94); }
 #composer.empty .send { background:var(--surface-3); color:var(--muted); }
 #composer .attach { width:40px; height:40px; border-radius:50%; color:var(--muted); display:inline-flex; align-items:center; justify-content:center; flex:none; }
-#chatModelBar { display:flex; align-items:center; gap:8px; margin:6px 12px 0; }
-#chatModelBar select { max-width:100%; height:30px; padding:0 26px 0 10px; border-radius:999px; border:1px solid var(--line); background:var(--surface); color:var(--ink); font-size:12px; cursor:pointer; }
+#chatModelBar { display:flex; align-items:center; gap:8px; margin:6px 12px 2px; flex-wrap:wrap; }
+.pill-wrap { position:relative; }
+.pill-btn { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 12px; border-radius:999px; border:1px solid var(--line); background:var(--surface); color:var(--text); font-size:13px; font-weight:500; box-shadow:var(--shadow-1); transition:background-color .16s var(--ease), border-color .16s var(--ease), box-shadow .16s var(--ease); }
+.pill-btn:hover, .pill-wrap.open .pill-btn { background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink); }
+.pill-btn .pill-dot { width:7px; height:7px; border-radius:50%; background:var(--accent); flex:none; }
+.pill-btn .pill-caret { width:14px; height:14px; color:var(--muted); transition:transform .16s var(--ease); }
+.pill-wrap.open .pill-caret { transform:rotate(180deg); color:var(--accent-ink); }
+.pill-pop { position:absolute; left:0; bottom:calc(100% + 8px); min-width:236px; max-width:min(320px, calc(100vw - 24px)); padding:6px; border-radius:16px; border:1px solid var(--line); background:var(--surface); box-shadow:var(--shadow-pop); z-index:40; display:flex; flex-direction:column; gap:2px; transform-origin:bottom left; animation:pillPop .16s var(--ease); }
+.pill-pop.compact { min-width:148px; }
+@keyframes pillPop { from { opacity:0; transform:translateY(6px) scale(.97); } to { opacity:1; transform:none; } }
+.pill-opt { width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 11px; border-radius:11px; text-align:left; transition:background-color .14s var(--ease); }
+.pill-opt:hover { background:var(--surface-2); }
+.pill-opt.on { background:var(--accent-soft); color:var(--accent-ink); }
+.pill-opt-text { display:flex; flex-direction:column; min-width:0; }
+.pill-opt-name { font-size:13.5px; font-weight:600; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pill-opt-sub { font-size:11.5px; color:var(--muted); line-height:1.25; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pill-opt.on .pill-opt-sub { color:var(--accent-ink); opacity:.8; }
+.pill-check { width:15px; height:15px; color:var(--accent); flex:none; }
 #attachRow { display:flex; flex-wrap:wrap; gap:6px; margin:6px 12px 0; }
 .file-chip { display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:5px 6px 5px 10px; border-radius:999px; background:var(--accent-soft); color:var(--accent-ink); font-size:13px; }
 .file-chip span.n { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px; }
@@ -725,7 +746,16 @@ nav button.on span:first-child { background:var(--accent-soft); }
     <div id="offline" role="status" data-t="offline" hidden></div>
   </main>
   <button id="banner" hidden></button>
-  <div id="chatModelBar" hidden><select id="chatModelSel" data-al="modelTitle"></select><select id="chatEffortSel" data-al="effortTitle"></select></div>
+  <div id="chatModelBar" hidden>
+    <div class="pill-wrap" id="modelPillWrap">
+      <button type="button" class="pill-btn" id="modelPickerBtn" aria-haspopup="listbox" aria-expanded="false"><span class="pill-dot"></span><span id="modelPickerLabel"></span><span class="pill-caret" data-i="down"></span></button>
+      <div class="pill-pop" id="modelPickerMenu" role="listbox" hidden></div>
+    </div>
+    <div class="pill-wrap" id="effortPillWrap">
+      <button type="button" class="pill-btn" id="effortPickerBtn" aria-haspopup="listbox" aria-expanded="false"><span id="effortPickerLabel"></span><span class="pill-caret" data-i="down"></span></button>
+      <div class="pill-pop compact" id="effortPickerMenu" role="listbox" hidden></div>
+    </div>
+  </div>
   <div id="attachRow" hidden></div>
   <form id="composer" class="empty">
     <button type="button" class="attach" id="attachBtn" data-al="attach" data-i="clip"></button>
@@ -2115,13 +2145,13 @@ function drawClerk() {
 $('langSel').append(new Option(t('langAuto'), 'auto'), ...LANGS.map(l => new Option(l.label, l.code)))
 $('langSel').value = savedLang
 function drawTheme() {
-  let current = 'auto'
-  try { current = localStorage.getItem('bobbot.theme') || 'auto' } catch { /* private mode */ }
-  $('themeSeg').replaceChildren(...['auto', 'light', 'dark'].map(choice => {
+  let current = 'light'
+  try { current = localStorage.getItem('bobbot.theme') || 'light' } catch { /* private mode */ }
+  $('themeSeg').replaceChildren(...['light', 'dark', 'auto'].map(choice => {
     const b = el('button', choice === current ? 'on' : '', t('theme_' + choice)); b.type = 'button'
     b.setAttribute('aria-pressed', String(choice === current))
     b.onclick = () => {
-      try { if (choice === 'auto') localStorage.removeItem('bobbot.theme'); else localStorage.setItem('bobbot.theme', choice) } catch { /* private mode */ }
+      try { localStorage.setItem('bobbot.theme', choice) } catch { /* private mode */ }
       applyTheme(); drawTheme()
     }
     return b
@@ -2841,47 +2871,82 @@ function effortOptionsFor(p) {
     ['xhigh', zh ? '思考：极高' : 'Think: XHigh'],
   ]
 }
+function closePillMenus() {
+  for (const [wrapId, btnId, menuId] of [['modelPillWrap', 'modelPickerBtn', 'modelPickerMenu'], ['effortPillWrap', 'effortPickerBtn', 'effortPickerMenu']]) {
+    $(wrapId).classList.remove('open')
+    $(btnId).setAttribute('aria-expanded', 'false')
+    $(menuId).hidden = true
+  }
+}
+function togglePillMenu(wrapId, btnId, menuId) {
+  const wasOpen = !$(menuId).hidden
+  closePillMenus()
+  if (!wasOpen) {
+    $(wrapId).classList.add('open')
+    $(btnId).setAttribute('aria-expanded', 'true')
+    $(menuId).hidden = false
+  }
+}
+$('modelPickerBtn').onclick = e => { e.stopPropagation(); togglePillMenu('modelPillWrap', 'modelPickerBtn', 'modelPickerMenu') }
+$('effortPickerBtn').onclick = e => { e.stopPropagation(); togglePillMenu('effortPillWrap', 'effortPickerBtn', 'effortPickerMenu') }
+document.addEventListener('click', e => { if (!e.target.closest('.pill-wrap')) closePillMenus() })
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePillMenus() })
+
 function renderChatModelPicker() {
-  const bar = $('chatModelBar'), sel = $('chatModelSel'), eff = $('chatEffortSel')
+  const bar = $('chatModelBar')
   const usable = (providerData?.items ?? []).filter(p => p.hasKey)
   bar.hidden = currentView !== 'chat' || usable.length === 0
-  if (!usable.length) return
-  sel.replaceChildren(...usable.map(p => new Option(`${p.name || providerLabel(p.kind)} · ${p.model}`, p.id)))
+  if (!usable.length) { closePillMenus(); return }
   const active = usable.find(p => p.active) ?? usable[0]
-  if (active) {
-    sel.value = active.id
-    const opts = effortOptionsFor(active)
-    eff.replaceChildren(...opts.map(([v, label]) => new Option(label, v)))
-    const cur = active.reasoningEffort || (active.kind === 'deepseek' ? 'high' : 'medium')
-    eff.value = opts.some(([v]) => v === cur) ? cur : opts[Math.min(2, opts.length - 1)][0]
-  }
-}
-$('chatEffortSel').onchange = async () => {
-  const id = $('chatModelSel').value
-  const reasoningEffort = $('chatEffortSel').value
-  const label = $('chatEffortSel').selectedOptions[0]?.textContent || reasoningEffort
-  const r = await post('/api/providers/effort', { id, reasoningEffort })
-  if (r.status === 200) {
-    providerData = r.data
-    renderProviders()
-    toast(t('effortSwitched', label))
-  } else {
-    renderChatModelPicker()
-    toast(errText(r.data, r.status), true)
-  }
-}
-$('chatModelSel').onchange = async () => {
-  const id = $('chatModelSel').value
-  const target = (providerData?.items ?? []).find(p => p.id === id)
-  const r = await post('/api/providers/activate', { id })
-  if (r.status === 200) {
-    providerData = r.data
-    renderProviders()
-    toast(t('modelSwitched', target ? `${target.name || providerLabel(target.kind)} · ${target.model}` : id))
-  } else {
-    renderChatModelPicker()
-    toast(errText(r.data, r.status), true)
-  }
+  $('modelPickerLabel').textContent = active.name || active.model
+  const mMenu = $('modelPickerMenu')
+  mMenu.replaceChildren(...usable.map(p => {
+    const isOn = p.id === active.id
+    const b = el('button', 'pill-opt' + (isOn ? ' on' : '')); b.type = 'button'; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', String(isOn))
+    const txt = el('span', 'pill-opt-text')
+    txt.append(el('span', 'pill-opt-name', p.name || providerLabel(p.kind)), el('span', 'pill-opt-sub', p.model))
+    b.append(txt)
+    if (isOn) { const ck = el('span', 'pill-check'); ck.innerHTML = icon('tick'); b.append(ck) }
+    b.onclick = async () => {
+      closePillMenus()
+      if (isOn) return
+      const r = await post('/api/providers/activate', { id: p.id })
+      if (r.status === 200) {
+        providerData = r.data
+        renderProviders()
+        toast(t('modelSwitched', p.name || p.model))
+      } else {
+        renderChatModelPicker()
+        toast(errText(r.data, r.status), true)
+      }
+    }
+    return b
+  }))
+  const opts = effortOptionsFor(active)
+  const cur = active.reasoningEffort || (active.kind === 'deepseek' ? 'high' : 'medium')
+  const curOpt = opts.find(([v]) => v === cur) ?? opts[Math.min(2, opts.length - 1)]
+  $('effortPickerLabel').textContent = curOpt[1]
+  const eMenu = $('effortPickerMenu')
+  eMenu.replaceChildren(...opts.map(([val, label]) => {
+    const isOn = val === curOpt[0]
+    const b = el('button', 'pill-opt' + (isOn ? ' on' : '')); b.type = 'button'; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', String(isOn))
+    b.append(el('span', 'pill-opt-name', label))
+    if (isOn) { const ck = el('span', 'pill-check'); ck.innerHTML = icon('tick'); b.append(ck) }
+    b.onclick = async () => {
+      closePillMenus()
+      if (isOn) return
+      const r = await post('/api/providers/effort', { id: active.id, reasoningEffort: val })
+      if (r.status === 200) {
+        providerData = r.data
+        renderProviders()
+        toast(t('effortSwitched', label))
+      } else {
+        renderChatModelPicker()
+        toast(errText(r.data, r.status), true)
+      }
+    }
+    return b
+  }))
 }
 function renderProviders() {
   $('providerList').replaceChildren(...providerData.items.map(providerRow))
