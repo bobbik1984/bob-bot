@@ -114,7 +114,7 @@ export class Agent extends EventEmitter {
     return this.ready
   }
 
-  async #launch({ apiKey, mcpUrl, mcpToken, model = DEFAULT_MODEL, baseUrl, provider = 'deepseek-official', patches = [], extraEnv = {} }) {
+  async #launch({ apiKey, mcpUrl, mcpToken, model = DEFAULT_MODEL, baseUrl, provider = 'deepseek-official', reasoningEffort = '', patches = [], extraEnv = {} }) {
     this.model = model
     this.run = Date.now().toString(36)
     this.started = new Set()
@@ -154,7 +154,7 @@ export class Agent extends EventEmitter {
       this.#reset(new Error(`DSH exited (${code})`))
       this.emit('exit', code)
     })
-    await this.#request('initialize', { cwd, provider, model }, 180000)
+    await this.#request('initialize', { cwd, provider, model, ...(reasoningEffort ? { reasoningEffort } : {}) }, 180000)
   }
 
   #reset(error) {

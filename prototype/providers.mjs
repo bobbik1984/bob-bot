@@ -7,6 +7,7 @@ import { writeAtomic } from './store.mjs'
 
 export const MAX_PROVIDERS = 12
 export const APIS = ['openai-completions', 'openai-responses', 'anthropic-messages']
+export const EFFORTS = ['', 'off', 'low', 'medium', 'high', 'xhigh', 'max']
 
 /**
  * A preset only supplies defaults. Every field the owner can edit is copied into the saved profile, so changing a
@@ -59,10 +60,13 @@ export function checkProfile(input, { allowHttp = false } = {}) {
   const inputUsd = kind === 'deepseek' ? null : money(input?.inputUsd)
   const outputUsd = kind === 'deepseek' ? null : money(input?.outputUsd)
   if (kind !== 'deepseek' && inputUsd === 0 && outputUsd === 0) throw fail('BAD_PRICE') // a free model would never count toward the limit
+  const reasoningEffort = String(input?.reasoningEffort ?? '').trim().toLowerCase()
+  if (!EFFORTS.includes(reasoningEffort)) throw fail('BAD_EFFORT')
   return {
     name, kind, api,
     baseUrl: kind === 'deepseek' ? preset.baseUrl : rawUrl.replace(/\/+$/, ''),
     model, inputUsd, outputUsd,
+    reasoningEffort,
     contextWindow: integer(input?.contextWindow, preset.contextWindow, 10_000_000),
     maxTokens: integer(input?.maxTokens, preset.maxTokens, 1_000_000),
   }

@@ -725,7 +725,7 @@ nav button.on span:first-child { background:var(--accent-soft); }
     <div id="offline" role="status" data-t="offline" hidden></div>
   </main>
   <button id="banner" hidden></button>
-  <div id="chatModelBar" hidden><select id="chatModelSel" data-al="modelTitle"></select></div>
+  <div id="chatModelBar" hidden><select id="chatModelSel" data-al="modelTitle"></select><select id="chatEffortSel" data-al="effortTitle"></select></div>
   <div id="attachRow" hidden></div>
   <form id="composer" class="empty">
     <button type="button" class="attach" id="attachBtn" data-al="attach" data-i="clip"></button>
@@ -829,7 +829,7 @@ const I18N = {
   channelsTitle:['消息渠道','Channels'], channelsHint:['提醒和结果除了应用内，还可以发到这些渠道。密钥只保存在服务器上。','Reminders and results can also go to these channels. Secrets stay on the server.'],
   addChannel:['添加渠道','Add a channel'], zoneTitle:['所在城市','City'], cityPlaceholder:['输入或选择城市，如上海、北京、东京、纽约','Enter or pick a city, e.g. Shanghai, Tokyo, New York'],
   zoneMatched:['自动匹配时区：{n}','Matched timezone: {n}'], zoneUnknownCity:['暂未识别该城市，可换附近大城市或直接填时区名（如 Asia/Shanghai）','City not recognized; try a nearby major city or IANA timezone (e.g. Asia/Shanghai)'],
-  modelSwitched:['已切换模型：{n}','Switched model: {n}'],
+  modelSwitched:['已切换模型：{n}','Switched model: {n}'], effortTitle:['思考强度','Thinking effort'], effortSwitched:['思考强度：{n}','Thinking effort: {n}'],
   kindTask:['任务','Task'], kindReminder:['提醒','Reminder'], nextRun:['下次：{n}','Next: {n}'], paused:['已暂停','Paused'], neverRun:['还没运行过','Not run yet'],
   runNow:['立即运行','Run now'], sendNow:['立即发送','Send now'], pause:['暂停','Pause'], resume:['恢复','Resume'], remove:['移除','Remove'], del:['删除','Del'],
   openRun:['查看过程','See the run'], openClerk:['去文员查看','Open in Clerk'], running:['运行中…','Running…'], inboxTo:['发送到：','Sent to: '],
@@ -2824,14 +2824,51 @@ function providerRow(p) {
   row.append(actions)
   return row
 }
+function effortOptionsFor(p) {
+  if (p?.kind === 'deepseek') {
+    return [
+      ['off', zh ? '思考：关' : 'Think: Off'],
+      ['low', zh ? '思考：低' : 'Think: Low'],
+      ['high', zh ? '思考：高' : 'Think: High'],
+      ['max', zh ? '思考：极高' : 'Think: Max'],
+    ]
+  }
+  return [
+    ['off', zh ? '思考：关' : 'Think: Off'],
+    ['low', zh ? '思考：低' : 'Think: Low'],
+    ['medium', zh ? '思考：中' : 'Think: Medium'],
+    ['high', zh ? '思考：高' : 'Think: High'],
+    ['xhigh', zh ? '思考：极高' : 'Think: XHigh'],
+  ]
+}
 function renderChatModelPicker() {
-  const bar = $('chatModelBar'), sel = $('chatModelSel')
+  const bar = $('chatModelBar'), sel = $('chatModelSel'), eff = $('chatEffortSel')
   const usable = (providerData?.items ?? []).filter(p => p.hasKey)
   bar.hidden = currentView !== 'chat' || usable.length === 0
   if (!usable.length) return
   sel.replaceChildren(...usable.map(p => new Option(`${p.name || providerLabel(p.kind)} · ${p.model}`, p.id)))
   const active = usable.find(p => p.active) ?? usable[0]
-  if (active) sel.value = active.id
+  if (active) {
+    sel.value = active.id
+    const opts = effortOptionsFor(active)
+    eff.replaceChildren(...opts.map(([v, label]) => new Option(label, v)))
+    const cur = active.reasoningEffort || (active.kind === 'deepseek' ? 'high' : 'medium')
+    eff.value = opts.some(([v]) => v === cur) ? cur : opts[Math.min(2, opts.length - 1)][0]
+  }
+}
+$('chatEffortSel').onchange = async () => {
+  const id = $('chatModelSel').value
+  const reasoningEffort = $('chatEffortSel').value
+  const label = $('chatEffortSel').selectedOptions[0]?.textContent || reasoningEffort
+  const r = await post('/api/providers/effort', { id, reasoningEffort })
+  if (r.status === 200) {
+    providerData = r.data
+    renderProviders()
+    toast(t('effortSwitched', label))
+  } else {
+    renderChatModelPicker()
+    toast(errText(r.data, r.status), true)
+  }
 }
 $('chatModelSel').onchange = async () => {
   const id = $('chatModelSel').value

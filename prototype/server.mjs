@@ -1607,6 +1607,9 @@ async function ensureAgent(cfg, apiKey) {
   // DeepSeek and Anthropic-compatible endpoints keep the direct DeepSeek Messages adapter. Other providers are
   // mounted as one pi-ai route named "bob", in a patch written for this launch, so the direct route stays untouched.
   const direct = cfg.kind === 'deepseek' || (cfg.kind === 'custom' && cfg.api === 'anthropic-messages')
+  const rawEffort = String(cfg.reasoningEffort ?? '').trim().toLowerCase()
+  const dsEffort = rawEffort === 'medium' ? 'high' : rawEffort === 'xhigh' ? 'max' : (['off', 'low', 'high', 'max'].includes(rawEffort) ? rawEffort : '')
+  const piEffort = rawEffort === 'max' ? 'xhigh' : (['off', 'low', 'medium', 'high', 'xhigh'].includes(rawEffort) ? rawEffort : '')
   let providerPatch = null
   if (!direct) {
     providerPatch = path.join(DATA_DIR, 'provider.patch.yml')
@@ -1621,6 +1624,7 @@ async function ensureAgent(cfg, apiKey) {
       `            api: ${JSON.stringify(cfg.api || 'openai-completions')}`,
       `            baseURL: ${JSON.stringify(cfg.baseUrl || '')}`,
       '            apiKeyEnv: BOBBOT_PROVIDER_KEY',
+      ...(piEffort ? [`            reasoning: ${JSON.stringify(piEffort)}`] : []),
       `            defaultContextWindow: ${Number(cfg.contextWindow) || 1000000}`,
       `            defaultMaxTokens: ${Number(cfg.maxTokens) || 8192}`,
       '            models:',
@@ -1632,6 +1636,7 @@ async function ensureAgent(cfg, apiKey) {
   const base = {
     apiKey, mcpUrl, mcpToken, model: cfg.model,
     provider: direct ? 'deepseek-official' : 'bob',
+    reasoningEffort: direct ? dsEffort : '',
     // The official DeepSeek route keeps its default (or DEEPSEEK_BASE_URL from the environment); only a custom
     // Messages-compatible endpoint needs an explicit base URL.
     baseUrl: direct && cfg.kind === 'custom' ? cfg.baseUrl : undefined,
@@ -2160,6 +2165,7 @@ async function route(req, res) {
         name: body.name, kind, api: body.api,
         baseUrl: String(body.baseUrl ?? preset.baseUrl ?? '').trim(),
         model: body.model, inputUsd: body.inputUsd, outputUsd: body.outputUsd,
+        reasoningEffort: body.reasoningEffort,
         contextWindow: body.contextWindow, maxTokens: body.maxTokens,
       }
       let clean
@@ -2189,6 +2195,15 @@ async function route(req, res) {
       try { providers.activate(String(body.id ?? '')) } catch (error) { return send(res, 404, { error: error.code ?? 'NO_PROVIDER' }) }
       agent.stop()
       runningCid = null
+      return send(res, 200, { ok: true, ...providersView() })
+    }
+    case '/api/providers/effort': {
+      if (runningCid || activeRun || takeover) return send(res, 409, { error: 'BUSY' })
+      const p = providers.get(String(body.id ?? ''))
+      if (!p) return send(res, 404, { error: 'NO_PROVIDER' })
+      const effort = String(body.reasoningEffort ?? '').trim().toLowerCase()
+      try { providers.update(p.id, { ...p, reasoningEffort: effort }, { allowHttp: TEST_ENDPOINTS }) } catch (error) { return send(res, 400, { error: error.code ?? 'BAD_EFFORT' }) }
+      if (providers.activeId === p.id) { agent.stop(); runningCid = null }
       return send(res, 200, { ok: true, ...providersView() })
     }
     case '/api/providers/delete': {
