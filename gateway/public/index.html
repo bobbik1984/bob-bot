@@ -505,8 +505,9 @@ html { scrollbar-gutter:stable; }
 #attention .card, #turnPrompt:not(:empty), .life-tools article { margin:8px 0; border:1px solid var(--line); border-radius:16px; padding:12px 14px; background:var(--surface); overflow-wrap:anywhere; }
 #attention small, .life-tools small { display:block; color:var(--muted); }
 #attention .actions,.life-tools article .actions,#turnPrompt .actions { margin-top:8px; }
-#assistantMenu button { display:block; width:100%; margin:6px 0; text-align:start; }
-#assistantMenu .dhead button,.life-tools .dhead button { width:auto; }
+.clerk-records article { padding:12px 0; border-bottom:1px solid var(--line); }
+.clerk-records .actions { display:flex; flex-wrap:wrap; gap:8px; }
+.clerk-records button, .clerk-records summary { color:var(--accent-ink); padding:8px; cursor:pointer; }
 #profileMenu { min-width:44px; min-height:44px; }
 #app.hero #viewChat { overflow-y:auto; }
 html::-webkit-scrollbar, .life-tools::-webkit-scrollbar { width:6px; }
@@ -530,7 +531,7 @@ html::-webkit-scrollbar-thumb,.life-tools::-webkit-scrollbar-thumb { border-radi
   <header>
     <button type="button" class="orb-btn" id="orbBtn" data-al="history" aria-controls="drawer" aria-expanded="false"><span aria-hidden="true" class="orb" id="hOrb" data-orb data-state="nap"></span></button>
     <div class="title" id="title"></div>
-    <div class="right"><div id="slotHeader"></div><button id="returnBob" class="link" data-t="backBob" hidden></button><button id="profileMenu" class="icon-btn" data-al="moreOptions" aria-haspopup="dialog" data-i="sliders"></button></div>
+    <div class="right"><div id="slotHeader"></div><button id="returnBob" class="link" data-t="backBob" hidden></button><button id="openClerkPage" class="link" data-t="clerkTitle"></button><button id="profileMenu" class="icon-btn" data-al="tabSettings" data-i="sliders"></button></div>
   </header>
   <main>
     <div class="view" id="viewChat">
@@ -543,6 +544,9 @@ html::-webkit-scrollbar-thumb,.life-tools::-webkit-scrollbar-thumb { border-radi
       <div id="feed" aria-live="polite"></div><section id="attention" aria-live="polite" tabindex="-1"><div id="notices"></div></section><div id="turnPrompt" aria-live="polite"></div>
     </div>
     <div class="view" id="viewClerk" hidden>
+      <section class="section clerk-records"><div class="sect-head"><h3 data-t="myRecords"></h3><button class="link" id="captureTools" data-t="sourceTools"></button></div><button id="lifeLoadStatus" data-t="retryLife" hidden></button><details id="agenda"><summary id="agendaCount"></summary><ol id="agendaList"></ol><small id="agendaEmpty" data-life-t="agendaEmpty"></small></details>
+<div id="open"></div><details><summary data-life-t="history"></summary><div id="closed"></div></details>
+</section>
       <div class="slot" id="slotClerk"></div>
       <div id="draftBox" hidden>
         <div class="sect-head" id="draftsHead"><h3 data-t="draftsTitle"></h3></div>
@@ -738,11 +742,6 @@ html::-webkit-scrollbar-thumb,.life-tools::-webkit-scrollbar-thumb { border-radi
   </aside>
 </section>
 
-<dialog id="assistantMenu" class="life-tools" aria-labelledby="assistantMenuTitle"><div class="dhead"><b id="assistantMenuTitle">Bob</b><button type="button" data-dismiss data-t="close"></button></div>
-<button id="viewRecords" data-t="myRecords"></button><button id="captureTools" data-t="sourceTools"></button><button id="archiveChats" data-t="history"></button><button id="preferences" data-t="tabSettings"></button></dialog>
-<dialog id="recordsDialog" class="life-tools" aria-labelledby="recordsTitle"><div class="dhead"><b id="recordsTitle" data-t="myRecords"></b><button data-dismiss data-t="close"></button></div><button id="lifeLoadStatus" data-t="retryLife" hidden></button><details id="agenda"><summary id="agendaCount"></summary><ol id="agendaList"></ol><small id="agendaEmpty" data-life-t="agendaEmpty"></small></details>
-<div id="open"></div><details><summary data-life-t="history"></summary><div id="closed"></div></details>
-</dialog>
 <dialog id="captureDialog" class="life-tools" aria-labelledby="sourceTitle"><div class="dhead"><b id="sourceTitle" data-t="sourceTools"></b><button data-dismiss data-t="close"></button></div><section><form id="capture"><label><span data-life-t="capture"></span><textarea maxlength="1200" id="note"></textarea></label>
 <div class="row"><label><span data-life-t="kind"></span><select id="kind"><option value="wish" data-life-t="wish"></option><option value="save" data-life-t="save"></option><option value="plan" data-life-t="plan"></option></select></label>
 <label><span data-life-t="image"></span><input type="file" id="photo" accept="image/*"></label></div>
@@ -1028,6 +1027,9 @@ let persistView = false
 function show(view) {
   currentView = view
   $('returnBob').hidden = view === 'chat'
+  $('openClerkPage').hidden = view === 'clerk'
+  $('profileMenu').hidden = view === 'settings'
+  $('slotHeader').hidden = view !== 'chat'
   if (persistView && (view === 'chat' || view === 'clerk')) localStorage.setItem('bobbot.lastView', view)
   VIEWS.forEach(v => { $('view' + v[0].toUpperCase() + v.slice(1)).hidden = v !== view })
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.view === view))
@@ -1693,15 +1695,12 @@ function closeDrawer() {
 $('drawer').addEventListener('keydown', e => {
   if (e.key === 'Escape') { e.preventDefault(); closeDrawer() }
 })
-$('profileMenu').onclick=()=>$('assistantMenu').showModal()
+$('profileMenu').onclick = () => show('settings')
+$('openClerkPage').onclick = () => show('clerk')
 document.querySelectorAll('[data-dismiss]').forEach(b=>b.onclick=()=>b.closest('dialog').close())
-function menuAction(fn) { return () => { $('assistantMenu').close(); fn() } }
 $('lifeLoadStatus').onclick = () => location.reload()
-$('viewRecords').onclick=menuAction(()=>$('recordsDialog').showModal())
-$('captureTools').onclick=menuAction(()=>$('captureDialog').showModal())
-$('preferences').onclick=menuAction(()=>show('settings'))
-$('archiveChats').onclick=menuAction(() => openDrawer($('profileMenu')))
-$('returnBob').onclick=openAssistant
+$('captureTools').onclick=() => $('captureDialog').showModal()
+$('returnBob').onclick = () => show('chat')
 $('orbBtn').addEventListener('pointerdown', () => poke())
 $('orbBtn').onclick = () => openDrawer($('orbBtn'))
 $('closeDrawer').onclick = closeDrawer
@@ -3072,7 +3071,7 @@ async function startLife() {
     $('lifeLoadStatus').hidden = false
   }
 }
-window.assistantUI = { lang, active:()=>activeCid, showChat:()=>show('chat'), openAssistant, notice, setHero, atEnd,
+window.assistantUI = { lang, active:()=>activeCid, showChat:()=>show('chat'), showClerk:()=>show('clerk'), openAssistant, notice, setHero, atEnd,
   compose:text=>{ show('chat'); setText(text); $('text').focus() },
   say:(role,text)=>message(role,text), settings:()=>show('settings') }
 boot()

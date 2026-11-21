@@ -175,7 +175,7 @@ function askWhen(turn,id){
  });
  actions.append(confirm,button('cancel',async()=>{pending=null;lastRequest=null;prompt.replaceChildren();ui.setHero()}));prompt.append(actions);ui.setHero();ui.atEnd();
 }
-function records(){if(!$('recordsDialog').open)$('recordsDialog').showModal()}
+function records(){ui.showClerk()}
 export async function handle(text){
  if(text.startsWith(t('helpQuestion')))return false;
  let turn=interpret(text);
