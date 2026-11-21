@@ -628,6 +628,11 @@ nav button.on span:first-child { background:var(--accent-soft); }
     </div>
     <div class="view" id="viewClerk" hidden>
       <div class="slot" id="slotClerk"></div>
+      <details id="iphoneSetup"><summary data-t="iphoneHeading"></summary><p class="hint" data-t="iphoneHow"></p>
+        <button class="link" id="iphoneInstall" data-t="iphoneInstall" disabled></button>
+        <details id="iphoneManual"><summary data-t="iphoneCodeLabel"></summary><input id="iphoneCode" readonly><a class="link" href="/iphone/RY.shortcut" data-t="iphoneFile"></a>
+          <button class="link" id="iphoneRotate" data-t="iphoneRotate"></button></details>
+        <div id="iphoneReceipts"></div></details>
       <p class="hint" data-t="clerkIntro"></p>
       <div id="draftBox" hidden>
         <div class="sect-head" id="draftsHead"><h3 data-t="draftsTitle"></h3></div>
@@ -916,6 +921,12 @@ const I18N = {
   channelsTitle:['消息渠道','Channels'], channelsHint:['提醒和结果除了应用内，还可以发到这些渠道。密钥只保存在服务器上。','Reminders and results can also go to these channels. Secrets stay on the server.'],
   addChannel:['添加渠道','Add a channel'], zoneTitle:['所在城市','City'], cityPlaceholder:['输入或选择城市，如上海、北京、东京、纽约','Enter or pick a city, e.g. Shanghai, Tokyo, New York'],
   zoneMatched:['自动匹配时区：{n}','Matched timezone: {n}'], zoneUnknownCity:['暂未识别该城市，可换附近大城市或直接填时区名（如 Asia/Shanghai）','City not recognized; try a nearby major city or IANA timezone (e.g. Asia/Shanghai)'],
+  iphoneHeading:['微信收件箱','WeChat inbox'], iphoneHow:['首次添加时粘贴连接码。之后分享截图或聊天文字，选择「交给 RY」；微信只有「复制」时，复制后运行指令。','Paste your code during setup. Share a screenshot or text to RY. When WeChat offers only Copy, copy the message and run the shortcut.'],
+  iphoneInstall:['复制连接码并添加快捷指令','Copy code and add shortcut'],iphoneCodeLabel:['查看连接码','View connection code'],iphoneFile:['打开指令文件','Open shortcut file'],iphoneRotate:['更换连接码','Replace code'],iphoneRotateAsk:['更换后需要重新绑定已添加的指令。继续？','Installed shortcuts will need the replacement code. Continue?'],
+  iphonePending:['已收件，正在提取待办','Received · extracting tasks'],iphoneDone:['已记待办','Saved to to-dos'],iphoneReview:['待核对','Needs review'],iphoneRetry:['重新提取','Try again'],
+  widgetRetry:['重新加载「{n}」','Reload {n}'],
+  featureTrialStarted:['已开始试用「{n}」，可以选择保留或撤销。','“{n}” is ready to try. Choose Keep or Undo.'],
+  modelFollowupFailed:['Gemini 在工具运行后未能完成回复。可在设置中查看组件状态。','Gemini could not finish its reply after the tool ran. Check the feature status in Settings.'],
   modelSwitched:['已切换模型：{n}','Switched model: {n}'], effortTitle:['思考强度','Thinking effort'], effortSwitched:['思考强度：{n}','Thinking effort: {n}'],
   previewFile:['预览','Preview'], downloadFile:['下载','Download'],
   kindTask:['任务','Task'], kindReminder:['提醒','Reminder'], nextRun:['下次：{n}','Next: {n}'], paused:['已暂停','Paused'], neverRun:['还没运行过','Not run yet'],
@@ -1392,7 +1403,27 @@ function add(node, kind) {
   updateWelcome()
   if (kind === 'user') atEnd(); else follow()
 }
+let partial = null
+function clearPartial() {
+  partial?.row.remove()
+  partial = null
+}
+function appendDelta(e) {
+  if (partial?.attempt !== e.attempt) {
+    clearPartial()
+    const row = el('div', 'bubble-row')
+    const bubble = el('div', 'msg')
+    const avatar = el('span', 'orb static')
+    avatar.innerHTML = ORB
+    row.append(avatar, bubble)
+    feed.insertBefore(row, typing)
+    partial = { row, bubble, attempt: e.attempt }
+  }
+  partial.bubble.append(document.createTextNode(e.text))
+  follow()
+}
 function clearFeed() {
+  clearPartial()
   ;[...feed.children].forEach(c => { if (c !== typing) c.remove() })
   cards.clear(); lastKind = null; stepsBox = null; lastStamp = 0
   updateWelcome()
@@ -1819,7 +1850,8 @@ function track(e) { // approvals and takeovers belong to every conversation, bec
 function render(e) {
   if (e.type === 'message') { stamp(e.at); message(e.role, e.text, e.files ?? []) }
   else if (e.type === 'step') step(e.name)
-  else if (e.type === 'error') notice(e.text, true)
+  else if (e.type === 'feature_trial_started') notice(t('featureTrialStarted', e.title))
+  else if (e.type === 'error') notice(/missing a thought_signature/i.test(e.text) ? t('modelFollowupFailed') : e.text, true)
   else if (e.type === 'notice') notice(t(e.code === 'BUDGET_NEAR' ? 'budgetNear' : e.code === 'EXTENSIONS_BROKEN' ? 'extensionsBroken' : 'budgetExceeded'), true)
   else if (e.type === 'card') add(e.card.kind === 'job' ? jobCard(e.card.job, e.card.timezone, true, e.card.created) : e.card.kind === 'todo' ? todoCard(e.card.todo, e.card.timezone, e.card.created) : e.card.kind === 'page' ? pageCard(e.card.page) : infoCard(e.card), 'card')
   else if (e.type === 'approval' || e.type === 'takeover') {
@@ -1846,6 +1878,8 @@ function setLiveStatus(text) {
 function route(e) {
   track(e)
   if (e.cid !== activeCid) return
+  if (e.type === 'delta') { setLiveStatus(''); appendDelta(e); return }
+  if (['step', 'message', 'error'].includes(e.type)) clearPartial()
   if (e.type === 'step' && /browser_(navigate|click|type|select|read)|web_fetch|_file|run_command|mcp__/.test(e.name)) workSteps += 1
   if (e.type === 'step') setLiveStatus(t('step_' + e.name.replace(/^mcp__bobbot__/, '')) || e.name)
   if ((e.type === 'message' && e.role === 'assistant') || e.type === 'error') setLiveStatus('')
@@ -1898,6 +1932,7 @@ async function openFromLink(link) {
   let went = false
   if (cid && convs.some(c => c.id === cid)) { await selectConv(cid); went = true }
   else if (VIEWS.includes(view)) { show(view); went = true }
+  if (went && view === 'clerk' && params.has('iphone')) $('iphoneSetup').open = true
   if (went) { try { localStorage.setItem('bobbot.lastView', currentView) } catch { /* private mode */ } }
   return went
 }
@@ -2099,7 +2134,7 @@ function connect() {
       if (e.status === 'running') { if (runningCid !== e.cid) workSteps = 0; runningCid = e.cid; if (e.cid === activeCid) setLiveStatus(t('stateThink')) }
       else if (runningCid === e.cid) {
         runningCid = null
-        if (e.cid === activeCid) { setLiveStatus(''); if (workSteps >= 2 && !clerkData?.jobs.some(j => j.cid === e.cid)) offerRoutine() }
+        if (e.cid === activeCid) { clearPartial(); setLiveStatus(''); if (workSteps >= 2 && !clerkData?.jobs.some(j => j.cid === e.cid)) offerRoutine() }
         workSteps = 0
       }
       refreshOrb()
@@ -2308,8 +2343,30 @@ function channelRow(ch) {
 }
 let currentCity = (() => { try { return localStorage.getItem('bobbot.city') || '' } catch { return '' } })()
 let currentTimezone = ''
+async function iphoneCode(rotate = false) {
+  const r = await post('/api/iphone/setup',{rotate})
+  if(r.status !== 200) { notice(r.data?.error || String(r.status),true); return }
+  $('iphoneCode').value = r.data.code
+  $('iphoneInstall').disabled = false
+}
+$('iphoneSetup').ontoggle = () => { if ($('iphoneSetup').open) iphoneCode().catch(e=>notice(e.message,true)) }
+$('iphoneInstall').onclick = async () => {
+  try { await navigator.clipboard.writeText($('iphoneCode').value); location.assign('/iphone/RY.shortcut') }
+  catch { $('iphoneManual').open=true; $('iphoneCode').select() }
+}
+$('iphoneRotate').onclick = () => { if(confirm(t('iphoneRotateAsk'))) iphoneCode(true).catch(e=>notice(e.message,true)) }
 function drawClerk() {
   const d = clerkData
+  $('iphoneReceipts').replaceChildren(...(d.captures || []).map(c=>{
+    const row=el('p','hint')
+    row.textContent=t(c.status === 'done' ? 'iphoneDone' : c.status === 'review' ? 'iphoneReview' : 'iphonePending')+' · '+(c.titles?.join('、') || c.text)
+    if(c.status === 'review') {
+      const retry=el('button','link',t('iphoneRetry'))
+      retry.onclick=async()=>{ await post('/api/iphone/retry',{id:c.id});loadClerk() }
+      row.append(retry)
+    }
+    return row
+  }))
   const drafts = d.drafts ?? []
   $('draftBox').hidden = drafts.length === 0
   $('draftList').replaceChildren(...drafts.map(draftCard))
@@ -2447,8 +2504,22 @@ function syncFrames() {
 function sizeWidget(frame, width, height) {
   const inHeader = frame.dataset.anchor === 'header-right'
   const fit = (value, low, high, fallback) => Math.min(high, Math.max(low, Number.isFinite(Number(value)) ? Math.round(Number(value)) : fallback))
-  frame.style.width = `${fit(width, 20, inHeader ? 160 : 1200, inHeader ? 44 : 320)}px`
+  frame.style.width = `${fit(width, 20, inHeader ? Math.max(44, $('app').clientWidth - 88) : 1200, inHeader ? 44 : 320)}px`
   frame.style.height = `${fit(height, 20, inHeader ? 40 : 600, inHeader ? 36 : 120)}px`
+}
+function watchWidget(frame) {
+  setTimeout(() => {
+    if (!frame.isConnected || frame.style.visibility !== 'hidden') return
+    const retry = el('button', 'link widget-retry', t('widgetRetry', frame.title))
+    frame.hidden = true
+    frame.after(retry)
+    retry.onclick = () => {
+      retry.remove()
+      frame.hidden = false
+      frame.src = frame.src
+      watchWidget(frame)
+    }
+  }, 12000)
 }
 let mounted = ''
 function mountFeatures(items) {
@@ -2456,7 +2527,7 @@ function mountFeatures(items) {
   const key = JSON.stringify(live.map(f => [f.name, f.version, f.widgets, f.style]))
   if (key === mounted) return // nothing changed: leave running widgets alone
   mounted = key
-  document.querySelectorAll('.plugin-widget, link[data-plugin]').forEach(node => node.remove())
+  document.querySelectorAll('.plugin-widget, .widget-retry, link[data-plugin]').forEach(node => node.remove())
   for (const f of live) {
     if (f.style) {
       const link = el('link'); link.rel = 'stylesheet'; link.href = `/f/${f.name}/style.css?v=${f.version}`; link.dataset.plugin = f.name
@@ -2472,6 +2543,7 @@ function mountFeatures(items) {
       frame.style.visibility = 'hidden' // not seen until its document is up, so whatever the browser paints behind a loading frame never shows
       sizeWidget(frame, w.width, w.height)
       frame.src = `/f/${f.name}/widget-${w.id}.html?v=${f.version}&t=${frameTheme()}`
+      watchWidget(frame)
       const place = target.closest('#feed') ? 'before' : w.place // the chat feed manages its own children
       if (place === 'start') target.prepend(frame); else if (place === 'before') target.before(frame); else if (place === 'after') target.after(frame); else target.append(frame)
     }
@@ -2488,7 +2560,12 @@ addEventListener('message', async e => {
   const name = frame?.dataset.plugin
   if (!name) return
   const reply = data => e.source.postMessage(data, '*')
-  if (m.bob === 'ready') { reply(frameInit(frame)); frame.style.visibility = '' }
+  if (m.bob === 'ready') {
+    reply(frameInit(frame))
+    if (frame.hidden && frame.nextElementSibling?.classList.contains('widget-retry')) frame.nextElementSibling.remove()
+    frame.hidden = false
+    frame.style.visibility = ''
+  }
   else if (m.bob === 'save') {
     try { const text = JSON.stringify(m.value ?? null); if (text.length <= MAX_WIDGET_STATE) localStorage.setItem(stateKey(frame), text) } catch { /* private mode, or not serialisable */ }
   }
@@ -3068,8 +3145,9 @@ function effortOptionsFor(p) {
       ['max', zh ? '思考：极高' : 'Think: Max'],
     ]
   }
+  const modelDefault = p?.kind === 'openai' && /^gpt-6[.-]/.test(p.model) && /^https:\/\/api\.openai\.com\/v1\/?$/.test(p.baseUrl)
   return [
-    ['off', zh ? '思考：关' : 'Think: Off'],
+    ['off', modelDefault ? (zh ? '思考：模型默认' : 'Think: Model default') : (zh ? '思考：关' : 'Think: Off')],
     ['low', zh ? '思考：低' : 'Think: Low'],
     ['medium', zh ? '思考：中' : 'Think: Medium'],
     ['high', zh ? '思考：高' : 'Think: High'],

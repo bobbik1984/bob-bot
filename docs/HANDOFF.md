@@ -70,16 +70,11 @@
 
 ## 4. 下一个 Agent 立即接手的优先事项
 
-### P0（紧接着要验和修的）
-1. **排查「右上角天气小组件没有显示出来」的问题**
-   - 用户在上一轮让 DeepSeek 创建了一个 `header-right` 的天气小组件，Bob 报告 `feature_create` 成功，但用户反馈「没有显示出来」（紧接着切换模型碰到了 Sol / Gemini 报错）。
-   - 建议先登录 VPS3 检查 `~/bob-bot/data/features/` 下的天气插件代码、状态与日志（`journalctl --user -u bobbot -n 100`），确认是：
-     - 3 分钟试用期过期自动回退了？
-     - 还是 `header-right` 槽位（`#slotHeader`）宽度/高度/布局被压缩或 `frame.style.visibility = 'hidden'` 未收到 `bob: 'ready'`？
-     - 还是插件后端 `fetch` 外部天气接口在 Contabo VPS3 超时或返回结构不匹配？
-   - 顺手把 `header-right` 小组件布局（贴右对齐、自适应宽度、防裁切）和插件调试报错可见性打磨好。
-2. **端到端实测 OpenAI Sol 6.2 & Gemini 4 Hydrogen / Neon**
-   - `87266b5`（`reasoningEfforts`）和 `e65ab90`（`compat.supportsStore: false`）刚刚部署，尚未做实际对话轮次验收；请验证 Sol 6.2、Astra 6.2、Gemini 4 Hydrogen、Gemini 4 Neon 在不同思考强度（低/中/高/关闭）下都能正常流式回复且无 400 报错。
+### P0 验收记录（2026-11-21，VPS3）
+
+1. **天津天气组件已保留。** 公网登录后，390 × 844 的视口右上角能读到温度与「天津」。组件尺寸 140 × 36，无溢出，插件清单只有一个 `header-weather`，状态为 `ok`，没有进行中的试用。新组件启动试用后，对话立即显示独立回执。插件迟迟未就绪时可在原位置重试。
+2. **工具执行后继续回复。** Gemini 通过 Google 原生接口回传工具签名。OpenAI Sol/Astra 使用 Responses 接口；选「模型默认」时省略思考参数。四款模型各测低、中、高、关闭（OpenAI 为模型默认），16 组均完成只读 `feature_list`，浏览器使用的 SSE 通道先收到正文片段，再收到最终回复。只向聊天页转发公开正文，历史只保存最终消息。使用独立临时会话验证，保留线上用户模型选择。
+3. **RY 微信收件。** 从 [iPhone 安装入口](https://ry.bobbik.org/wechat) 解锁，复制连接码并下载签名模板。已在公网验证安装按钮及下载内容；在 VPS3 隔离实例两次投递同一条合成微信消息，得到一个待办及对应提醒。iOS 真机安装、微信分享菜单与设备通知仍待验收。详见 [微信收件](WECHAT_INTAKE.md)。
 
 ### P1（白领办公体验打磨）
 3. **表格与文件预览体验继续增强**

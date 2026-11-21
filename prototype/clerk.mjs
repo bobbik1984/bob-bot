@@ -116,6 +116,7 @@ export class Clerk {
     this.city = typeof saved.city === 'string' ? saved.city.trim().slice(0, 40) : ''
     this.jobs = saved.jobs ?? []
     this.todos = saved.todos ?? []
+    this.captures = saved.captures ?? []
     this.channels = saved.channels ?? []
     try { this.inbox = JSON.parse(fs.readFileSync(this.inboxFile, 'utf8')) } catch { this.inbox = [] }
     this.draftFile = path.join(dir, 'drafts.json')
@@ -123,7 +124,7 @@ export class Clerk {
   }
 
   #save() {
-    writeAtomic(this.file, JSON.stringify({ timezone: this.timezone, timezoneChosen: this.timezoneChosen, city: this.city, jobs: this.jobs, todos: this.todos, channels: this.channels }))
+    writeAtomic(this.file, JSON.stringify({ timezone: this.timezone, timezoneChosen: this.timezoneChosen, city: this.city, jobs: this.jobs, todos: this.todos, captures: this.captures, channels: this.channels }))
   }
 
   #saveInbox() { writeAtomic(this.inboxFile, JSON.stringify(this.inbox.slice(0, MAX_INBOX))) }
@@ -136,6 +137,61 @@ export class Clerk {
     const now = Date.now()
     for (const job of this.jobs) if (job.enabled) job.nextRun = nextRun(job.schedule, tz, now)
     this.#save()
+  }
+
+  receiveCapture(text) {
+    const id = crypto.createHash('sha256').update(text).digest('hex').slice(0, 32)
+    const previous = this.captures.find(item => item.id === id)
+    if (previous) return previous
+    if (this.captures.length >= 200) {
+      const index = this.captures.findLastIndex(item => item.status === 'done')
+      if (index < 0) throw fail('CAPTURE_FULL')
+      this.captures.splice(index, 1)
+    }
+    const item = { id, text, at: Date.now(), status: 'pending' }
+    this.captures.unshift(item)
+    this.#save()
+    return item
+  }
+
+  finishCapture(item, tasks) {
+    // Tasks, their reminders and the receipt share one durable write.
+    const todos = [], jobs = []
+    for (const task of tasks) {
+      const title = String(task.title ?? '').trim().slice(0, 100)
+      const quote = String(task.quote ?? '').trim()
+      if (!title || !quote || !item.text.includes(quote)) throw fail('NO_SOURCE')
+      const todo = { id: `t${crypto.randomBytes(4).toString('hex')}`, title, note: quote.slice(0,300), due: task.due || null,
+        done: false, createdAt: Date.now(), jobId: null }
+      if (todo.due) {
+        const schedule = normalizeSchedule({ type: 'once', at: todo.due })
+        const next = nextRun(schedule, this.timezone, Date.now())
+        if (next !== null) {
+          todo.jobId = `j${crypto.randomBytes(4).toString('hex')}`
+          jobs.push({ id: todo.jobId, title, text: title, kind: 'reminder', schedule, channels: [], todoId: todo.id,
+            enabled: true, cid: null, createdAt: todo.createdAt, nextRun: next, lastRun: null, lastStatus: null, lastResult: null })
+        }
+      }
+      todos.push(todo)
+    }
+    if (this.todos.length + todos.length > 200 || this.jobs.length + jobs.length > MAX_JOBS) throw fail('CAPTURE_FULL')
+    this.todos.unshift(...todos)
+    this.jobs.push(...jobs)
+    item.status = todos.length ? 'done' : 'review'
+    item.titles = todos.map(t => t.title)
+    try { this.#save() } catch (error) {
+      this.todos.splice(0,todos.length)
+      if (jobs.length) this.jobs.splice(-jobs.length)
+      item.status = 'pending'
+      delete item.titles
+      throw error
+    }
+  }
+
+  retryCapture(id) {
+    const item = this.captures.find(c => c.id === id && c.status === 'review')
+    if (item) { item.status = 'pending'; this.#save() }
+    return Boolean(item)
   }
 
   // ---- channels ----

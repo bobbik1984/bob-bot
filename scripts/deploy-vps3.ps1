@@ -24,9 +24,9 @@ buf = io.BytesIO()
 with tarfile.open(fileobj=buf, mode='w:gz') as tar:
     for p in src.rglob('*'):
         rel = p.relative_to(src)
-        if rel.parts[0] in ('node_modules', 'data', '.git'):
+        if any(part in ('node_modules', 'data', '.git', '__pycache__') for part in rel.parts) or p.suffix == '.pyc':
             continue
-        tar.add(p, arcname=rel.as_posix())
+        tar.add(p, arcname=rel.as_posix(), recursive=False)
 subprocess.run(['ssh', '-o', 'BatchMode=yes', sys.argv[2], sys.argv[3]], input=buf.getvalue(), check=True)
 "@ "$ProtoDir" "$SshAlias" "$remoteCmd"
 

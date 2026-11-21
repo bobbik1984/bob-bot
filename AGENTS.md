@@ -58,8 +58,8 @@
    - 修改 `prototype/` 后，在仓库根目录直接运行：`.\scripts\deploy-vps3.ps1`（如改动了 `package.json` 依赖，追加 `-NpmInstall`）。
    - 脚本会自动保留远端 `data/`、更新内置 `office-docs` 技能、重启用户态 `bobbot.service` 并校验 `https://ry.bobbik.org/` 返回 HTTP 200。
 
-4. **RY 独立实例**：使用同一份 `gateway/` 源码和 [release-ry.json](release-ry.json)。运行 `python -X utf8 scripts/deploy-gcp.py deploy --target release-ry.json` 发布至 RY。原位保留该用户的 PIN 配置和整个 `data/`。
+3. **历史 RY 配置**：`release-ry.json` 对应原腾讯云 Go 实例。当前 RY 以本文 VPS3 一节及 `docs/HANDOFF.md` 为准，使用 `scripts/deploy-vps3.ps1`。
 
-## 5. PWA 身份与推送升级契约
+## 6. PWA 身份与推送升级契约
 
 生产 Origin 取自既有发布配置。首页与经典页共用根作用域、manifest 的 `id: "/"` 和 `scope: "/"`，以及永久入口 `/sw.js`。UI 改版须继续注册同一 worker，保留 `push` 与 `notificationclick` 监听。订阅同步、隐私偏好和密钥沿用同一通道。不得在升级、登录或页面初始化时例行取消订阅或轮换 VAPID。原位部署保留整个 `data/`，迁移机器时整体恢复。兼容与验收细则见 [架构规范](docs/ARCHITECTURE.md#pwa-push-contract)。

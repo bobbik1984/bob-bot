@@ -21,6 +21,7 @@ import { Memory } from './memory.mjs'
 import { Pages, checkPage } from './pages.mjs'
 import { Providers, PRESETS, checkProfile } from './providers.mjs'
 import { WriteBehind, writeAtomic } from './store.mjs'
+import { iphoneIntake } from './iphone-intake.mjs'
 import QRCode from 'qrcode'
 import * as webpush from 'web-push'
 
@@ -1042,6 +1043,7 @@ function inboxCid(entry) {
 
 function clerkView() {
   return {
+    captures: clerk.captures.slice(0,30).map(({id,text,status,titles})=>({id,text:text.slice(0,400),status,titles})),
     timezone: clerk.timezone, timezoneChosen: clerk.timezoneChosen, city: clerk.city, busy: Boolean(runningCid),
     jobs: clerk.jobs.filter(j => !j.todoId).map(jobView), todos: clerk.todos,
     inbox: clerk.inbox.map(entry => ({ ...entry, cid: inboxCid(entry) })),
@@ -1609,6 +1611,7 @@ async function featureTool(name, args) {
     }
     refreshTools()
     broadcast({ type: 'features' })
+    push({ type: 'feature_trial_started', title: item.title }, true, runningCid)
     const toolNames = item.tools.map(t => t.fullName)
     return `"${item.title}" is live on trial for ${Math.round(TRIAL_MS / 60000)} minutes${toolNames.length ? `, with tools ${toolNames.join(', ')} from your next reply` : ''}. The user sees Keep and Undo at the top right of the page; without an answer it is undone by itself. In one short sentence, tell them where to look and to press Keep if they like it.`
   }
@@ -1632,13 +1635,17 @@ async function ensureAgent(cfg, apiKey) {
   const rawEffort = String(cfg.reasoningEffort ?? '').trim().toLowerCase()
   const dsEffort = rawEffort === 'medium' ? 'high' : rawEffort === 'xhigh' ? 'max' : (['off', 'low', 'high', 'max'].includes(rawEffort) ? rawEffort : '')
   const piEffort = rawEffort === 'max' ? 'xhigh' : (['off', 'low', 'medium', 'high', 'xhigh'].includes(rawEffort) ? rawEffort : '')
+  let routeName = direct ? 'deepseek-official' : 'bob'
   let providerPatch = null
   if (!direct) {
     providerPatch = path.join(DATA_DIR, 'provider.patch.yml')
-    const api = cfg.api || 'openai-completions'
     const baseUrl = cfg.baseUrl || ''
-    const isGoogle = cfg.kind === 'google' || /generativelanguage\.googleapis\.com/i.test(baseUrl)
-    const isNativeGoogle = api === 'google-generative-ai'
+    const nativeGoogle = cfg.kind === 'google' && /^https:\/\/generativelanguage\.googleapis\.com\/v1(?:beta)?(?:\/openai)?\/?$/.test(baseUrl)
+    // The installed Google catalog transport retains each tool call's opaque thought signature.
+    // A catalog route inherits its native protocol when the api override is omitted.
+    if (nativeGoogle) routeName = 'google'
+    const nativeOpenAI = cfg.kind === 'openai' && /^https:\/\/api\.openai\.com\/v1\/?$/.test(baseUrl) && /^gpt-6(?:[.-]|$)/.test(cfg.model)
+    const api = nativeGoogle ? 'google-generative-ai' : nativeOpenAI ? 'openai-responses' : (cfg.api || 'openai-completions')
     const isNonOpenAiCompletions = api === 'openai-completions' && !/^https:\/\/api\.openai\.com(\/|$)/i.test(baseUrl)
     const compatLines = isNonOpenAiCompletions
       ? [
@@ -1647,14 +1654,15 @@ async function ensureAgent(cfg, apiKey) {
           '              supportsDeveloperRole: false',
         ]
       : []
-    const effortLines = piEffort && piEffort !== 'off'
+    const routeEffort = nativeOpenAI && piEffort === 'off' ? '' : piEffort
+    const effortLines = routeEffort
       ? [
           '                reasoningEfforts:',
           '                  off: null',
-          `                  low: ${isNativeGoogle ? 'LOW' : 'low'}`,
-          `                  medium: ${isNativeGoogle ? 'MEDIUM' : 'medium'}`,
-          `                  high: ${isNativeGoogle ? 'HIGH' : 'high'}`,
-          `                  xhigh: ${isNativeGoogle ? 'HIGH' : (isGoogle ? 'high' : 'xhigh')}`,
+          `                  low: ${nativeGoogle ? 'LOW' : 'low'}`,
+          `                  medium: ${nativeGoogle ? 'MEDIUM' : 'medium'}`,
+          `                  high: ${nativeGoogle ? 'HIGH' : 'high'}`,
+          `                  xhigh: ${nativeGoogle ? 'HIGH' : 'xhigh'}`,
         ]
       : []
     const yaml = [
@@ -1663,13 +1671,13 @@ async function ensureAgent(cfg, apiKey) {
       "      name: '@deepseek-ai/dsh-llm-pi-ai'",
       '      config:',
       '        providers:',
-      '          bob:',
+      `          ${routeName}:`,
       `            displayName: ${JSON.stringify(cfg.name || 'Model')}`,
-      `            api: ${JSON.stringify(api)}`,
-      `            baseURL: ${JSON.stringify(baseUrl)}`,
+      ...(nativeGoogle ? [] : [`            api: ${JSON.stringify(api)}`]),
+      `            baseURL: ${JSON.stringify(nativeGoogle ? baseUrl.replace(/\/openai\/?$/, '') : baseUrl)}`,
       '            apiKeyEnv: BOBBOT_PROVIDER_KEY',
       ...compatLines,
-      ...(piEffort && piEffort !== 'off' ? [`            reasoning: ${JSON.stringify(piEffort)}`] : []),
+      ...(routeEffort ? [`            reasoning: ${JSON.stringify(routeEffort)}`] : []),
       `            defaultContextWindow: ${Number(cfg.contextWindow) || 1000000}`,
       `            defaultMaxTokens: ${Number(cfg.maxTokens) || 8192}`,
       '            models:',
@@ -1681,7 +1689,7 @@ async function ensureAgent(cfg, apiKey) {
   }
   const base = {
     apiKey, mcpUrl, mcpToken, model: cfg.model,
-    provider: direct ? 'deepseek-official' : 'bob',
+    provider: routeName,
     reasoningEffort: direct ? dsEffort : '',
     // The official DeepSeek route keeps its default (or DEEPSEEK_BASE_URL from the environment); only a custom
     // Messages-compatible endpoint needs an explicit base URL.
@@ -1701,6 +1709,9 @@ async function ensureAgent(cfg, apiKey) {
 }
 
 // ---- agent wiring ----
+agent.on('delta', (cid, attempt, text) => {
+  if (turns.has(cid) && !turnWaiters.has(cid)) push({ type: 'delta', attempt, text }, false, cid)
+})
 agent.on('text', (cid, text) => {
   if (!convOf(cid)) return
   const waiter = turnWaiters.get(cid)
@@ -2010,8 +2021,47 @@ function priorContext(cid) {
 
 const titleFrom = (text, files) => (text || files[0]?.name || '').split('\n')[0].trim().slice(0, 40)
 
+const iphone = iphoneIntake({
+  dir: DATA_DIR, clerk,
+  profile() {
+    const p = providers.items.find(p => p.kind === 'deepseek' && loadKey(p))
+    if (!p || budget.status().exceeded || !registryPrices[p.model]) throw new Error('unavailable')
+    return { model: p.model, apiKey: loadKey(p) }
+  },
+  charge(model, usage) { const state = budget.record(model, usage); publishBudget(); return state },
+  changed() { broadcast({ type: 'clerk' }) },
+})
+
 async function route(req, res) {
   const { pathname } = new URL(req.url, 'http://local')
+  if (req.method === 'GET' && pathname === '/wechat') {
+    res.writeHead(302, { Location: '/?v=clerk&iphone=1', 'Cache-Control': 'no-store' })
+    return res.end()
+  }
+  if (req.method === 'GET' && pathname === '/iphone/RY.shortcut') {
+    res.writeHead(200, {
+      'Content-Type': 'application/x-apple-shortcut',
+      'Content-Disposition': "attachment; filename=RY.shortcut; filename*=UTF-8''" + encodeURIComponent('交给 RY.shortcut'),
+    })
+    return res.end(fs.readFileSync(path.join(here, 'public/RY.shortcut')))
+  }
+  if (req.method === 'POST' && pathname === '/api/ingest') {
+    if (!iphone.accepts(req.headers.authorization)) return send(res, 401, { error: 'UNAUTHORIZED' })
+    const raw = await readBody(req, 128 * 1024)
+    let form
+    try { form = await new Response(raw, { headers: { 'Content-Type': req.headers['content-type'] || '' } }).formData() }
+    catch { return send(res, 415, { error: 'BAD_FORM' }) }
+    const input = form.get('text')
+    if (typeof input !== 'string' || !input.trim() || input.length > 24000) return send(res, 400, { error: 'BAD_TEXT' })
+    let item
+    try { item = clerk.receiveCapture(input.trim()) }
+    catch (error) {
+      if (error.code === 'CAPTURE_FULL') return send(res, 409, { error: error.code })
+      throw error
+    }
+    iphone.wake()
+    return send(res, 202, { task_id: item.id, status: item.status })
+  }
   if (req.method === 'GET' && pathname === '/') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': PAGE_CSP })
     return res.end(fs.readFileSync(path.join(here, 'public/index.html')))
@@ -2032,7 +2082,8 @@ async function route(req, res) {
   }
   if (req.method === 'GET' && pathname === '/api/version') {
     return send(res, 200, { name: 'bobbot', ...readBuild() })
-  }  if (req.method === 'POST' && !sameOrigin(req)) return send(res, 403, { error: 'BAD_ORIGIN' })
+  }
+  if (req.method === 'POST' && !sameOrigin(req)) return send(res, 403, { error: 'BAD_ORIGIN' })
   if (req.method === 'POST' && pathname === '/api/login') {
     const result = await login(JSON.parse(await readBody(req)).pin ?? '')
     if (!result.ok) return send(res, result.status, result)
@@ -2040,6 +2091,16 @@ async function route(req, res) {
     return send(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(req, session.value, session.maxAge) })
   }
   if (!authed(req)) return send(res, 401, { error: 'UNAUTHORIZED' })
+  if (req.method === 'POST' && pathname === '/api/iphone/setup') {
+    const body = JSON.parse(await readBody(req))
+    return send(res, 200, { code: iphone.code(body.rotate === true) }, { 'Cache-Control': 'no-store' })
+  }
+  if (req.method === 'POST' && pathname === '/api/iphone/retry') {
+    const body = JSON.parse(await readBody(req))
+    if (!clerk.retryCapture(body.id)) return send(res, 404, { error: 'NO_CAPTURE' })
+    iphone.wake()
+    return send(res, 200, { ok: true })
+  }
   if (req.method === 'GET' && pathname.startsWith('/a/')) {
     const html = pages.read(pathname.slice(3))
     if (html === null) return send(res, 404, { error: 'NO_PAGE' })
@@ -2658,6 +2719,7 @@ const undone = features.recover()
 if (undone) console.log(`[features] undid the unanswered trial of "${undone.name}"`)
 await features.loadAll()
 migrateProviders()
+iphone.wake()
 migrateCheckIns()
 
 server.listen(PORT, HOST, () => {
