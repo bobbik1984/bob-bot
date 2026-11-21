@@ -23,6 +23,10 @@ jobs:
           go test -race ./...
           go build -o "$RUNNER_TEMP/bobbot" .
       - run: |
+          python3 -m venv "$RUNNER_TEMP/bob-intake-test"
+          "$RUNNER_TEMP/bob-intake-test/bin/pip" install 'openpyxl>=3.1,<4'
+          "$RUNNER_TEMP/bob-intake-test/bin/python" -B scripts/test_intake.py
+      - run: |
           node --input-type=module --check < gateway/life/web/life.js
           node --check gateway/life/web/sw.js
           node --test gateway/life/*.test.mjs

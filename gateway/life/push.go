@@ -119,6 +119,9 @@ func (p *PushService) sendTo(ctx context.Context, endpoint string, msg PushMessa
 		var content any = map[string]string{"kind": "reminder"}
 		if test {
 			content = map[string]string{"kind": "test"}
+		} else if strings.HasPrefix(msg.URL, "/task/") && fileID(strings.TrimPrefix(msg.URL, "/task/")) {
+			// Keep private content off the lock screen while preserving the receipt destination.
+			content = map[string]string{"kind": "intake", "url": msg.URL, "tag": msg.Tag}
 		} else if d.Preview {
 			if msg.URL != "" {
 				u, err := url.Parse(msg.URL)

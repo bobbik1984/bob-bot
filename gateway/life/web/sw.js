@@ -23,8 +23,8 @@ self.addEventListener('fetch', event => {
  })());
 });
 const copy = {
- zh:{reminder:'有一件你惦记的事，打开看看。',test:'这台设备可以收到 Bob 的通知。',testTitle:'Bob · 测试通知'},
- en:{reminder:'An intention needs your attention.',test:'This device can receive notifications from Bob.',testTitle:'Bob · Test notification'}
+ zh:{intake:'微信收件有了新进展，点开查看。',reminder:'有一件你惦记的事，打开看看。',test:'这台设备可以收到 Bob 的通知。',testTitle:'Bob · 测试通知'},
+ en:{intake:'Your WeChat receipt has an update.',reminder:'An intention needs your attention.',test:'This device can receive notifications from Bob.',testTitle:'Bob · Test notification'}
 };
 function localURL(value) {
  try {
@@ -39,7 +39,7 @@ self.addEventListener('push', event => {
   let data={}; try {data=event.data?.json()||{};} catch {}
   const test=data.kind==='test';
   const title=test?t.testTitle:(typeof data.title==='string' && data.title || 'Bob');
-  const body=test?t.test:(typeof data.body==='string' && data.body || t.reminder);
+  const body=test?t.test:data.kind==='intake'?t.intake:(typeof data.body==='string' && data.body || t.reminder);
   await self.registration.showNotification(title,{body,tag:test?'bob-test':(typeof data.tag==='string' && data.tag || 'bob-life'),
    icon:'/icons/icon-192.png',data:{url:localURL(data.url)}});
  })());

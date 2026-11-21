@@ -23,6 +23,10 @@ src=$(mktemp -d "$wd/.life-sources/release.XXXXXXXX")
 echo "Building in $src"
 tar -xzf "$archive" --no-same-owner --no-same-permissions -C "$src"
 cd "$src"
+if [ -f life/ingest_store.py ]; then
+    python3 -c 'import sqlite3, openpyxl'
+    for converter in pdfinfo pdftotext pdftoppm; do command -v "$converter" >/dev/null; done
+fi
 go_bin=/usr/local/bin/go
 if [ ! -x "$go_bin" ]; then go_bin=$(command -v go || true); fi
 if [ -z "$go_bin" ] && [ -x /usr/local/go/bin/go ]; then go_bin=/usr/local/go/bin/go; fi

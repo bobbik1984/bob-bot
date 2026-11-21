@@ -22,6 +22,7 @@ type Host struct {
 	Assistant  http.HandlerFunc
 	// Snapshot the active gateway settings for each explicit extraction.
 	VisionConfig func() VisionConfig
+	Timezone     func() string
 }
 
 func webFile(name, typ string) http.HandlerFunc {
@@ -46,6 +47,7 @@ func MountPWA(m *http.ServeMux) {
 	m.HandleFunc("GET /manifest.webmanifest", manifest)
 }
 func (a *App) Mount(m *http.ServeMux, host Host) {
+	a.mountIntake(m, host)
 	m.HandleFunc("GET /{$}", host.Assistant)
 	m.HandleFunc("GET /classic", func(w http.ResponseWriter, r *http.Request) {
 		u := *r.URL

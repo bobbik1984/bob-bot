@@ -21,6 +21,7 @@ class SourceDeliveryTest(unittest.TestCase):
             files={"gateway/main.go":'package main\nfunc main(){mux := http.NewServeMux()}\n',
                    "gateway/features.go":"package main","gateway/go.mod":"module bobbot\ngo 1.23",
                    "gateway/public/index.html":"edited locally",
+                   "gateway/life/ingest_store.py":"# embedded intake worker",
                    "gateway/life/life.go":'package life\nconst Version = "test"\n',
                    "gateway/life_host.go":"package main","gateway/data/config.json":"private",
                    "gateway/public/data/config.json":"private","gateway/public/data/private.png":"private","gateway/life/web/.env":"private"}
@@ -32,6 +33,7 @@ class SourceDeliveryTest(unittest.TestCase):
             z=root/"source.zip"
             ship.package(z,gw,{"ssh_alias":"test"})
             with zipfile.ZipFile(z) as pkg:
+                self.assertEqual(pkg.read("gateway/life/ingest_store.py"), b"# embedded intake worker")
                 self.assertEqual(pkg.read("gateway/public/index.html"),b"edited locally")
                 self.assertEqual(pkg.read("gateway/main.go"), (repo/"gateway/main.go").read_bytes())
                 self.assertNotIn("gateway/life/go.mod", pkg.namelist())

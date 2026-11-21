@@ -123,7 +123,7 @@ func main() {
 		log.Fatal("life storage: ", err)
 	}
 	life.MountPWA(mux)
-	app.Mount(mux, life.Host{Authorized: authed, Assistant: serveAssistant, VisionConfig: activeVision})
+	app.Mount(mux, life.Host{Authorized: authed, Assistant: serveAssistant, VisionConfig: activeVision, Timezone: func() string { cfgLock.RLock(); defer cfgLock.RUnlock(); return cfg.Timezone }})
 	go app.Run(context.Background())
 
 	// Static routes

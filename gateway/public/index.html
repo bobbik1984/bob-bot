@@ -557,6 +557,7 @@ html::-webkit-scrollbar-thumb,.life-tools::-webkit-scrollbar-thumb { border-radi
       <div id="feed" aria-live="polite"></div><section id="attention" aria-live="polite" tabindex="-1"><div id="notices"></div></section><div id="turnPrompt" aria-live="polite"></div>
     </div>
     <div class="view" id="viewClerk" hidden>
+      <a class="link" href="/wechat" data-t="wechatIntake"></a>
       <section class="section clerk-records"><div class="sect-head"><h3 data-t="myRecords"></h3><button class="link" id="captureTools" data-t="sourceTools"></button></div><button id="lifeLoadStatus" data-t="retryLife" hidden></button><details id="agenda"><summary id="agendaCount"></summary><ol id="agendaList"></ol><small id="agendaEmpty" data-life-t="agendaEmpty"></small></details>
 <div id="open"></div><details><summary data-life-t="history"></summary><div id="closed"></div></details>
 </section>
@@ -940,6 +941,7 @@ const I18N = {
   providerName:['新供应商名称','New provider name'], addProvider:['添加兼容 OpenAI 的供应商…','Add OpenAI-compatible provider…'], manageModels:['管理供应商…','Manage providers…'], duplicateProvider:['该名称已存在，请从列表选择','This name already exists. Select it from the list.'], endpointNeeded:['请输入接口地址','Enter the API endpoint'], currentModel:['正在使用','In use'], useModel:['使用此模型','Use this model'], connectionOptions:['连接地址','Connection endpoint'], modelIdHint:['模型 ID','Model ID'], needKey:['请先输入这个服务商的 API Key','Enter an API key for this provider first'], modelTitle:['对话模型','Chat model'], providerLabel:['服务商','Provider'], modelLabel:['模型','Model'],
   manualModel:['手动输入模型名','Custom Model Name'], selectPresetModel:['选择预设模型','Select Preset Model'], endpointLabel:['接口地址 (Base URL)','Base URL'], resetDefault:['恢复默认','Reset Default'], keyLabel:['API 密钥 (API Key)','API Key'],
   keySaved:['密钥已配置','Key configured'], keyEnv:['由服务器环境提供','Set by server env'], replaceKey:['更换','Change'], keyNone:['未配置密钥 (请在下方填入)','No key configured (enter below)'],
+  wechatIntake:['微信收件箱','WeChat inbox'],
   customHint:['支持标准 OpenAI / Gemini 兼容格式（自动请求 /chat/completions）。','Supports standard OpenAI / Gemini compatible endpoints (/chat/completions).'],
   cEndpoint:['接口地址（https）','Endpoint (https)'], cModel:['模型名称','Model name'], cKey:['API Key（留空沿用已保存）','API key (blank keeps saved)'],
   priceWhy:['价格用于统计月度花费上限','Prices are used for the monthly spending limit'], cIn:['输入价格（美元/百万 tokens）','Input price (USD per 1M tokens)'], cOut:['输出价格（美元/百万 tokens）','Output price (USD per 1M tokens)'],

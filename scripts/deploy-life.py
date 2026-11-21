@@ -30,7 +30,7 @@ def stage_gateway(repo, ref, gw):
             return False
         if path.parent in (Path("."), Path("life")) and path.suffix == ".go":
             return True
-        if path.as_posix() in {"go.mod", "go.sum", "life/calendar.test.mjs", "life/push-client.test.mjs", "life/turn.test.mjs", "life/web/manifest.json"}:
+        if path.as_posix() in {"go.mod", "go.sum", "life/ingest_store.py", "life/calendar.test.mjs", "life/push-client.test.mjs", "life/turn.test.mjs", "life/web/manifest.json"}:
             return True
         return (path.parts[0] == "public" or path.parts[:2] == ("life", "web")) and path.suffix in asset_types
 
@@ -40,7 +40,7 @@ def stage_gateway(repo, ref, gw):
     else:
         # Limit traversal to source locations. Never enumerate the owner's runtime data.
         candidates = [*source.glob("*.go"), source/"go.mod", source/"go.sum", *(source/"life").glob("*.go"),
-                      *(source/"life").glob("*.test.mjs"), *(source/"life/web").glob("*"), *(source/"public").rglob("*")]
+                      source/"life/ingest_store.py", *(source/"life").glob("*.test.mjs"), *(source/"life/web").glob("*"), *(source/"public").rglob("*")]
         paths = [p.relative_to(source) for p in candidates if p.is_file()]
     hashes = {}
     for path in sorted(filter(allowed, paths)):
