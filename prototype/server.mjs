@@ -354,6 +354,7 @@ async function element(id) {
 }
 
 const BLOCKED = 'That location holds BobBot or system credentials, so it is blocked.'
+const UNSAFE_WORKSPACE_CMD = /\b(sudo|su|systemctl|service|shutdown|reboot|mkfs|fdisk|dd|ssh|scp|rsync|curl|wget|nc|ncat|chmod\s+777|chown)\b|\/etc\/|\/root\/|\.ssh|secrets\.json|providers\.json|rm\s+-[a-z]*r[a-z]*f\s+\/(?!home\/ubuntu\/bob-bot\/data\/workspace)/i
 
 /** File and command tools. Returns the text for the model. */
 async function hostTool(name, args) {
@@ -361,12 +362,16 @@ async function hostTool(name, args) {
     const command = String(args.command ?? '')
     if (!command.trim()) throw new Error('No command given.')
     let cwd = host.workspace
+    let cwdInWorkspace = true
     if (args.cwd !== undefined) {
       const where = host.classify(args.cwd)
       if (where.blocked) throw new Error(BLOCKED)
       cwd = where.path
+      cwdInWorkspace = where.inWorkspace
     }
-    await requireApproval({ kind: 'command', summary: 'Run a command', target: cwd, detail: command, draft: { kind: 'command', command, cwd, timeoutSeconds: args.timeout_seconds } })
+    if (!cwdInWorkspace || UNSAFE_WORKSPACE_CMD.test(command)) {
+      await requireApproval({ kind: 'command', summary: 'Run a command', target: cwd, detail: command, draft: { kind: 'command', command, cwd, timeoutSeconds: args.timeout_seconds } })
+    }
     return host.runCommand(command, { cwd, timeoutSeconds: args.timeout_seconds })
   }
   const where = host.classify(args.path ?? '.')
@@ -374,7 +379,9 @@ async function hostTool(name, args) {
   if (name === 'write_file') {
     if (where.path === here || where.path.startsWith(here + path.sep)) throw new Error('These are Bob\'s own program files, which cannot be changed this way. To change how Bob looks or works, use feature_create.')
     const content = String(args.content ?? '')
-    await requireApproval({ kind: 'write', summary: `Write file ${where.path}`, target: where.path, detail: `${args.append ? 'Append' : 'Overwrite'}, ${content.length} characters:\n${content.slice(0, 1500)}`, draft: { kind: 'write', path: where.path, content, append: Boolean(args.append) } })
+    if (!where.inWorkspace) {
+      await requireApproval({ kind: 'write', summary: `Write file ${where.path}`, target: where.path, detail: `${args.append ? 'Append' : 'Overwrite'}, ${content.length} characters:\n${content.slice(0, 1500)}`, draft: { kind: 'write', path: where.path, content, append: Boolean(args.append) } })
+    }
     return host.writeFile(where.path, content, Boolean(args.append))
   }
   const kind = name === 'read_file' ? 'read' : 'list'
