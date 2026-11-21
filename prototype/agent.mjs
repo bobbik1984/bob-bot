@@ -6,6 +6,7 @@ import { createInterface } from 'node:readline'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { needsCompaction } from './chat-context.mjs'
 import { writeAtomic } from './store.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -85,7 +86,7 @@ export class Agent extends EventEmitter {
     this.proc = null
     this.ready = null
     this.run = ''
-    this.started = new Set()
+    this.sessions = new Map()
     this.freshSeq = 0
   }
 
@@ -95,10 +96,15 @@ export class Agent extends EventEmitter {
    * DSH cannot reopen a saved session by id, so each run of DSH gets fresh session ids (`<chat>-g<run>`) and the
    * server replays a chat's earlier text as context the first time it is used in a run.
    */
-  isFresh(cid) { return !this.started.has(cid) }
+  isFresh(cid) { return !this.sessions.has(cid) }
+
+  needsCompaction(cid, nextChars, window) {
+    return needsCompaction(this.sessions.get(cid), nextChars, window)
+  }
 
   /** Deletes DSH's saved copies of one conversation, from every run. */
   forget(cid) {
+    this.sessions.delete(cid)
     const root = path.join(this.dataDir, 'dsh-home', 'sessions')
     try {
       for (const group of fs.readdirSync(root)) {
@@ -118,7 +124,7 @@ export class Agent extends EventEmitter {
   async #launch({ apiKey, mcpUrl, mcpToken, model = DEFAULT_MODEL, baseUrl, provider = 'deepseek-official', reasoningEffort = '', patches = [], extraEnv = {}, extractionOnly = false }) {
     this.model = model
     this.run = Date.now().toString(36)
-    this.started = new Set()
+    this.sessions = new Map()
     const cwd = path.join(this.dataDir, 'workspace')
     const home = path.join(this.dataDir, 'dsh-home')
     fs.mkdirSync(cwd, { recursive: true })
@@ -191,10 +197,15 @@ export class Agent extends EventEmitter {
 
   /** One DSH session per conversation, so every conversation keeps its own context. */
   prompt(cid, text, { fresh = false } = {}) {
-    this.started.add(cid)
-    // A fresh session starts with an empty context, for scheduled runs that must not carry yesterday's context along.
-    const sessionId = `${cid}-g${this.run}${fresh ? `-r${++this.freshSeq}` : ''}`
-    return this.#request('session/prompt', { sessionId, contentBlocks: [{ type: 'text', text }] })
+    let session = this.sessions.get(cid)
+    if (!session || fresh) {
+      const sessionId = `${cid}-g${this.run}${fresh ? `-r${++this.freshSeq}` : ''}`
+      session = { sessionId, turns: 0, chars: 0, tokens: 0 }
+      this.sessions.set(cid, session)
+    }
+    session.turns++
+    session.chars += text.length
+    return this.#request('session/prompt', { sessionId: session.sessionId, contentBlocks: [{ type: 'text', text }] })
   }
 
   #frame(line) {
@@ -219,7 +230,11 @@ export class Agent extends EventEmitter {
     if (process.env.BOBBOT_DEBUG) console.error('[event]', JSON.stringify(event).slice(0, 600))
     if (event.type === 'assistant/message' || event.type === 'assistant/attempt') {
       const usage = event.data.usage ?? findUsage(event.data.stream)
-      if (usage) this.emit('usage', sessionId, this.model, usage)
+      if (usage) {
+        const state = this.sessions.get(sessionId)
+        if (state) state.tokens = (usage.inputTokens || 0) + (usage.cacheReadTokens || 0) + (usage.cacheWriteTokens || 0) + (usage.outputTokens || 0)
+        this.emit('usage', sessionId, this.model, usage)
+      }
     }
     if (event.type === 'assistant/message') {
       const text = event.data.message.content.filter(b => b.type === 'text').map(b => b.text).join('')

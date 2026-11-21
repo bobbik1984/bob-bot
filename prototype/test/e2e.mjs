@@ -130,22 +130,22 @@ async function injectPage(html) {
 try {
   console.log('PIN login')
   await check('login is refused until a PIN is set on the server', async () => assert.equal((await post('/api/login', { pin: '1234' })).status, 503))
-  await check('set-pin rejects anything but 4 digits', () => assert.equal(setPin('12a').status, 1))
-  await check('set-pin accepts 4 digits', () => assert.equal(setPin('4821').status, 0))
+  await check('set-pin rejects anything but 6 digits', () => assert.equal(setPin('12a').status, 1))
+  await check('set-pin accepts 6 digits', () => assert.equal(setPin('048216').status, 0))
   await check('API needs a login', async () => assert.equal((await fetch(`${base}/api/events`)).status, 401))
-  await check('cross-origin login is rejected', async () => assert.equal((await post('/api/login', { pin: '4821' }, { Origin: 'https://evil.example' })).status, 403))
+  await check('cross-origin login is rejected', async () => assert.equal((await post('/api/login', { pin: '048216' }, { Origin: 'https://evil.example' })).status, 403))
   await check('wrong PIN is refused and counted', async () => {
     const { status, data: d } = await post('/api/login', { pin: '0000' })
     assert.equal(status, 401); assert.equal(d.remaining, 4)
   })
   await check('5 wrong PINs lock login, even for the right PIN', async () => {
     for (let i = 0; i < 4; i++) await post('/api/login', { pin: '0000' })
-    const { status, data: d } = await post('/api/login', { pin: '4821' })
+    const { status, data: d } = await post('/api/login', { pin: '048216' })
     assert.equal(status, 429); assert.equal(d.error, 'LOCKED')
   })
   await check('changing the PIN on the server clears the lock', async () => {
-    assert.equal(setPin('7316').status, 0)
-    const res = await post('/api/login', { pin: '7316' })
+    assert.equal(setPin('073168').status, 0)
+    const res = await post('/api/login', { pin: '073168' })
     assert.equal(res.status, 200)
     cookie = res.headers.get('set-cookie').split(';')[0]
     assert.match(res.headers.get('set-cookie'), /HttpOnly/)
@@ -419,6 +419,26 @@ try {
     assert.ok(requests.length > before, 'model was not called')
     assert.ok(JSON.stringify(requests.at(-1).messages).includes('remember-marker-42'), 'the earlier message was forgotten')
     await waitAfter(second, e => e.type === 'status' && e.status === 'idle' && e.cid === cid)
+  })
+
+  await check('a long chat rolls over and keeps using its compacted session', async () => {
+    const ask = async (cid, text) => {
+      const start = Date.now()
+      const res = await post('/api/chat', { cid, text })
+      assert.equal(res.status, 200)
+      const id = res.data.cid
+      await waitAfter(start, e => e.cid === id && e.type === 'status' && e.status === 'idle')
+      return id
+    }
+    const cid = await ask(null, 'Decision: the Orchid deadline is Friday.\n' + 'filler paragraph. '.repeat(2750))
+    await ask(cid, 'Which deadline applies to Orchid? Marker violet.')
+    const compacted = JSON.stringify(requests.at(-1).messages)
+    assert.match(compacted, /Orchid deadline is Friday/)
+    assert.ok(compacted.length < 16000)
+    await ask(cid, 'Please continue.')
+    const following = JSON.stringify(requests.at(-1).messages)
+    assert.match(following, /Marker violet/)
+    assert.ok(following.length < 16000)
   })
 
   console.log('Clerk')

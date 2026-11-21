@@ -27,13 +27,13 @@ Needs Node.js 24.9+ (DSH requires it) and Chrome, Edge or Chromium. Set `CHROME_
 
 ```sh
 npm install
-npm run set-pin -- 1234
+node set-pin.mjs --stdin   # enter six digits on stdin, then EOF
 npm start
 ```
 
 Open `http://127.0.0.1:8787`, enter the PIN, and paste a DeepSeek API key when asked.
 
-To change the PIN, run `npm run set-pin -- 5678` on the server. This also clears any lockout and logs out every device.
+To change the PIN, run `node set-pin.mjs --stdin` on the server. This also clears any lockout and logs out every device.
 
 ## Testing from a phone
 
@@ -45,7 +45,7 @@ HOST=0.0.0.0 PORT=8787 npm start
 
 Do not expose plain HTTP to the internet, because the PIN and session cookie would travel unencrypted.
 
-A 4-digit PIN is weak on its own. Five wrong tries lock login for 15 minutes, and the lock doubles each time up to 24 hours. Anyone who repeatedly enters wrong PINs can also lock you out, and `set-pin` clears that.
+A six-digit PIN is weak on its own. Five wrong tries lock login for 15 minutes, and the lock doubles each time up to 24 hours. Anyone who repeatedly enters wrong PINs can also lock you out, and `set-pin` clears that.
 
 ## Chats and history
 
@@ -53,7 +53,7 @@ The front page is a single large orb. Once a chat has something in it, the orb m
 
 Each chat is its own conversation with its own context. Bob works in one chat at a time, because every chat shares the same browser and server, so a message to another chat while Bob is busy is refused until it finishes. Approval cards stay in the chat they belong to, and a banner above the message box tells you when Bob needs you in a different chat.
 
-After the server or agent restarts, the first message in an old chat gets the earlier text of that chat as context. Earlier tool results and attached file contents are not replayed.
+Long web and WeChat conversations periodically start a fresh model session with at most 9,000 characters of quoted history. Recent exchanges stay verbatim where they fit. Earlier excerpts are selected for relevance, decisions and deadlines. Restarts and model changes use the same recovery path. Earlier tool results and attached file contents are not replayed.
 
 The page follows the system's light or dark setting (Settings → Appearance pins one), and the orb shows what Bob is doing: napping, thinking or replying.
 

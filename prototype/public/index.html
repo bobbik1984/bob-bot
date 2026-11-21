@@ -120,9 +120,10 @@ html[data-theme=dark] {
 /* login */
 #login { height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:16px; }
 #login .sub { margin:0; color:var(--muted); font-size:14px; }
-.dots { display:flex; gap:16px; margin-top:10px; }
-.dots i { width:14px; height:14px; border-radius:50%; border:2px solid var(--line); background:var(--surface); transition:background .12s, border-color .12s; }
-.dots i.on { background:var(--accent); border-color:var(--accent); }
+.dots { display:flex; gap:8px; margin-top:10px; }
+.dots i { display:grid; place-items:center; width:32px; height:40px; border-radius:8px; border:1px solid var(--line); background:var(--surface); transition:background .12s, border-color .12s; }
+.dots i.on::after { content:''; width:9px; height:9px; border-radius:50%; background:var(--accent); }
+.dots i.on { border-color:var(--accent); }
 #loginMsg { min-height:24px; color:var(--danger); font-size:14px; text-align:center; max-width:300px; }
 .pad { display:grid; grid-template-columns:repeat(3,72px); gap:14px 18px; }
 .pad button { height:72px; border-radius:50%; font-size:26px; background:var(--surface); box-shadow:var(--shadow); border:1px solid var(--line); }
@@ -603,7 +604,7 @@ nav button.on span:first-child { background:var(--accent-soft); }
 <section id="login" hidden>
   <span class="orb big" data-orb data-state="nap"></span>
   <p class="sub" data-t="loginSub"></p>
-  <div class="dots" id="dots"><i></i><i></i><i></i><i></i></div>
+  <div class="dots" id="dots" role="img"></div>
   <div id="loginMsg" role="status"></div>
   <div class="pad" id="pad"></div>
 </section>
@@ -892,7 +893,7 @@ const I18N = {
   pagePrefix:['页面：','Page: '], textPrefix:['文字：','Text: '],
   draftDone:['已按草稿执行','Done as drafted'], draftFailed:['没能执行，详情在对应的对话里','Could not finish. See its conversation'], draftDiscarded:['草稿已放弃','Draft discarded'],
   ch_webpush:['手机通知','Phone notifications'],
-  loginSub:['输入 PIN 进入','Enter your PIN'], welcomeSub:['今天想让我做点什么？','What can I do for you today?'],
+  loginSub:['输入 PIN 进入','Enter your PIN'], pinProgress:['已输入 {n} 位','Digits entered: {n}'], loginNetwork:['连接中断，请重新输入。','Connection interrupted. Please enter your PIN again.'], welcomeSub:['今天想让我做点什么？','What can I do for you today?'],
   tabChat:['对话','Chat'], tabClerk:['文员','Clerk'], tabSettings:['设置','Settings'],
   clerkTitle:['文员','Clerk'], settingsTitle:['设置','Settings'],
   stateNap:['休息中','Napping'], stateThink:['思考中…','Thinking…'], stateSpeak:['回复中','Replying'], stateWait:['等你确认','Waiting for you'],
@@ -1039,7 +1040,7 @@ const I18N = {
   cEndpoint:['接口地址（https）','Endpoint (https)'], cModel:['模型名称','Model name'], cKey:['API Key（留空沿用已保存）','API key (blank keeps saved)'],
   priceWhy:['价格用于统计月度花费上限','Prices are used for the monthly spending limit'], cIn:['输入价格（美元/百万 tokens）','Input price (USD per 1M tokens)'], cOut:['输出价格（美元/百万 tokens）','Output price (USD per 1M tokens)'],
   capTitle:['本月花费','This month'], capLabel:['每月模型花费上限（美元）','Monthly model spending limit (USD)'],
-  pinTitle:['账号','Account'], pinHint:['PIN 只能在服务器上修改：npm run set-pin -- 1234','The PIN can only be changed on the server: npm run set-pin -- 1234'],
+  pinTitle:['账号','Account'], pinHint:['可在服务器上更换登录 PIN。','The sign-in PIN can be changed on the server.'],
   save:['保存','Save'], logout:['退出登录','Log out'], saved:['已保存','Saved'], noKey:['请先填入 API Key','Add an API key first'],
   build:['版本','Build'],
   // browser window
@@ -1064,7 +1065,7 @@ const I18N = {
   err_TOO_MANY_FILES:['最多添加 5 个文件','At most 5 files'], err_FILE_TOO_LARGE:['有文件太大','A file is too large'], err_FILES_TOO_LARGE:['附件总量过大','Attachments are too large in total'], err_NOT_TEXT:['有文件不是文本','A file is not text'],
   budgetNear:['本月花费已超过上限的 80%','You have used over 80% of this month\'s limit'], budgetExceeded:['已达到本月花费上限，Bob 已停止。可在设置中提高上限。','Monthly limit reached, so Bob has stopped. You can raise it in Settings.'],
   wrongPin:['PIN 错误，还可尝试 {n} 次','Wrong PIN, {n} tries left'], locked:['尝试次数过多，请 {n} 分钟后再试','Too many tries. Try again in {n} min'],
-  noPin:['尚未设置 PIN，请在服务器运行 npm run set-pin -- 1234','No PIN yet. On the server run: npm run set-pin -- 1234'],
+  noPin:['请先在服务器设置六位 PIN。','Set a six-digit PIN on the server first.'],
   failed:['操作失败：','Failed: '],
 }
 const t = (k, n) => {
@@ -1127,31 +1128,47 @@ const errText = (data, status) => I18N['err_' + data.error] ? t('err_' + data.er
 
 // ---- PIN ----
 let entered = ''
-const drawDots = () => [...$('dots').children].forEach((d, i) => d.classList.toggle('on', i < entered.length))
-async function submitPin() {
-  const { status, data } = await post('/api/login', { pin: entered })
-  entered = ''
-  drawDots()
-  if (status === 200) return boot()
-  $('dots').classList.remove('shake'); void $('dots').offsetWidth; $('dots').classList.add('shake')
-  $('loginMsg').textContent = data.error === 'LOCKED' ? t('locked', Math.ceil(data.retryAfter / 60)) : data.error === 'PIN_NOT_SET' ? t('noPin') : t('wrongPin', data.remaining)
+let requiredDigits = 6
+let checkingPin = false
+function drawDots() {
+  const slots = $('dots')
+  if (slots.childElementCount !== requiredDigits) slots.replaceChildren(...Array.from({ length: requiredDigits }, () => el('i')))
+  ;[...slots.children].forEach((slot, i) => slot.classList.toggle('on', i < entered.length))
+  slots.setAttribute('aria-label', t('pinProgress', entered.length + ' / ' + requiredDigits))
 }
+async function submitPin() {
+  checkingPin = true
+  try {
+    const { status, data } = await post('/api/login', { pin: entered })
+    if (status === 200) { await boot(); return }
+    $('dots').classList.remove('shake'); void $('dots').offsetWidth; $('dots').classList.add('shake')
+    $('loginMsg').textContent = data.error === 'LOCKED' ? t('locked', Math.ceil(data.retryAfter / 60)) : data.error === 'PIN_NOT_SET' ? t('noPin') : t('wrongPin', data.remaining)
+  } catch {
+    $('loginMsg').textContent = t('loginNetwork')
+  } finally {
+    entered = ''
+    checkingPin = false
+    drawDots()
+  }
+}
+const eraseDigit = () => { if (!checkingPin) { entered = entered.slice(0, -1); drawDots() } }
 const press = d => {
-  if (entered.length >= 4) return
+  if (checkingPin || entered.length >= requiredDigits) return
   entered += d
   drawDots()
   $('loginMsg').textContent = ''
-  if (entered.length === 4) submitPin()
+  if (entered.length === requiredDigits) submitPin()
 }
 ;['1','2','3','4','5','6','7','8','9',null,'0','del'].forEach(k => {
   const b = document.createElement('button')
   if (k === null) { b.style.visibility = 'hidden'; b.tabIndex = -1 }
-  else if (k === 'del') { b.className = 'ghost'; b.textContent = t('del'); b.onclick = () => { entered = entered.slice(0, -1); drawDots() } }
+  else if (k === 'del') { b.className = 'ghost'; b.textContent = t('del'); b.onclick = eraseDigit }
   else { b.textContent = k; b.onclick = () => press(k) }
   $('pad').append(b)
 })
 addEventListener('keydown', e => {
   if (!$('login').hidden && /^\d$/.test(e.key)) press(e.key)
+  if (!$('login').hidden && e.key === 'Backspace') { e.preventDefault(); eraseDigit() }
   if (e.key === 'Escape') closeDrawer()
 })
 
@@ -3535,6 +3552,8 @@ $('togglePw').onclick = () => {
 
 async function boot() {
   const s = await (await fetch('/api/state')).json()
+  requiredDigits = s.pinDigits === 4 ? 4 : 6
+  drawDots()
   $('login').hidden = s.authed
   $('app').hidden = !s.authed
   if (!s.authed) { if (!s.pinSet) $('loginMsg').textContent = t('noPin'); return }

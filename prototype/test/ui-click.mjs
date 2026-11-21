@@ -23,7 +23,7 @@ const data = fs.mkdtempSync(path.join(os.tmpdir(), 'bobbot-ui-data-'))
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'bobbot-ui-chrome-'))
 const PORT = 8802, DEBUG = 9445
 const env = { ...process.env, BOBBOT_DATA: data, PORT: String(PORT), HOST: '127.0.0.1', DEEPSEEK_API_KEY: 'test-key' }
-spawnSync(process.execPath, ['set-pin.mjs', '2468'], { cwd: root, env })
+spawnSync(process.execPath, ['set-pin.mjs', '024680'], { cwd: root, env })
 const server = spawn(process.execPath, ['server.mjs'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] })
 let log = ''
 server.stdout.on('data', d => { log += d }); server.stderr.on('data', d => { log += d })
@@ -65,7 +65,7 @@ try {
     await phone.call('Page.navigate', { url: `http://127.0.0.1:${PORT}/` })
     await waitFor(() => phone.evaluate("!document.getElementById('login').hidden || !document.getElementById('app').hidden"))
     if (await phone.evaluate("!document.getElementById('login').hidden")) {
-      for (const k of ['2', '4', '6', '8']) await phone.evaluate(`[...document.querySelectorAll('.pad button')].find(b => b.textContent === '${k}').click()`)
+      for (const k of ['0', '2', '4', '6', '8', '0']) await phone.evaluate(`[...document.querySelectorAll('.pad button')].find(b => b.textContent === '${k}').click()`)
     }
     await waitFor(() => phone.evaluate("!document.getElementById('app').hidden"))
     await phone.evaluate('openBrowser()') // the page has no button for this: it opens when Bob asks for a takeover

@@ -13,7 +13,7 @@
   - **形态**：`prototype/`（Node `v24.14.1` + 纯 `@deepseek-ai/dsh` + `/snap/bin/chromium` + Python Office 虚拟环境 `~/bob-bot-venv`）
   - **入口**：Cloudflare Tunnel `4ab19cdb-9e5c-49f9-90f6-2b5ff011cef9` → `127.0.0.1:8787`（已从旧腾讯云 RY 迁移完成，`ryclaw.bobbik.org` 已下线）
   - **一键发布**：在 `D:\Code\bob-bot` 执行 `.\scripts\deploy-vps3.ps1`（同步 `prototype/` 与 `skills-presets/` → 重启 `systemctl --user restart bobbot` → 6×2s 重试健康检查）
-  - **登录 PIN**：`1234`
+  - **登录 PIN**：六位数字，仅在服务器私有数据目录保存加盐校验值。
 - **超轻量 Go 网关（已稳定运行）**：**https://bot.bobbik.org**
   - **宿主机**：**GCP Always Free `e2-micro` (`gcp-bobbot`)**，Go 单二进制 `0.4.0-life.6`（含多模型预设、RFC 8291 加密 iOS PWA Web Push）
   - **一键发布**：`.\scripts\deploy-gcp.ps1`（经 VPS2 `gcloud` + Service Account `vps2-admin@vm-machine-515112.iam.gserviceaccount.com` 推送）
@@ -47,7 +47,7 @@
    - `OpenAI Astra 6.2` — `kind: openai`, `api: openai-completions`, `model: gpt-6.2-astra`
    - `Gemini 4 Hydrogen` — `kind: google`, `api: openai-completions`, `baseUrl: https://generativelanguage.googleapis.com/v1beta/openai`, `model: gemini-4-hydrogen`
    - `Gemini 4 Neon` — `kind: google`, `api: openai-completions`, `baseUrl: https://generativelanguage.googleapis.com/v1beta/openai`, `model: gemini-4-neon`
-3. **中途切换模型上下文**：切换模型会重启 `dsh` 并开启新 session，`agent.mjs` 的 `isFresh(cid)` 会在新 session 首轮自动重放当前对话历史给新模型，上下文连续。
+3. **长对话与切换模型**：网页和微信桥共享同一策略。达到 16 轮、累计文本或模型输入用量阈值时，在下一次空闲发问前切换内部会话。重启或切换模型也从本对话的近期原话和较早的相关摘录恢复。较早的决定、日期和待办优先，历史注入至多 9,000 字符。页面仍沿用 400 条事件的历史保留上限；淘汰时滚动保留最多 40 段摘录。
 4. **视觉与编码红线**：
    - 默认主题为**阳光浅色 Muse 风格**，所有样式使用 CSS Variables，严禁硬编码颜色。
    - Python 文件 I/O 必须显式指定 `encoding='utf-8'`（面向 Excel 的 `.csv` 使用 `utf-8-sig`）。

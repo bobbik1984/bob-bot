@@ -6,8 +6,9 @@ import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { WebSocketServer } from 'ws'
+import { chatSeed, foldEvicted } from './chat-context.mjs'
 import { Agent, Budget, DEFAULT_MODEL, registryPrices } from './agent.mjs'
-import { DATA_DIR, hasPin, issueSession, login, validSession } from './auth.mjs'
+import { DATA_DIR, hasPin, pinDigits, issueSession, login, validSession } from './auth.mjs'
 import { assertPublicUrl, CloudBrowser } from './browser.mjs'
 import { findTelegramChat, publicChannel, sendToChannel, validateChannel } from './channels.mjs'
 import { checkCard, cardText } from './cards.mjs'
@@ -139,7 +140,13 @@ function push(event, keep = true, cid = runningCid ?? lastPromptCid) {
   if (keep && cid && convOf(cid)) {
     const list = historyOf(cid)
     list.push(stripShot(payload))
-    if (list.length > MAX_EVENTS_PER_CHAT) list.splice(0, list.length - MAX_EVENTS_PER_CHAT)
+    if (list.length > MAX_EVENTS_PER_CHAT) {
+      const evicted = list.splice(0, list.length - MAX_EVENTS_PER_CHAT)
+      if (evicted.some(e => e.type === 'message')) {
+        const conv = convOf(cid)
+        conv.excerpts = foldEvicted(conv.excerpts ?? [], evicted)
+      }
+    }
     writes.later(histFile(cid), () => JSON.stringify(historyOf(cid)))
     convOf(cid).updatedAt = payload.at
     saveConvs()
@@ -984,15 +991,15 @@ async function askFromBridge({ from, name, text, conversationId }) {
   if (runningCid && runningCid !== cid) return { reply: 'Bob 正在处理另一个对话，请稍后再发一次。', cid }
   const conv = convOf(cid)
   if (!conv.title) { conv.title = name ? `WeChat · ${name}`.slice(0, 40) : 'WeChat'; saveConvs() }
+  const continuingTurn = runningCid === cid
   runningCid = cid
   lastPromptCid = cid
-  const prior = priorContext(cid)
+  const earlier = historyOf(cid).slice()
   push({ type: 'message', role: 'user', text }, true, cid)
   const reply = waitBridgeReply(cid)
   try {
     await ensureAgent(cfg, apiKey)
-    const context = agent.isFresh(cid) ? prior : ''
-    await agent.prompt(cid, `${memoryPrefix(cid, text)}${context}${nowHeader()}\n${text}`)
+    await promptChat(cid, text, text, earlier, cfg, continuingTurn)
   } catch (error) {
     const waiter = bridgeWaiters.get(cid)
     if (waiter) { bridgeWaiters.delete(cid); waiter.done = true }
@@ -2003,20 +2010,13 @@ function sessionCookie(req, value, maxAge) {
   return `bb_session=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure}`
 }
 
-/** The chat's earlier text, for the first prompt of a new DSH run (see Agent.isFresh). */
-function priorContext(cid) {
-  const kept = []
-  let total = 0
-  for (const m of historyOf(cid).filter(e => e.type === 'message').reverse()) {
-    const attached = m.files?.length ? ` [attached: ${m.files.map(f => f.name).join(', ')}]` : ''
-    const line = `${m.role === 'user' ? 'User' : 'Bob'}: ${String(m.text ?? '').slice(0, 2000)}${attached}`
-    total += line.length
-    if (total > 12000) break
-    kept.unshift(line)
-  }
-  if (!kept.length) return ''
-  const header = '[Earlier messages in this chat, shown for context only. Tool results and attached file contents are not included.]'
-  return [header, ...kept, '[End of earlier messages.]', '', ''].join('\n')
+function promptChat(cid, query, content, earlier, cfg, continuingTurn) {
+  const rotate = !continuingTurn && agent.needsCompaction(cid, content.length, cfg.contextWindow)
+  const fresh = rotate || agent.isFresh(cid)
+  const allowance = Math.min(9000, Math.max(512, Math.floor((cfg.contextWindow || 128000) / 4)))
+  const prior = fresh ? chatSeed(earlier, convOf(cid)?.excerpts, query, allowance) : ''
+  const background = memoryPrefix(cid, query, { fresh })
+  return agent.prompt(cid, `${background}${prior}${nowHeader()}\n${content}`, { fresh: rotate })
 }
 
 const titleFrom = (text, files) => (text || files[0]?.name || '').split('\n')[0].trim().slice(0, 40)
@@ -2076,7 +2076,7 @@ async function route(req, res) {
     const ok = authed(req)
     const cfg = modelConfig()
     return send(res, 200, {
-      authed: ok, pinSet: hasPin(),
+      authed: ok, pinSet: hasPin(), pinDigits: pinDigits(),
       ...(ok ? { hasKey: Boolean(loadKey(cfg)), keyHint: keyHint(cfg), model: publicModel(cfg), budget: budget.status(), unread: clerk.unread(), build: readBuild() } : {}),
     })
   }
@@ -2275,16 +2275,16 @@ async function route(req, res) {
       const conv = convOf(cid)
       if (!conv.title) conv.title = titleFrom(text, files)
       clearTaskGrants()
+      const continuingTurn = runningCid === cid
       lastPromptCid = cid
       runningCid = cid
-      const prior = priorContext(cid)
+      const earlier = historyOf(cid).slice()
       files = persistBinaryFiles(files)
       push({ type: 'message', role: 'user', text, files: files.map(f => ({ name: f.name, chars: f.text ? f.text.length : f.bytes, ...(f.relPath ? { relPath: f.relPath } : {}) })) }, true, cid)
       push({ type: 'status', status: 'running' }, false, cid)
       try {
         await ensureAgent(cfg, apiKey)
-        const context = agent.isFresh(cid) ? prior : ''
-        await agent.prompt(cid, `${memoryPrefix(cid, text)}${context}${nowHeader()}\n${promptWithFiles(text || '(see the attached files)', files)}`)
+        await promptChat(cid, text, promptWithFiles(text || '(see the attached files)', files), earlier, cfg, continuingTurn)
       } catch (error) {
         if (runningCid === cid) runningCid = null
         push({ type: 'error', text: error.message || 'Failed to start agent' }, true, cid)

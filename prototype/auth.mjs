@@ -1,4 +1,5 @@
-// 4-digit PIN login. The PIN is only ever set on the server (set-pin.mjs).
+// Six-digit PIN login. The PIN is only ever set on the server (set-pin.mjs).
+import { writeAtomic } from './store.mjs'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -25,13 +26,18 @@ const derive = async (pin, salt) =>
   (await scrypt(pin, salt, 32, { N: 2 ** 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 })).toString('hex')
 
 export async function setPin(pin) {
-  if (!/^\d{4}$/.test(pin)) throw new Error('PIN must be exactly 4 digits')
+  if (typeof pin !== 'string' || !/^\d{6}$/.test(pin)) throw new Error('PIN must be exactly 6 digits')
   const salt = crypto.randomBytes(16).toString('hex')
-  writePrivate(PIN_FILE, JSON.stringify({ salt, hash: await derive(pin, salt) }))
+  writeAtomic(PIN_FILE, JSON.stringify({ salt, hash: await derive(pin, salt), digits: 6 }))
   fs.rmSync(LOCK_FILE, { force: true }) // changing the PIN on the server also clears any lockout
 }
 
 export const hasPin = () => Boolean(readJson(PIN_FILE, null)?.hash)
+
+// Older records have a four-digit hash and can still be unlocked until the owner rotates it.
+export function pinDigits(record = readJson(PIN_FILE, null)) {
+  return record?.hash && !record.digits ? 4 : 6
+}
 
 function cookieSecret() {
   if (!fs.existsSync(SECRET_FILE)) writePrivate(SECRET_FILE, crypto.randomBytes(32).toString('hex'))
@@ -65,7 +71,7 @@ export async function login(pin) {
     return { ok: false, status: 429, error: 'LOCKED', retryAfter: Math.ceil((lock.until - Date.now()) / 1000) }
   }
   const actual = Buffer.from(await derive(String(pin), record.salt))
-  if (/^\d{4}$/.test(String(pin)) && crypto.timingSafeEqual(actual, Buffer.from(record.hash))) {
+  if (typeof pin === 'string' && pin.length === pinDigits(record) && /^\d+$/.test(pin) && crypto.timingSafeEqual(actual, Buffer.from(record.hash))) {
     fs.rmSync(LOCK_FILE, { force: true })
     return { ok: true }
   }
