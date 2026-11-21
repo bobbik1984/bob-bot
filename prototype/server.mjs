@@ -1635,6 +1635,17 @@ async function ensureAgent(cfg, apiKey) {
   let providerPatch = null
   if (!direct) {
     providerPatch = path.join(DATA_DIR, 'provider.patch.yml')
+    const isGoogle = (cfg.api || '') === 'google-generative-ai'
+    const effortLines = piEffort && piEffort !== 'off'
+      ? [
+          '                reasoningEfforts:',
+          '                  off: null',
+          `                  low: ${isGoogle ? 'LOW' : 'low'}`,
+          `                  medium: ${isGoogle ? 'MEDIUM' : 'medium'}`,
+          `                  high: ${isGoogle ? 'HIGH' : 'high'}`,
+          `                  xhigh: ${isGoogle ? 'HIGH' : 'xhigh'}`,
+        ]
+      : []
     const yaml = [
       '- insert:',
       '    - id: llm-pi-ai',
@@ -1646,11 +1657,12 @@ async function ensureAgent(cfg, apiKey) {
       `            api: ${JSON.stringify(cfg.api || 'openai-completions')}`,
       `            baseURL: ${JSON.stringify(cfg.baseUrl || '')}`,
       '            apiKeyEnv: BOBBOT_PROVIDER_KEY',
-      ...(piEffort ? [`            reasoning: ${JSON.stringify(piEffort)}`] : []),
+      ...(piEffort && piEffort !== 'off' ? [`            reasoning: ${JSON.stringify(piEffort)}`] : []),
       `            defaultContextWindow: ${Number(cfg.contextWindow) || 1000000}`,
       `            defaultMaxTokens: ${Number(cfg.maxTokens) || 8192}`,
       '            models:',
       `              - id: ${JSON.stringify(cfg.model)}`,
+      ...effortLines,
       '',
     ].join('\n')
     writeAtomic(providerPatch, yaml)
