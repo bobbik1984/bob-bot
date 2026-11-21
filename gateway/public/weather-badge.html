@@ -1,9 +1,20 @@
 <!doctype html><html><head><meta charset="utf-8"><style>
 html, body { width:100%; height:100%; margin:0; overflow:hidden; }
 body { display:flex; align-items:center; justify-content:flex-end; }
-#badge { display:flex; align-items:center; gap:5px; max-width:100%; box-sizing:border-box; border-radius:99px; border:1px solid var(--line); background:var(--surface-2); padding:3px 8px; white-space:nowrap; font:600 12px system-ui; }
-#city { min-width:0; color:var(--muted); overflow:hidden; text-overflow:ellipsis; }
+#badge { display:flex; align-items:center; gap:5px; max-width:100%; box-sizing:border-box; border-radius:99px; border:1px solid var(--line); background:var(--surface-2); padding:3px 8px; width:max-content; font:600 12px system-ui; }
+#icon, #temp { flex:none; white-space:nowrap; }
+#city { min-width:0; color:var(--muted); overflow-wrap:anywhere; }
 </style></head><body><div id="badge"><span id="icon"></span><span id="temp">—</span><span id="city"></span></div><script>
+const badge = document.getElementById('badge')
+function fitBadge() {
+  // Measure the single-line pill, then measure its height at the available width.
+  badge.style.maxWidth = 'none'
+  const width = Math.ceil(badge.getBoundingClientRect().width)
+  badge.style.maxWidth = ''
+  window.bob.resize(width, Math.ceil(badge.getBoundingClientRect().height))
+}
+new MutationObserver(fitBadge).observe(badge, {childList:true, subtree:true, characterData:true})
+addEventListener('resize', fitBadge)
 let locationKey, cityLocation, request
 async function updateWeather() {
   request?.abort()

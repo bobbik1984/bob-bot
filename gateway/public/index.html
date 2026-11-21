@@ -2056,6 +2056,11 @@ function frameInit(frame) {
   return { bob: 'init', location:frame.dataset.widget === 'weather-badge-widget' ? appState?.location : undefined, theme: frameTheme(), lang, state: widgetState(frame), vars: Object.fromEntries(FRAME_VARS.map(v => [v, style.getPropertyValue(v).trim()])) }
 }
 function sizeWidget(frame, width, height) {
+  if (frame.dataset.widget === 'weather-badge-widget' && frame.dataset.anchor === 'header-right' && Number.isFinite(width) && Number.isFinite(height)) {
+    frame.style.width = `min(${Math.ceil(Math.max(20,width))}px, calc(100vw - 90px), 740px)`
+    frame.style.height = Math.ceil(Math.max(28, Math.min(height, 240))) + 'px'
+    return
+  }
   const inHeader = frame.dataset.anchor === 'header-right'
   const fit = (value, low, high, fallback) => Math.min(high, Math.max(low, Number.isFinite(Number(value)) ? Math.round(Number(value)) : fallback))
   frame.style.width = `${fit(width, 20, inHeader ? 160 : 1200, inHeader ? 44 : 320)}px`
