@@ -32,7 +32,12 @@ subprocess.run(['ssh', '-o', 'BatchMode=yes', sys.argv[2], sys.argv[3]], input=b
 
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$code = (& curl.exe -s -o NUL -w '%{http_code}' "$PublicUrl/")
+$code = '000'
+for ($i = 0; $i -lt 6; $i++) {
+    $code = (& curl.exe -s -o NUL -w '%{http_code}' "$PublicUrl/")
+    if ($code -eq '200') { break }
+    Start-Sleep -Seconds 2
+}
 if ($code -ne '200') {
     Write-Error "Public health check failed: $PublicUrl/ returned HTTP $code"
     exit 1

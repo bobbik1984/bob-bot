@@ -351,6 +351,8 @@ select.field { appearance:none; background-image:linear-gradient(45deg,transpare
 #composer .send:active { transform:scale(.94); }
 #composer.empty .send { background:var(--surface-3); color:var(--muted); }
 #composer .attach { width:40px; height:40px; border-radius:50%; color:var(--muted); display:inline-flex; align-items:center; justify-content:center; flex:none; }
+#chatModelBar { display:flex; align-items:center; gap:8px; margin:6px 12px 0; }
+#chatModelBar select { max-width:100%; height:30px; padding:0 26px 0 10px; border-radius:999px; border:1px solid var(--line); background:var(--surface); color:var(--ink); font-size:12px; cursor:pointer; }
 #attachRow { display:flex; flex-wrap:wrap; gap:6px; margin:6px 12px 0; }
 .file-chip { display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:5px 6px 5px 10px; border-radius:999px; background:var(--accent-soft); color:var(--accent-ink); font-size:13px; }
 .file-chip span.n { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px; }
@@ -507,7 +509,7 @@ nav button.on span:first-child { background:var(--accent-soft); }
 
 /* ---- a wide screen gets a sidebar instead of a phone in the middle ---- */
 @media (min-width:1000px) {
-  #app { max-width:none; display:grid; grid-template-columns:300px minmax(0,1fr); grid-template-rows:auto minmax(0,1fr) auto auto auto; }
+  #app { max-width:none; display:grid; grid-template-columns:300px minmax(0,1fr); grid-template-rows:auto minmax(0,1fr) auto auto auto auto; }
   #app > nav { grid-column:1; grid-row:1; border-top:0; border-right:1px solid var(--line); padding:10px 10px 6px; gap:4px; }
   #app > nav button { flex-direction:row; justify-content:center; gap:6px; padding:9px 0; border-radius:12px; font-size:13px; }
   #app > nav button span:first-child { padding:0; background:none; }
@@ -519,9 +521,10 @@ nav button.on span:first-child { background:var(--accent-soft); }
   #app > header { grid-column:2; grid-row:1; }
   #app > main { grid-column:2; grid-row:2; }
   #banner { grid-column:2; grid-row:3; }
-  #attachRow { grid-column:2; grid-row:4; }
-  #composer { grid-column:2; grid-row:5; margin-bottom:20px; }
-  #banner, #attachRow, #composer { width:min(760px, calc(100% - 48px)); margin-left:auto; margin-right:auto; }
+  #chatModelBar { grid-column:2; grid-row:4; }
+  #attachRow { grid-column:2; grid-row:5; }
+  #composer { grid-column:2; grid-row:6; margin-bottom:20px; }
+  #banner, #chatModelBar, #attachRow, #composer { width:min(760px, calc(100% - 48px)); margin-left:auto; margin-right:auto; }
   .view { padding-left:max(24px, calc((100% - 760px) / 2)); padding-right:max(24px, calc((100% - 760px) / 2)); }
   .orb-btn { left:316px; pointer-events:none; }
   #app.hero .orb-btn { left:calc(300px + (100% - 300px) / 2 - var(--hd, 132px) / 2); }
@@ -694,7 +697,11 @@ nav button.on span:first-child { background:var(--accent-soft); }
         </div>
         <div class="section">
           <h3 data-i="clock" data-t="zoneTitle"></h3>
-          <div class="row"><input class="field" id="zone" autocapitalize="off" autocomplete="off" aria-label="Time zone"><button class="btn" id="saveZone" data-t="save"></button></div>
+          <div class="row"><input class="field" id="zone" list="cityList" autocomplete="off" data-ph="cityPlaceholder" data-al="zoneTitle"><button class="btn" id="saveZone" data-t="save"></button></div>
+          <datalist id="cityList">
+            <option value="上海"><option value="北京"><option value="深圳"><option value="广州"><option value="杭州"><option value="成都"><option value="重庆"><option value="武汉"><option value="南京"><option value="西安"><option value="香港"><option value="台北"><option value="东京"><option value="新加坡"><option value="首尔"><option value="伦敦"><option value="巴黎"><option value="柏林"><option value="纽约"><option value="旧金山"><option value="洛杉矶"><option value="西雅图"><option value="温哥华"><option value="多伦多"><option value="悉尼"><option value="迪拜">
+          </datalist>
+          <p class="hint" id="zoneResolved"></p>
           <p class="hint" id="zoneMsg" role="status"></p>
         </div>
       </div>
@@ -718,6 +725,7 @@ nav button.on span:first-child { background:var(--accent-soft); }
     <div id="offline" role="status" data-t="offline" hidden></div>
   </main>
   <button id="banner" hidden></button>
+  <div id="chatModelBar" hidden><select id="chatModelSel" data-al="modelTitle"></select></div>
   <div id="attachRow" hidden></div>
   <form id="composer" class="empty">
     <button type="button" class="attach" id="attachBtn" data-al="attach" data-i="clip"></button>
@@ -819,7 +827,9 @@ const I18N = {
   inboxTitle:['最近结果','Recent results'], inboxEmpty:['定时任务和提醒的结果会显示在这里；完整内容在对应对话里。','Results from scheduled tasks and reminders appear here; the full content is in the conversation.'], markRead:['全部已读','Mark all read'],
   inboxHint:['点一条打开对应的对话，完整内容和卡片都在那里。','Open a row to see the full result and cards in its conversation.'], openConversation:['打开对话','Open chat'],
   channelsTitle:['消息渠道','Channels'], channelsHint:['提醒和结果除了应用内，还可以发到这些渠道。密钥只保存在服务器上。','Reminders and results can also go to these channels. Secrets stay on the server.'],
-  addChannel:['添加渠道','Add a channel'], zoneTitle:['时区','Time zone'],
+  addChannel:['添加渠道','Add a channel'], zoneTitle:['所在城市','City'], cityPlaceholder:['输入或选择城市，如上海、北京、东京、纽约','Enter or pick a city, e.g. Shanghai, Tokyo, New York'],
+  zoneMatched:['自动匹配时区：{n}','Matched timezone: {n}'], zoneUnknownCity:['暂未识别该城市，可换附近大城市或直接填时区名（如 Asia/Shanghai）','City not recognized; try a nearby major city or IANA timezone (e.g. Asia/Shanghai)'],
+  modelSwitched:['已切换模型：{n}','Switched model: {n}'],
   kindTask:['任务','Task'], kindReminder:['提醒','Reminder'], nextRun:['下次：{n}','Next: {n}'], paused:['已暂停','Paused'], neverRun:['还没运行过','Not run yet'],
   runNow:['立即运行','Run now'], sendNow:['立即发送','Send now'], pause:['暂停','Pause'], resume:['恢复','Resume'], remove:['移除','Remove'], del:['删除','Del'],
   openRun:['查看过程','See the run'], openClerk:['去文员查看','Open in Clerk'], running:['运行中…','Running…'], inboxTo:['发送到：','Sent to: '],
@@ -1056,8 +1066,8 @@ function show(view) {
   VIEWS.forEach(v => { $('view' + v[0].toUpperCase() + v.slice(1)).hidden = v !== view })
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.view === view))
   $('composer').hidden = view !== 'chat'
-  if (view !== 'chat') { $('attachRow').hidden = true; $('jump').hidden = true }
-  else drawAttachments()
+  if (view !== 'chat') { $('chatModelBar').hidden = true; $('attachRow').hidden = true; $('jump').hidden = true }
+  else { drawAttachments(); renderChatModelPicker() }
   if (view === 'chat') atEnd()
   if (view === 'clerk') loadClerk()
   if (view === 'settings') { loadProviders().catch(() => {}); showSettingsGroup(settingsGroupSaved(), false); loadExtensions(); loadClerk(); loadPushState(); loadFeatures(); loadProactive(); loadMemory() }
@@ -2095,7 +2105,12 @@ function drawClerk() {
   $('inboxHead').hidden = d.inbox.length === 0
   $('markRead').hidden = d.unread === 0
   $('channelList').replaceChildren(...d.channels.map(channelRow))
-  if (document.activeElement !== $('zone')) $('zone').value = d.timezone
+  if (document.activeElement !== $('zone')) {
+    const savedCity = localStorage.getItem('bobbot.city')
+    const matched = savedCity && resolveCityTimezone(savedCity) === d.timezone ? savedCity : (TZ_TO_CITY[d.timezone] ?? d.timezone)
+    $('zone').value = matched
+    $('zoneResolved').textContent = d.timezone ? t('zoneMatched', d.timezone) : ''
+  }
 }
 $('langSel').append(new Option(t('langAuto'), 'auto'), ...LANGS.map(l => new Option(l.label, l.code)))
 $('langSel').value = savedLang
@@ -2482,9 +2497,57 @@ $('saveChannel').onclick = async () => {
   if (status === 200) { ;['chName', 'chWebhook', 'chSecret', 'chToken', 'chChat'].forEach(id => { $(id).value = '' }); $('addChannel').open = false }
 }
 $('markRead').onclick = () => post('/api/clerk/inbox/read')
+const CITY_TZ_GROUPS = [
+  ['Asia/Shanghai', ['上海','北京','深圳','广州','杭州','成都','重庆','武汉','南京','西安','天津','苏州','厦门','长沙','青岛','大连','郑州','宁波','无锡','合肥','福州','昆明','哈尔滨','沈阳','济南','海口','三亚','珠海','佛山','东莞','石家庄','太原','南昌','贵阳','南宁','兰州','银川','西宁','呼和浩特','长春','拉萨','乌鲁木齐','中国','shanghai','beijing','shenzhen','guangzhou','hangzhou','chengdu','chongqing','wuhan','nanjing','xian','tianjin','suzhou','xiamen','haikou','sanya','china']],
+  ['Asia/Hong_Kong', ['香港','hong kong','hongkong','hk']],
+  ['Asia/Macau', ['澳门','macau','macao']],
+  ['Asia/Taipei', ['台北','台湾','高雄','台中','taipei','taiwan']],
+  ['Asia/Tokyo', ['东京','大阪','京都','名古屋','福冈','札幌','日本','tokyo','osaka','kyoto','japan']],
+  ['Asia/Seoul', ['首尔','釜山','韩国','seoul','busan','korea']],
+  ['Asia/Singapore', ['新加坡','singapore','sg']],
+  ['Asia/Bangkok', ['曼谷','清迈','普吉','泰国','bangkok','thailand']],
+  ['Asia/Kuala_Lumpur', ['吉隆坡','槟城','马来西亚','kuala lumpur','malaysia']],
+  ['Asia/Dubai', ['迪拜','阿布扎比','dubai','abu dhabi']],
+  ['Europe/London', ['伦敦','曼彻斯特','爱丁堡','英国','london','uk']],
+  ['Europe/Paris', ['巴黎','里昂','法国','paris','france']],
+  ['Europe/Berlin', ['柏林','法兰克福','慕尼黑','德国','berlin','frankfurt','munich','germany']],
+  ['Europe/Amsterdam', ['阿姆斯特丹','荷兰','amsterdam','netherlands']],
+  ['Europe/Zurich', ['苏黎世','日内瓦','瑞士','zurich','geneva','switzerland']],
+  ['America/New_York', ['纽约','波士顿','华盛顿','费城','迈阿密','亚特兰大','多伦多','蒙特利尔','new york','nyc','boston','washington','miami','toronto','montreal']],
+  ['America/Chicago', ['芝加哥','达拉斯','休斯顿','奥斯汀','chicago','dallas','houston','austin']],
+  ['America/Denver', ['丹佛','盐湖城','denver','salt lake city']],
+  ['America/Los_Angeles', ['旧金山','三藩','硅谷','圣何塞','洛杉矶','圣地亚哥','西雅图','波特兰','温哥华','san francisco','sf','silicon valley','san jose','los angeles','la','seattle','portland','vancouver']],
+  ['Australia/Sydney', ['悉尼','墨尔本','堪培拉','sydney','melbourne']],
+  ['Pacific/Auckland', ['奥克兰','惠灵顿','新西兰','auckland','new zealand']],
+]
+const TZ_TO_CITY = Object.fromEntries(CITY_TZ_GROUPS.map(([tz, names]) => [tz, names[0]]))
+function validIanaTz(tz) {
+  try { Intl.DateTimeFormat(undefined, { timeZone: tz }); return true } catch { return false }
+}
+function resolveCityTimezone(raw) {
+  const s = String(raw ?? '').trim()
+  if (!s) return null
+  const low = s.toLowerCase().replace(/市$/, '')
+  for (const [tz, names] of CITY_TZ_GROUPS) {
+    if (names.some(n => n === low || (n.length >= 2 && low.includes(n)))) return tz
+  }
+  if (s.includes('/') && validIanaTz(s)) return s
+  return null
+}
+$('zone').oninput = () => {
+  const tz = resolveCityTimezone($('zone').value)
+  $('zoneResolved').textContent = tz ? t('zoneMatched', tz) : ''
+}
 $('saveZone').onclick = async () => {
-  const { status, data } = await post('/api/clerk/timezone', { timezone: $('zone').value.trim() })
-  $('zoneMsg').textContent = status === 200 ? t('saved') : errText(data, status)
+  const raw = $('zone').value.trim()
+  const tz = resolveCityTimezone(raw)
+  if (!tz) { $('zoneMsg').textContent = t('zoneUnknownCity'); return }
+  const { status, data } = await post('/api/clerk/timezone', { timezone: tz })
+  if (status === 200) {
+    localStorage.setItem('bobbot.city', raw)
+    $('zoneResolved').textContent = t('zoneMatched', tz)
+    $('zoneMsg').textContent = `${t('saved')} (${tz})`
+  } else $('zoneMsg').textContent = errText(data, status)
 }
 
 // ---- extensions: tool servers and skills that Bob installed ----
@@ -2761,9 +2824,32 @@ function providerRow(p) {
   row.append(actions)
   return row
 }
+function renderChatModelPicker() {
+  const bar = $('chatModelBar'), sel = $('chatModelSel')
+  const usable = (providerData?.items ?? []).filter(p => p.hasKey)
+  bar.hidden = currentView !== 'chat' || usable.length === 0
+  if (!usable.length) return
+  sel.replaceChildren(...usable.map(p => new Option(`${p.name || providerLabel(p.kind)} · ${p.model}`, p.id)))
+  const active = usable.find(p => p.active) ?? usable[0]
+  if (active) sel.value = active.id
+}
+$('chatModelSel').onchange = async () => {
+  const id = $('chatModelSel').value
+  const target = (providerData?.items ?? []).find(p => p.id === id)
+  const r = await post('/api/providers/activate', { id })
+  if (r.status === 200) {
+    providerData = r.data
+    renderProviders()
+    toast(t('modelSwitched', target ? `${target.name || providerLabel(target.kind)} · ${target.model}` : id))
+  } else {
+    renderChatModelPicker()
+    toast(errText(r.data, r.status), true)
+  }
+}
 function renderProviders() {
   $('providerList').replaceChildren(...providerData.items.map(providerRow))
   $('providerEmpty').hidden = providerData.items.length > 0
+  renderChatModelPicker()
 }
 function openProviderForm(p = null) {
   fillKindOptions()
@@ -3074,6 +3160,7 @@ async function boot() {
   if (!s.hasKey) { $('settingsMsg').textContent = t('noKey'); show('settings'); showSettingsGroup('model') }
   connect()
   reportPresence(true)
+  loadProviders().catch(() => {})
   loadClerk() // the front page shows what is waiting
   loadFeatures() // widgets and styling the owner has kept
 }
