@@ -2338,7 +2338,7 @@ let cityCandidates = []
 $('zone').oninput = () => { $('cityMatches').hidden = true; $('zoneMsg').textContent = '' }
 async function saveCity(location) {
   const {name, latitude, longitude, timezone} = location
-  location = {name, latitude, longitude, timezone}
+  location = {name, latitude, longitude, timezone, id:location.id, language:lang}
   const result = await post('/api/clerk/timezone', {location})
   if (result.status !== 200) throw Error('save')
   appState.location = location

@@ -1,21 +1,34 @@
 <!doctype html><html><head><meta charset="utf-8"><style>
 html, body { width:100%; height:100%; margin:0; overflow:hidden; }
 body { display:flex; align-items:center; justify-content:flex-end; }
-#badge { display:flex; align-items:center; gap:5px; max-width:100%; box-sizing:border-box; border-radius:99px; border:1px solid var(--line); background:var(--surface-2); padding:3px 8px; width:max-content; font:600 12px system-ui; }
+#badge { display:flex; align-items:center; gap:5px; flex:none; white-space:nowrap; box-sizing:border-box; border-radius:99px; border:1px solid var(--line); background:var(--surface-2); padding:3px 8px; width:max-content; font:600 12px system-ui; }
 #icon, #temp { flex:none; white-space:nowrap; }
-#city { min-width:0; color:var(--muted); overflow-wrap:anywhere; }
+#city { color:var(--muted); }
 </style></head><body><div id="badge"><span id="icon"></span><span id="temp">—</span><span id="city"></span></div><script>
 const badge = document.getElementById('badge')
 function fitBadge() {
-  // Measure the single-line pill, then measure its height at the available width.
-  badge.style.maxWidth = 'none'
+  badge.style.fontSize = ''
   const width = Math.ceil(badge.getBoundingClientRect().width)
-  badge.style.maxWidth = ''
-  window.bob.resize(width, Math.ceil(badge.getBoundingClientRect().height))
+  window.bob.resize(width, 28)
+  if (width > innerWidth && innerWidth > 0) {
+    badge.style.fontSize = Math.max(1, Math.floor(12 * (innerWidth - 30) / Math.max(1, width - 30))) + 'px'
+  }
 }
 new MutationObserver(fitBadge).observe(badge, {childList:true, subtree:true, characterData:true})
 addEventListener('resize', fitBadge)
 let locationKey, cityLocation, request
+async function cityLabel(city, lang) {
+  if (['shanghai','上海','上海市'].includes(city.name.toLowerCase())) return lang === 'zh' ? '上海' : 'Shanghai'
+  if (city.language === lang) return city.name
+  const query = city.id
+    ? 'get?id=' + city.id
+    : 'search?' + new URLSearchParams({name:city.name,count:'20'})
+  const response = await fetch('https://geocoding-api.open-meteo.com/v1/' + query + '&language=' + lang, {signal:AbortSignal.timeout(6000)})
+  if (!response.ok) return city.name
+  const data = await response.json()
+  const match = city.id ? data : data.results?.find(c => Math.abs(c.latitude-city.latitude)<0.01 && Math.abs(c.longitude-city.longitude)<0.01)
+  return match?.name || city.name
+}
 async function updateWeather() {
   request?.abort()
   const controller = request = new AbortController()
@@ -36,10 +49,12 @@ async function updateWeather() {
 addEventListener('message', e => {
   if (e.source !== parent || e.data?.bob !== 'init') return
   const next = e.data.location || {name:'Shanghai',latitude:31.2304,longitude:121.4737}
-  const key = JSON.stringify(next)
+  const lang = e.data.lang === 'zh' ? 'zh' : 'en'
+  const key = JSON.stringify([next,lang])
   if (key === locationKey) return
   cityLocation = next; locationKey = key
   document.getElementById('city').textContent = next.name
+  cityLabel(next, lang).then(label => { if (locationKey === key) document.getElementById('city').textContent = label }).catch(() => {})
   document.getElementById('temp').textContent = '—'
   document.getElementById('icon').textContent = ''
   updateWeather()

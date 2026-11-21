@@ -42,6 +42,8 @@ type ProactiveConfig struct {
 }
 
 type CityLocation struct {
+	ID        int64   `json:"id,omitempty"`
+	Language  string  `json:"language,omitempty"`
 	Name      string  `json:"name"`
 	Latitude  float64 `json:"latitude"`
 	Longitude float64 `json:"longitude"`
