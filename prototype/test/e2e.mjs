@@ -441,6 +441,26 @@ try {
     assert.ok(following.length < 16000)
   })
 
+  await check('nightly follow-ups return to their source chat and wait for confirmation', async () => {
+    const at = Date.now()
+    const quote = 'Orchid is waiting for the new quotation'
+    script.push(say('Understood.'))
+    const chat = await post('/api/chat', { text: quote })
+    const cid = chat.data.cid
+    await waitAfter(at, e => e.cid === cid && e.type === 'status' && e.status === 'idle')
+    script.push(body => {
+      const text = JSON.stringify(body.messages)
+      const match = /User \[(\d+)\] \([^)]*\): Orchid is waiting for the new quotation/.exec(text)
+      return say(JSON.stringify({ followups: [{ source: Number(match?.[1]), title: 'Follow up Orchid quote', quote }] }))
+    })
+    assert.equal((await post('/api/memory/dream', {})).data.ok, true)
+    const history = async () => (await fetch(base + '/api/conversations/' + cid, { headers: { cookie } })).json()
+    const suggestion = (await history()).events.find(e => e.type === 'followup')?.suggestion
+    assert.equal(suggestion?.status, 'pending')
+    await post('/api/clerk/suggestion/decide', { id: suggestion.id, accept: false })
+    assert.equal((await history()).events.find(e => e.type === 'followup').suggestion.status, 'dismissed')
+  })
+
   console.log('Clerk')
   const clerkView = async () => (await getJson('/api/clerk')).body
   const lastSent = () => JSON.stringify(requests.at(-1).messages)

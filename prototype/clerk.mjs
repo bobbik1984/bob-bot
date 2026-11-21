@@ -117,6 +117,7 @@ export class Clerk {
     this.jobs = saved.jobs ?? []
     this.todos = saved.todos ?? []
     this.captures = saved.captures ?? []
+    this.suggestions = saved.suggestions ?? []
     this.channels = saved.channels ?? []
     try { this.inbox = JSON.parse(fs.readFileSync(this.inboxFile, 'utf8')) } catch { this.inbox = [] }
     this.draftFile = path.join(dir, 'drafts.json')
@@ -124,7 +125,7 @@ export class Clerk {
   }
 
   #save() {
-    writeAtomic(this.file, JSON.stringify({ timezone: this.timezone, timezoneChosen: this.timezoneChosen, city: this.city, jobs: this.jobs, todos: this.todos, captures: this.captures, channels: this.channels }))
+    writeAtomic(this.file, JSON.stringify({ timezone: this.timezone, timezoneChosen: this.timezoneChosen, city: this.city, jobs: this.jobs, todos: this.todos, captures: this.captures, suggestions: this.suggestions, channels: this.channels }))
   }
 
   #saveInbox() { writeAtomic(this.inboxFile, JSON.stringify(this.inbox.slice(0, MAX_INBOX))) }
@@ -144,9 +145,10 @@ export class Clerk {
     const previous = this.captures.find(item => item.id === id)
     if (previous) return previous
     if (this.captures.length >= 200) {
-      const index = this.captures.findLastIndex(item => item.status === 'done')
+      const index = this.captures.findLastIndex(item => ['done', 'dismissed'].includes(item.status))
       if (index < 0) throw fail('CAPTURE_FULL')
-      this.captures.splice(index, 1)
+      const [removed] = this.captures.splice(index, 1)
+      this.suggestions = this.suggestions.filter(s => s.captureId !== removed.id)
     }
     const item = { id, text, at: Date.now(), status: 'pending' }
     this.captures.unshift(item)
@@ -154,29 +156,74 @@ export class Clerk {
     return item
   }
 
+  #suggestion(task, source, origin) {
+    const title = String(task.title ?? '').trim().slice(0, 100)
+    const quote = String(task.quote ?? '').trim().slice(0, 300)
+    if (!title || !quote || !source.includes(quote)) throw fail('NO_SOURCE')
+    const due = task.due ? normalizeSchedule({ type: 'once', at: task.due }).at : null
+    const id = crypto.createHash('sha256').update(JSON.stringify([origin, title, quote, due])).digest('hex').slice(0, 32)
+    return { id, ...origin, title, quote, due, status: 'pending' }
+  }
+
+  suggestFromChat(task, message, cid) {
+    const suggestion = this.#suggestion(task, message.text, { cid, at: message.at })
+    const previous = this.suggestions.find(s => s.id === suggestion.id)
+    if (previous) return previous
+    this.suggestions.push(suggestion)
+    try { this.#save() } catch (error) { this.suggestions.pop(); throw error }
+    return suggestion
+  }
+
   finishCapture(item, tasks) {
-    // Tasks, their reminders and the receipt share one durable write.
-    const todos = [], jobs = []
+    if (item.status !== 'pending') return
+    const unique = new Map()
     for (const task of tasks) {
-      const title = String(task.title ?? '').trim().slice(0, 100)
-      const quote = String(task.quote ?? '').trim()
-      if (!title || !quote || !item.text.includes(quote)) throw fail('NO_SOURCE')
-      const { todo, job } = this.#todoAndReminder(title, quote, task.due || null, Date.now())
-      if (job) jobs.push(job)
-      todos.push(todo)
+      const suggestion = this.#suggestion(task, item.text, { captureId: item.id, at: item.at })
+      unique.set(suggestion.id, suggestion)
     }
-    if (this.todos.length + todos.length > 200) throw fail('CAPTURE_FULL')
-    this.todos.unshift(...todos)
-    this.jobs.push(...jobs)
-    item.status = todos.length ? 'done' : 'review'
-    item.titles = todos.map(t => t.title)
+    const original = this.suggestions
+    this.suggestions = original.concat([...unique.values()])
+    item.status = unique.size ? 'suggested' : 'review'
     try { this.#save() } catch (error) {
-      this.todos.splice(0,todos.length)
-      if (jobs.length) this.jobs.splice(-jobs.length)
+      this.suggestions = original
       item.status = 'pending'
-      delete item.titles
       throw error
     }
+  }
+
+  decideSuggestion(id, accept) {
+    const index = this.suggestions.findIndex(s => s.id === id)
+    if (index < 0) throw fail('NO_SUGGESTION')
+    const old = this.suggestions[index]
+    if (old.status !== 'pending') return old // a second tap or another device
+    if (accept && this.todos.length >= 200) throw fail('TOO_MANY_TODOS')
+    const { todo, job } = accept ? this.#todoAndReminder(old.title, old.quote, old.due, Date.now()) : {}
+    const result = { ...old, status: accept ? 'accepted' : 'dismissed', todoId: todo?.id }
+    if (todo) this.todos.unshift(todo)
+    if (job) this.jobs.push(job)
+    this.suggestions[index] = result
+    const capIndex = old.captureId ? this.captures.findIndex(c => c.id === old.captureId) : -1
+    const capture = this.captures[capIndex]
+    if (capture) {
+      const related = this.suggestions.filter(s => s.captureId === capture.id)
+      const titles = related.filter(s => s.status === 'accepted').map(s => s.title)
+      const status = related.some(s => s.status === 'pending') ? 'suggested' : titles.length ? 'done' : 'dismissed'
+      this.captures[capIndex] = { ...capture, titles, status }
+    }
+    try { this.#save() } catch (error) {
+      if (todo) this.todos.shift()
+      if (job) this.jobs.pop()
+      this.suggestions[index] = old
+      if (capture) this.captures[capIndex] = capture
+      throw error
+    }
+    return result
+  }
+
+  forgetChatSuggestions(cid) {
+    if (!this.suggestions.some(s => s.cid === cid)) return
+    this.suggestions = this.suggestions.filter(s => s.cid !== cid)
+    this.#save()
   }
 
   retryCapture(id) {

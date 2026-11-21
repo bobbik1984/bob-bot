@@ -109,6 +109,7 @@ function createConversation(title = '', extra = {}) {
   return conv
 }
 function deleteConversation(id) {
+  clerk.forgetChatSuggestions(id)
   convs = convs.filter(c => c.id !== id)
   histories.delete(id)
   writes.cancel(histFile(id))
@@ -303,7 +304,8 @@ const TOOLS = [
     schedule: { type: 'object', description: 'type once (at "YYYY-MM-DDTHH:MM"), daily (time "HH:MM"), weekly (days [0-6], 0 = Sunday, and time) or monthly (day 1-31 and time). Times are in the user\'s time zone.', properties: { type: { type: 'string', enum: ['once', 'daily', 'weekly', 'monthly'] }, at: { type: 'string' }, time: { type: 'string' }, days: { type: 'array', items: { type: 'integer' } }, day: { type: 'integer' } }, required: ['type'] },
     channels: { type: 'array', items: { type: 'string' }, description: 'Channel names from clerk_list_channels. Leave empty for the in-app inbox only.' },
   }, ['title', 'kind', 'text', 'schedule']],
-  ['todo_add', 'Add a to-do or a meeting to the user\'s list. With a due time (in the user\'s time zone) the user is also reminded then. Use this, never a file, for things to remember.', { title: { type: 'string' }, due: { type: 'string', description: 'Optional, "YYYY-MM-DDTHH:MM"' }, note: { type: 'string' } }, ['title']],
+  ['todo_suggest', 'Show a possible follow-up for the user to accept or dismiss. Quote the user message exactly. Supply due only if supported by the source. No reminder is created yet.', { title: { type: 'string' }, quote: { type: 'string' }, due: { type: 'string', description: 'Optional local YYYY-MM-DDTHH:MM' } }, ['title', 'quote']],
+  ['todo_add', 'Only when the user explicitly asks you to save it: add a to-do or a meeting to the user\'s list. With a due time (in the user\'s time zone) the user is also reminded then. Use this, never a file, for things to remember.', { title: { type: 'string' }, due: { type: 'string', description: 'Optional, "YYYY-MM-DDTHH:MM"' }, note: { type: 'string' } }, ['title']],
   ['todo_list', 'List the to-dos.', {}, []],
   ['todo_done', 'Mark a to-do done (or not done) by its id.', { id: { type: 'string' }, done: { type: 'boolean' } }, ['id']],
   ['todo_remove', 'Remove a to-do by its id.', { id: { type: 'string' } }, ['id']],
@@ -626,9 +628,28 @@ const jobView = j => ({
 })
 const pushTodoCard = (todo, created = false) => push({ type: 'card', card: { kind: 'todo', todo, timezone: clerk.timezone, created } })
 
+function publishSuggestion(args, source, cid) {
+  const suggestion = clerk.suggestFromChat(args, source, cid)
+  if (suggestion.status === 'pending' && !historyOf(cid).some(e => e.suggestion?.id === suggestion.id)) {
+    push({ type: 'followup', suggestion }, true, cid)
+    broadcast({ type: 'clerk' })
+  }
+  return suggestion
+}
+
 function todoTool(name, args) {
   if (name === 'todo_list') return clerk.todos.map(t => `[${t.id}] ${t.done ? '(done) ' : ''}${t.title}${t.due ? ` - due ${t.due.replace('T', ' ')}` : ''}`).join('\n') || 'No to-dos.'
   if (activeRun) throw new Error('A scheduled run cannot change the to-do list.')
+  if (name === 'todo_suggest') {
+    const cid = runningCid
+    if (!convOf(cid) || turnWaiters.has(cid)) throw new Error('Suggestions require a user conversation.')
+    const history = historyOf(cid)
+    const quote = String(args.quote ?? '').trim()
+    const source = history.findLast(e => e.type === 'message' && e.role === 'user' && e.text?.includes(quote))
+    if (!source || !quote) throw new Error('Quote a short exact excerpt from the user’s chat.')
+    const suggestion = publishSuggestion(args, source, cid)
+    return `Follow-up card status: ${suggestion.status}. Pending cards await the user's choice; do not add a duplicate to-do or reminder.`
+  }
   if (name === 'todo_add') {
     let due = null
     if (args.due) {
@@ -654,9 +675,9 @@ const pushJobCard = (job, created = false) => push({ type: 'card', card: { kind:
 // ---- the nightly dream: fold recent chats into durable memory ----
 const DREAM_PROMPT = `You are consolidating the user's memory. Read the current memory, the recent conversations, the to-dos and the scheduled jobs.
 Return ONLY a JSON object, no prose and no code fences:
-{"add":[{"kind":"fact|preference|pattern|open_loop","text":"..."}],"update":[{"id":"m...","text":"..."}],"remove":["m..."],"insights":["one short observation worth a later check-in"]}
-Do not call any tools. Write memories in the user's language.
-Rules: only durable things the user would expect you to remember (who they are, how they work, standing preferences, repeating patterns, promises made, work still in progress as open_loop); never secrets, passwords or one-off details; at most 6 adds; do not duplicate existing memory; insights are short and useful for starting a conversation later.`
+{"add":[{"kind":"fact|preference|pattern","text":"..."}],"update":[{"id":"m...","text":"..."}],"remove":["m..."],"insights":["one short observation"],"followups":[{"source":0,"title":"possible action","quote":"short exact user excerpt","due":null}]}
+Do not call any tools. Write in the user's language. Put concrete unfinished actions only in followups, with the numbered User source and exact quote. Do not turn them into memory or insights. Skip actions already recorded or completed; Use local YYYY-MM-DDTHH:MM only for a clear due time in the excerpt, resolving relative dates against the source timestamp. Otherwise return null.
+Rules: only durable things the user would expect you to remember (who they are, how they work, standing preferences, repeating patterns); never secrets, passwords or one-off details; at most 6 adds; do not duplicate existing memory; insights are short and useful for starting a conversation later.`
 
 const extractJson = text => {
   const match = /\{[\s\S]*\}/.exec(String(text ?? ''))
@@ -689,9 +710,14 @@ async function dream({ test = false } = {}) {
   const since = memory.state.lastDreamAt || Date.now() - 24 * 3600 * 1000
   const sources = convs.filter(c => c.title && c.updatedAt > since && !c.job && c.id !== proactive.cid).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 8)
   const notes = []
+  const quoted = []
   for (const conv of sources) {
     for (const event of historyOf(conv.id).filter(e => e.type === 'message').slice(-20)) {
-      notes.push(`${event.role === 'user' ? 'User' : 'Bob'}: ${String(event.text ?? '').slice(0, 300)}`)
+      const excerpt = String(event.text ?? '').slice(0, 300)
+      if (event.role === 'user') {
+        notes.push(`User [${quoted.length}] (${formatLocal(event.at, clerk.timezone)}): ${excerpt}`)
+        quoted.push({ cid: conv.id, event, excerpt })
+      } else notes.push(`Bob: ${excerpt}`)
     }
     if (notes.join('\n').length > 6000) break
   }
@@ -724,6 +750,20 @@ async function dream({ test = false } = {}) {
     return fail('the model did not return usable JSON')
   }
   if (runningCid === cid) runningCid = null
+  for (const task of Array.isArray(parsed.followups) ? parsed.followups.slice(0, 6) : []) {
+    const source = Number.isInteger(task?.source) && quoted[task.source]
+    if (!source || !convOf(source.cid) || typeof task.quote !== 'string' || !task.quote.trim() || !source.excerpt.includes(task.quote)) continue
+    if (clerk.suggestions.some(s => s.cid === source.cid && s.at === source.event.at &&
+      (s.quote.includes(task.quote) || task.quote.includes(s.quote)))) continue
+    if (clerk.todos.some(t => t.title === task.title || t.note && t.note.includes(task.quote))) continue
+    if (typeof task.title !== 'string' || !task.title.trim()) continue
+    let due = null
+    if (typeof task.due === 'string') {
+      try { due = normalizeSchedule({ type: 'once', at: task.due }).at } catch { /* show the action without an uncertain time */ }
+    }
+    publishSuggestion({ title: task.title, quote: task.quote, due }, source.event, source.cid)
+  }
+  if (Array.isArray(parsed.add)) parsed.add = parsed.add.filter(item => item?.kind !== 'open_loop')
   const result = memory.applyDream(parsed)
   deleteConversation(cid)
   broadcast({ type: 'memory' })
@@ -1043,13 +1083,17 @@ function inboxCid(entry) {
   return null
 }
 
+function clerkBadge() {
+  return clerk.unread() + clerk.suggestions.filter(s => s.status === 'pending').length
+}
 function clerkView() {
   return {
+    suggestions: clerk.suggestions.filter(s => s.status === 'pending').slice().reverse(),
     captures: clerk.captures.slice(0,30).map(({id,text,status,titles})=>({id,text:text.slice(0,400),status,titles})),
     timezone: clerk.timezone, timezoneChosen: clerk.timezoneChosen, city: clerk.city, busy: Boolean(runningCid),
     jobs: clerk.jobs.filter(j => !j.todoId).map(jobView), todos: clerk.todos,
     inbox: clerk.inbox.map(entry => ({ ...entry, cid: inboxCid(entry) })),
-    channels: clerk.channels.map(publicChannel), unread: clerk.unread(),
+    channels: clerk.channels.map(publicChannel), unread: clerkBadge(),
     drafts: clerk.pendingDrafts().map(({ action, ...rest }) => rest),
   }
 }
@@ -2080,7 +2124,7 @@ async function route(req, res) {
     const cfg = modelConfig()
     return send(res, 200, {
       authed: ok, pinSet: hasPin(), pinDigits: pinDigits(),
-      ...(ok ? { hasKey: Boolean(loadKey(cfg)), keyHint: keyHint(cfg), model: publicModel(cfg), budget: budget.status(), unread: clerk.unread(), build: readBuild() } : {}),
+      ...(ok ? { hasKey: Boolean(loadKey(cfg)), keyHint: keyHint(cfg), model: publicModel(cfg), budget: budget.status(), unread: clerkBadge(), build: readBuild() } : {}),
     })
   }
   if (req.method === 'GET' && pathname === '/api/version') {
@@ -2148,7 +2192,7 @@ async function route(req, res) {
   }
   if (req.method === 'GET' && pathname === '/api/events') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no' })
-    res.write(`data: ${JSON.stringify({ type: 'hello', budget: budget.status(), running: runningCid, pending: [...pending.values()], unread: clerk.unread() })}\n\n`)
+    res.write(`data: ${JSON.stringify({ type: 'hello', budget: budget.status(), running: runningCid, pending: [...pending.values()], unread: clerkBadge() })}\n\n`)
     clients.add(res)
     req.on('close', () => clients.delete(res))
     return undefined
@@ -2178,7 +2222,7 @@ async function route(req, res) {
   if (req.method === 'GET' && pathname.startsWith('/api/conversations/')) {
     const id = decodeURIComponent(pathname.slice('/api/conversations/'.length))
     if (!convOf(id)) return send(res, 404, { error: 'NO_CONVERSATION' })
-    return send(res, 200, { id, events: historyOf(id) })
+    return send(res, 200, { id, events: historyOf(id).map(e => e.type === 'followup' ? { ...e, suggestion: clerk.suggestions.find(s => s.id === e.suggestion.id) ?? e.suggestion } : e) })
   }
   if (req.method === 'GET' && pathname === '/api/workspace/preview') {
     const q = new URL(req.url, 'http://localhost').searchParams
@@ -2531,6 +2575,19 @@ async function route(req, res) {
       try { clerk.setTimezone(String(body.timezone ?? ''), body.city !== undefined ? String(body.city ?? '') : undefined) } catch { return send(res, 400, { error: 'BAD_TIMEZONE' }) }
       broadcast({ type: 'clerk' })
       return send(res, 200, { ok: true, timezone: clerk.timezone, city: clerk.city })
+    }
+    case '/api/clerk/suggestion/decide': {
+      if (typeof body.accept !== 'boolean') return send(res, 400, { error: 'BAD_DECISION' })
+      let suggestion
+      try { suggestion = clerk.decideSuggestion(body.id, body.accept) }
+      catch (error) {
+        if (error.code === 'NO_SUGGESTION') return send(res, 404, { error: error.code })
+        if (error.code === 'TOO_MANY_TODOS') return send(res, 409, { error: error.code })
+        throw error
+      }
+      broadcast({ type: 'followup_decided', suggestion })
+      broadcast({ type: 'clerk' })
+      return send(res, 200, { suggestion })
     }
     case '/api/clerk/todo/toggle': {
       if (!clerk.todo(body.id)) return send(res, 404, { error: 'NO_TODO' })

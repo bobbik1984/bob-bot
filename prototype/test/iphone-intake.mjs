@@ -18,6 +18,14 @@ test('duplicate shares keep one receipt, one todo and one future reminder after 
   const item = clerk.receiveCapture(text)
   assert.equal(clerk.receiveCapture(text).id, item.id)
   clerk.finishCapture(item, [{ title: 'Send the drawing', quote: 'revised drawing', due: '2099-02-01T15:00' }])
+  assert.equal(clerk.todos.length, 0)
+  assert.equal(clerk.jobs.length, 0)
+  const review = new Clerk(dir)
+  assert.equal(review.receiveCapture(text).status, 'suggested')
+  assert.equal(review.suggestions.length, 1)
+  const id = review.suggestions[0].id
+  review.decideSuggestion(id, true)
+  review.decideSuggestion(id, false)
   const saved = new Clerk(dir)
   assert.equal(saved.receiveCapture(text).status, 'done')
   assert.equal(saved.todos.length, 1)
@@ -36,6 +44,35 @@ test('unsupported quotes save no partial tasks and ambiguous captures can be ret
   assert.equal(item.status, 'review')
   assert.equal(clerk.retryCapture(item.id), true)
   assert.equal(item.status, 'pending')
+})
+
+test('multiple follow-ups can be dismissed and accepted independently', t => {
+  const { dir, clerk } = fixture(t)
+  const item = clerk.receiveCapture('Check the layout. Call the supplier.')
+  clerk.finishCapture(item, [
+    { title: 'Check layout', quote: 'Check the layout' },
+    { title: 'Call supplier', quote: 'Call the supplier', due: '2099-04-20T10:00' },
+  ])
+  clerk.decideSuggestion(clerk.suggestions[1].id, false)
+  assert.equal(clerk.captures[0].status, 'suggested')
+  clerk.decideSuggestion(clerk.suggestions[0].id, true)
+  const saved = new Clerk(dir)
+  assert.deepEqual(saved.captures[0].titles, ['Check layout'])
+  assert.equal(saved.todos.length, 1)
+  assert.equal(saved.jobs.length, 0)
+})
+
+test('a retried chat suggestion reuses the card and remembers dismissal', t => {
+  const { clerk } = fixture(t)
+  const message = { at: 1, text: 'We may need a revised quote.' }
+  const task = { title: 'Check quote', quote: 'revised quote' }
+  const first = clerk.suggestFromChat(task, message, 'chat-one')
+  assert.equal(clerk.suggestFromChat(task, message, 'chat-one').id, first.id)
+  clerk.decideSuggestion(first.id, false)
+  assert.equal(clerk.suggestFromChat(task, message, 'chat-one').status, 'dismissed')
+  assert.equal(clerk.todos.length, 0)
+  clerk.forgetChatSuggestions('chat-one')
+  assert.equal(clerk.suggestions.length, 0)
 })
 
 test('intake requires its own bearer and rotating the code invalidates the previous one', t => {

@@ -635,6 +635,10 @@ nav button.on span:first-child { background:var(--accent-soft); }
           <button class="link" id="iphoneRotate" data-t="iphoneRotate"></button></details>
         <div id="iphoneReceipts"></div></details>
       <p class="hint" data-t="clerkIntro"></p>
+      <section id="followupBox" hidden>
+        <div class="sect-head"><h3 data-t="followupHeading"></h3></div>
+        <div id="followupList"></div>
+      </section>
       <div id="draftBox" hidden>
         <div class="sect-head" id="draftsHead"><h3 data-t="draftsTitle"></h3></div>
         <div id="draftList"></div>
@@ -1016,6 +1020,14 @@ const I18N = {
   step_browser_downloads:['查看下载','Checking downloads'], step_browser_upload:['上传文件','Uploading a file'],
   step_browser_type:['输入文字','Typing'], step_browser_scroll:['滚动页面','Scrolling'], step_browser_request_human:['请你协助','Asking you for help'],
   step_list_files:['查看文件夹','Listing files'], step_read_file:['读取文件','Reading a file'], step_write_file:['写入文件','Writing a file'], step_run_command:['运行命令','Running a command'],
+  followupHeading:['待确认的跟进','Follow-ups to review'], followupAsk:['建议跟进','Suggested follow-up'],
+  followupQuote:['聊天原话','From the chat'], followupWeChat:['微信原话','From WeChat'],
+  followupDue:['提醒时间','Reminder'], followupNoDue:['暂未指定','No time set'],
+  followupAccept:['加入待办','Add to to-dos'], followupSkip:['忽略','Dismiss'],
+  followupAccepted:['已加入待办','Added to to-dos'], followupDismissed:['已忽略','Dismissed'],
+  followupError:['操作未完成，请重试。','Could not save your choice. Try again.'],
+  followupFull:['待办已满，请先清理，再确认这项。','Your to-do list is full. Make room and try again.'],
+  step_todo_suggest:['提取待确认跟进','Suggesting a follow-up'],
   step_todo_add:['添加待办','Adding a to-do'], step_todo_list:['查看待办','Checking to-dos'], step_todo_done:['更新待办','Updating a to-do'], step_todo_remove:['删除待办','Removing a to-do'], step_show_card:['整理信息','Preparing a card'],
   step_web_fetch:['读取网页','Reading the web'], step_clerk_create:['设置提醒或任务','Scheduling'], step_clerk_list:['查看日程','Checking the schedule'], step_clerk_list_channels:['查看渠道','Checking channels'],
   step_clerk_delete:['删除日程','Removing a schedule'], step_clerk_update:['修改日程','Changing a schedule'], step_install_package:['安装软件包','Installing packages'],
@@ -1660,6 +1672,42 @@ const rowsOf = pairs => {
   for (const [label, value] of pairs) if (value) box.append(kv(label, value))
   return box
 }
+function followupCard(item) {
+  const c = el('div', 'card todo')
+  c.dataset.followup = item.id
+  const top = el('div', 'card-top')
+  const label = item.status === 'accepted' ? 'followupAccepted' : item.status === 'dismissed' ? 'followupDismissed' : 'followupAsk'
+  top.append(tile('list'), el('span', 'tag', t(label)))
+  c.append(top, el('div', 'what', item.title), rowsOf([
+    [t(item.captureId ? 'followupWeChat' : 'followupQuote'), item.quote],
+    [t('followupDue'), item.due ? item.due.replace('T', ' ') : t('followupNoDue')],
+  ]))
+  if (item.status !== 'pending') return c
+  const actions = el('div', 'actions')
+  const yes = el('button', 'btn primary', t('followupAccept'))
+  const no = el('button', 'btn', t('followupSkip'))
+  async function decide(accept) {
+    yes.disabled = no.disabled = true
+    try {
+      const r = await post('/api/clerk/suggestion/decide', { id: item.id, accept })
+      if (r.status !== 200) { toast(t(r.data.error === 'TOO_MANY_TODOS' ? 'followupFull' : 'followupError'), true); return }
+      updateFollowup(r.data.suggestion)
+      toast(t(r.data.suggestion.status === 'accepted' ? 'followupAccepted' : 'followupDismissed'))
+      await loadClerk()
+    } catch { toast(t('followupError'), true) }
+    finally { yes.disabled = no.disabled = false }
+  }
+  yes.onclick = () => decide(true)
+  no.onclick = () => decide(false)
+  actions.append(yes, no)
+  c.append(actions)
+  return c
+}
+function updateFollowup(item) {
+  document.querySelectorAll('[data-followup]').forEach(node => {
+    if (node.dataset.followup === item.id) node.replaceWith(followupCard(item))
+  })
+}
 function todoCard(todo, tz, created = false) {
   const c = el('div', 'card todo' + (todo.done ? ' finished' : '') + (created ? ' saved' : ''))
   const top = el('div', 'card-top')
@@ -1867,6 +1915,7 @@ function track(e) { // approvals and takeovers belong to every conversation, bec
 function render(e) {
   if (e.type === 'message') { stamp(e.at); message(e.role, e.text, e.files ?? []) }
   else if (e.type === 'step') step(e.name)
+  else if (e.type === 'followup') add(followupCard(e.suggestion), 'card')
   else if (e.type === 'feature_trial_started') notice(t('featureTrialStarted', e.title))
   else if (e.type === 'error') notice(/missing a thought_signature/i.test(e.text) ? t('modelFollowupFailed') : e.text, true)
   else if (e.type === 'notice') notice(t(e.code === 'BUDGET_NEAR' ? 'budgetNear' : e.code === 'EXTENSIONS_BROKEN' ? 'extensionsBroken' : 'budgetExceeded'), true)
@@ -2141,6 +2190,7 @@ function connect() {
       refreshBanner()
     }
     else if (e.type === 'conversations') refreshConvs()
+    else if (e.type === 'followup_decided') updateFollowup(e.suggestion)
     else if (e.type === 'clerk') loadClerk()
     else if (e.type === 'extensions') { if (currentView === 'settings') loadExtensions() }
     else if (e.type === 'features') loadFeatures()
@@ -2374,9 +2424,12 @@ $('iphoneInstall').onclick = async () => {
 $('iphoneRotate').onclick = () => { if(confirm(t('iphoneRotateAsk'))) iphoneCode(true).catch(e=>notice(e.message,true)) }
 function drawClerk() {
   const d = clerkData
+  const suggestions = d.suggestions ?? []
+  $('followupBox').hidden = !suggestions.length
+  $('followupList').replaceChildren(...suggestions.map(followupCard))
   $('iphoneReceipts').replaceChildren(...(d.captures || []).map(c=>{
     const row=el('p','hint')
-    row.textContent=t(c.status === 'done' ? 'iphoneDone' : c.status === 'review' ? 'iphoneReview' : 'iphonePending')+' · '+(c.titles?.join('、') || c.text)
+    row.textContent=t(({ done: 'iphoneDone', review: 'iphoneReview', suggested: 'followupHeading', dismissed: 'followupDismissed' })[c.status] || 'iphonePending')+' · '+(c.titles?.join('、') || c.text)
     if(c.status === 'review') {
       const retry=el('button','link',t('iphoneRetry'))
       retry.onclick=async()=>{ await post('/api/iphone/retry',{id:c.id});loadClerk() }
@@ -3038,6 +3091,7 @@ $('composer').onsubmit = async e => {
     const made = await post('/api/conversations')
     if (made.status !== 200) { restore(); notice(errText(made.data, made.status), true); return }
     activeCid = made.data.id
+    try { localStorage.setItem('bobbot.lastCid', activeCid) } catch { /* private mode */ }
   }
   const { status, data } = await post('/api/chat', { cid: activeCid, text, files })
   if (status === 200) { setLiveStatus(t('stateThink')); refreshConvs(); return }
