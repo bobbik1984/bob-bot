@@ -14,6 +14,9 @@ import (
 //go:embed web/*
 var web embed.FS
 
+// Set to the source archive digest for builds compiled on the target.
+var sourceBuild string
+
 type Host struct {
 	Authorized func(*http.Request) bool
 	Classic    http.HandlerFunc
@@ -40,7 +43,14 @@ func (a *App) Mount(m *http.ServeMux, host Host) {
 	m.HandleFunc("GET /life-calendar.mjs", file("calendar.mjs", "text/javascript; charset=utf-8"))
 	m.HandleFunc("GET /sw.js", file("sw.js", "text/javascript; charset=utf-8"))
 	m.HandleFunc("GET /life.webmanifest", file("manifest.json", "application/manifest+json"))
-	m.HandleFunc("GET /api/life/version", func(w http.ResponseWriter, r *http.Request) { reply(w, 200, map[string]string{"version": Version}) })
+	m.HandleFunc("GET /api/life/version", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		body := map[string]string{"version": Version}
+		if sourceBuild != "" {
+			body["build"] = sourceBuild
+		}
+		reply(w, 200, body)
+	})
 	route := func(pattern string, h func(http.ResponseWriter, *http.Request) error) {
 		m.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "private, no-store")

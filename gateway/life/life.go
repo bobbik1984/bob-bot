@@ -22,7 +22,7 @@ import (
 	"time"
 )
 
-const Version = "0.4.0-life.2"
+const Version = "0.4.0-life.3"
 
 type Item struct {
 	ID      string

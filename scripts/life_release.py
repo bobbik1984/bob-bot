@@ -34,8 +34,8 @@ python3 - "$pid" <<'PY'
 import sys
 from pathlib import Path
 env = dict(p.split(b'=',1) for p in (Path('/proc')/sys.argv[1]/'environ').read_bytes().split(b'\0') if b'=' in p)
-if not all(env.get(name) for name in (b'BOBBOT_PIN', b'BOBBOT_SECRET')):
-    sys.exit("The service needs its existing owner PIN and session secret explicitly configured before switching.")
+if not env.get(b"BOBBOT_PIN"):
+    sys.exit("Set the owner PIN on the existing service before switching.")
 PY
 live=$(readlink -f "/proc/$pid/exe")
 wd=$(systemctl show "$unit" -p WorkingDirectory --value)
@@ -67,9 +67,9 @@ trap 'exit 1' HUP INT TERM
 # Must already have working passwordless restart privileges before the switch.
 sudo -n -l systemctl restart "$unit" >/dev/null
 check(){
-  curl -fsS --max-time 8 "$1/api/life/version" | python3 -c 'import json,sys; assert json.load(sys.stdin)["version"]==sys.argv[1]' "$version" &&
+  curl -fsS --max-time 8 "$1/api/life/version" | python3 -c 'import json,sys; v=json.load(sys.stdin); sys.exit(0 if v.get("version")==sys.argv[1] and (not sys.argv[2] or v.get("build")==sys.argv[2]) else 1)' "$version" "${BOB_SOURCE_BUILD:-}" &&
   test "$(curl -sS --max-time 8 -o /dev/null -w '%{http_code}' "$1/api/life/items")" = 401 &&
-  curl -fsS --max-time 8 "$1/" | grep -q 'life-ui.js' &&
+  curl -fsS --max-time 8 "$1/" | grep 'life-ui.js' >/dev/null &&
   curl -fsS --max-time 8 "$1/life-calendar.mjs" >/dev/null
 }
 switched=1
@@ -79,6 +79,12 @@ ok=0
 for delay in 1 2 3 5; do sleep "$delay"; if check "http://127.0.0.1:$port"; then ok=1; break; fi; done
 test "$ok" = 1
 check "$public"
+if [ -n "${BOB_SOURCE_DIR:-}" ]; then
+    link_dir=$(mktemp -d "$wd/.life-sources/link.XXXXXXXX")
+    ln -s "$BOB_SOURCE_DIR" "$link_dir/current"
+    mv -Tf "$link_dir/current" "$wd/.life-sources/current"
+    rmdir "$link_dir"
+fi
 echo "Verified $version at $public (previous binary: $backup)"
 '''
 

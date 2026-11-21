@@ -41,3 +41,11 @@ func mountLife(mux *http.ServeMux) {
 	})
 	go app.Run(context.Background())
 }
+
+func lifeSessionSecret() string {
+	key, err := life.SessionSecret(filepath.Join("data", "life"))
+	if err != nil {
+		log.Fatalf("session key: %v", err)
+	}
+	return key
+}

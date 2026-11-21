@@ -11,7 +11,7 @@ import shutil
 import subprocess
 import tempfile
 
-VERSION = "0.4.0-life.2"
+VERSION = "0.4.0-life.3"
 
 
 def run(cmd, cwd=None, env=None, **opts):
@@ -20,6 +20,61 @@ def run(cmd, cwd=None, env=None, **opts):
 
 def git(repo, *args):
     return run(["git", "-C", str(repo), *args], stdout=subprocess.PIPE).stdout
+
+
+def stage_gateway(repo, ref, gw):
+    """Combine working gateway files with local Life edits, or with Life from a pinned Git ref."""
+    source=repo/"gateway"
+    gw.mkdir()
+    for name in ("main.go","features.go","go.mod"):
+        if not (source/name).is_file(): raise ValueError(f"Missing gateway/{name}")
+    for path in [*source.glob("*.go"),source/"go.mod",source/"go.sum"]:
+        if path.is_file() and path.name!="life_host.go":
+            if path.is_symlink() or not path.resolve().is_relative_to(source.resolve()): raise ValueError("Unexpected gateway source link")
+            shutil.copy2(path,gw/path.name)
+
+    public=source/"public"
+    for path in public.rglob("*"):
+        rel=path.relative_to(public)
+        if not path.is_file() or any(part.startswith(".") or part.lower() in {"data","credentials","node_modules"} for part in rel.parts): continue
+        if path.is_symlink() or not path.resolve().is_relative_to(public.resolve()): raise ValueError("Unexpected public asset link")
+        if path.suffix.lower() not in {".html",".css",".js",".mjs",".webmanifest",".png",".ico",".svg",".woff2"}: continue
+        dest=gw/"public"/rel
+        dest.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copy2(path,dest)
+    if not (gw/"public/index.html").is_file(): raise ValueError("Missing classic gateway UI")
+    inputs={p.relative_to(gw).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(gw.rglob("*")) if p.is_file()}
+    if ref:
+        names=git(repo,"ls-tree","-r","--name-only",ref,"--","gateway/life").decode("utf-8").splitlines()
+        for name in names:
+            dest=gw.parent/name
+            if not dest.resolve().is_relative_to(gw/"life"): raise ValueError("Unexpected Life source path")
+            dest.parent.mkdir(parents=True,exist_ok=True)
+            dest.write_bytes(git(repo,"show",f"{ref}:{name}"))
+        (gw/"life_host.go").write_bytes(git(repo,"show",ref+":scripts/life-host.go.in"))
+    else:
+        module=source/"life"
+        selected=[*module.glob("*.go"), module/"go.mod", module/"go.sum", module/"calendar.test.mjs",
+                  *[module/"web"/n for n in ("calendar.mjs","home.html","life.js","manifest.json","sw.js")]]
+        for path in selected:
+            if not path.is_file(): continue
+            if path.is_symlink() or not path.resolve().is_relative_to(source.resolve()): raise ValueError("Unexpected Life source link")
+            dest=gw/"life"/path.relative_to(module)
+            dest.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copy2(path,dest)
+        adapter=source/"life_host.go"
+        shutil.copy2(adapter if adapter.is_file() else repo/"scripts/life-host.go.in", gw/"life_host.go")
+    if not (gw/"life/go.mod").is_file(): raise ValueError("Missing Life module. Use the source bundle or the mobile-life branch with your working gateway files.")
+    entry=gw/"main.go"
+    code=entry.read_text(encoding="utf-8-sig")
+    anchor="mux := http.NewServeMux()"
+    if code.count(anchor)!=1: raise ValueError("Unrecognized gateway entry")
+    if "mountLife(mux)" not in code: code=code.replace(anchor,anchor+"\n\tmountLife(mux)")
+    for var, fallback in (("pin",'log.Fatal("Owner PIN is required")'),("secret","secret = lifeSessionSecret()")):
+        pattern=r'(if '+var+r' == "" \{\s*)'+var+r' = "[^"\n]*"'
+        code=re.sub(pattern,lambda m:m[1]+fallback,code)
+    entry.write_text(code,encoding="utf-8")
+    return inputs
 
 
 def main():
@@ -45,37 +100,8 @@ def main():
     with tempfile.TemporaryDirectory(prefix="bob-life-") as tmp:
         stage = Path(tmp)
         gw = stage / "gateway"
-        gw.mkdir()
-        # Stage the local working files, including the user's unpublished gateway work.
-        source = repo / "gateway"
-        for name in ("main.go", "features.go", "go.mod"):
-            shutil.copy2(source / name, gw / name)
-        for extra in source.glob("*.go"):
-            if extra.name not in ("main.go", "features.go", "life_host.go"):
-                shutil.copy2(extra, gw / extra.name)
-        if (source/"go.sum").exists():
-            shutil.copy2(source/"go.sum",gw/"go.sum")
-        shutil.copytree(source / "public", gw / "public")
-        input_hashes = {path.relative_to(gw).as_posix():hashlib.sha256(path.read_bytes()).hexdigest()
-                        for path in sorted(gw.rglob("*")) if path.is_file()}
-        for name in git(repo, "ls-tree", "-r", "--name-only", ref, "--", "gateway/life").decode("utf-8").splitlines():
-            target = stage / name
-            if not target.resolve().is_relative_to(gw / "life"):
-                raise ValueError("Unexpected path")
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(git(repo, "show", f"{ref}:{name}"))
-        (gw / "life_host.go").write_bytes(git(repo,"show",ref+":scripts/life-host.go.in"))
-        entry = gw / "main.go"
-        code = entry.read_text(encoding="utf-8-sig")
-        anchor = "mux := http.NewServeMux()"
-        if code.count(anchor) != 1 or "mountLife(mux)" in code:
-            raise ValueError("Unrecognized gateway entry; review integration first")
-        # The published gateway must use the service's configured credentials.
-        for var in ("pin", "secret"):
-            pattern = r'(if '+var+r' == "" \{\s*)'+var+r' = "[^"\n]*"'
-            code,n = re.subn(pattern,r'\g<1>log.Fatal("Owner sign-in settings are required")',code)
-            if n!=1: raise ValueError("Unrecognized gateway sign-in configuration")
-        entry.write_text(code.replace(anchor, anchor + "\n\tmountLife(mux)"), encoding="utf-8")
+        input_hashes=stage_gateway(repo,ref,gw)
+        entry=gw/"main.go"
         run(["go", "mod", "edit", "-require=bobbot/life@v0.0.0", "-replace=bobbot/life=./life"], cwd=gw)
         run(["go","test","./..."],cwd=gw/"life")
         run(["go","test","./..."],cwd=gw)
