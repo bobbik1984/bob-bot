@@ -18,10 +18,13 @@ prototype:
   status: live
   url: https://ry.bobbik.org
   repo: https://github.com/bobbik1984/bob-bot
-  runtime: Node 24.22.2 / Chrome 157 / Ubuntu 24.04
+  host: VPS3 Contabo (ssh contabo, 89.117.22.194, 4C/8G, Ubuntu 24.04)
+  runtime: Node 24.14.1 / Chromium snap / Python Office venv (~/bob-bot-venv) / Pure DSH
   services:
-    - bobbot.service (8787, compat api 3721)
-    - bobbot-wechat.service (official iLink bridge)
+    - bobbot.service (user systemd, 127.0.0.1:8787, compat api 3721)
+    - cloudflared.service (user systemd, tunnel -> ry.bobbik.org)
+  deploy_script: scripts/deploy-vps3.ps1
+  handoff: docs/HANDOFF.md
   updates: docs/UPDATES.md
 
 phases:

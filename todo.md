@@ -24,10 +24,19 @@
 - [x] 统一 OpenAI + Gemini 协议双核流式 SSE 推理
 - [x] 多供应商模型档案（DeepSeek/OpenAI/Anthropic/Gemini/OpenRouter/自定义）与设置页五组导航
 - [x] 对话内发布图表页（沙箱预览 + 打开链接）与审批「本任务内同类操作」放行
-- [x] Bob Life (`0.4.0-life.3`) 移动日程与日常模块上线，并通过 `scripts/deploy-gcp.py` 一键编译发布至 GCP
+- [x] Bob Life (`0.4.0-life.6`) 移动日程与 iOS PWA Web Push 上线，并通过 `scripts/deploy-gcp.ps1` 一键编译发布至 GCP
+- [x] `ry.bobbik.org` 迁移至 VPS3 Contabo（4C/8G）纯 DSH + Python Office venv + Chromium 架构，一键部署 `scripts/deploy-vps3.ps1`
+- [x] 阳光浅色 Muse UI + 自定义模型/思考强度选择器（5 模型清单：DeepSeek V4.1 / OpenAI Sol 6.2 / Astra 6.2 / Gemini 4 Hydrogen / Neon）
+- [x] 二进制 Office 文档上传、工作区自动放行、格式徽章卡片、`/api/workspace/preview` 屏内预览、实时进度胶囊与错误透传
+- [x] 所在城市服务端 SSOT（`clerk.json` + `GET /api/location` + `nowHeader()` + Widget SDK `bob.city`/`bob-location` + `plugin-host` `location` 透传）
+- [x] 横向滚动 Markdown 表格与 `show_card.table`（首列冻结 + 代码块/标题渲染）
+- [x] 修复 `dsh-llm-pi-ai` 自定义模型 `reasoningEfforts` 声明及非 OpenAI 端点 `compat.supportsStore/supportsDeveloperRole` 兼容问题
 
 ## 🔜 下一步（原型优先级）
 
+- [ ] 排查并修复 `header-right` 天气小组件未显示的问题（检查 VPS3 `~/bob-bot/data/features/` 与 `#slotHeader` 布局）
+- [ ] 端到端实测 OpenAI Sol 6.2 / Astra 6.2 与 Gemini 4 Hydrogen / Neon 各思考强度档位
+- [ ] 端到端验证 Office 产出文件（Excel/PDF/Word/PPT）生成 → 屏内预览 → 一键下载闭环
 - [ ] 用 3~5 个真实办公站点验证浏览器能力，记录风控与失败点
 - [ ] MCP 写入类工具纳入审批；API Key 按 AGENTS.md 用 AEAD 加密落盘
 - [ ] 微信消息排队、回复「同意/拒绝」完成审批
