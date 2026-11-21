@@ -307,12 +307,12 @@ const TOOLS = [
     name: { type: 'string', description: 'lowercase-with-dashes, stable id' },
     title: { type: 'string', description: 'Short human name' },
     description: { type: 'string' },
-    code: { type: 'string', description: 'Optional server code, an ES module: export default function setup(ctx) { ctx.registerTool({ name, description, inputSchema, handler: async args => text }); ctx.registerRoute({ method: "GET", path: "/today", handler: async ({ query, body }) => json }) }. ctx.storage.get/set keeps small data. It runs sandboxed: fetch works, files and commands do not.' },
+    code: { type: 'string', description: 'Optional server code, an ES module: export default function setup(ctx) { ctx.registerTool({ name, description, inputSchema, handler: async args => text }); ctx.registerRoute({ method: "GET", path: "/today", handler: async ({ query, body, location }) => json }) }. `location` is always `{ city, timezone }` from the user\'s live Settings — ALWAYS read `location.city` / `location.timezone` dynamically for weather, local time, or city-dependent features instead of hardcoding a city! ctx.storage.get/set keeps small data. It runs sandboxed: fetch works, files and commands do not.' },
     widgets: { type: 'array', description: 'Up to 4 small HTML pieces shown on the page, each in its own sandboxed frame', items: { type: 'object', properties: {
       id: { type: 'string', description: 'lowercase id' },
       anchor: { type: 'string', description: 'Where: header-right (top right of every page), home, clerk-top, settings-top, or a CSS id or class of an element on the page such as #feed' },
       place: { type: 'string', enum: ['end', 'start', 'before', 'after'], description: 'Inside the anchor at its end or start, or before or after it. Default end' },
-      html: { type: 'string', description: 'HTML with inline <style> and <script>. It cannot fetch by itself: use await bob.call("/today") to call this package\'s own routes. Also bob.resize(width, height), bob.prefill(text) to put text in the message box, bob.toast(text), bob.theme and bob.lang. The app\'s colours are CSS variables such as var(--text), var(--muted), var(--accent), var(--surface), already correct for light and dark; never set color-scheme or an opaque page background. KEEP WHAT YOU SHOW: bob.state holds what you last stored with bob.save(value) (any small JSON, null the first time, and it may come from an older version of your widget, so check its shape). Draw bob.state at once, then refresh in the background and bob.save the new value, so the widget never shows an empty placeholder like "-" while loading; with nothing saved yet, stay blank until the data arrives. Start when bob.ready is true or on the "bob-ready" event (it fires once; "bob-theme" fires when the theme changes).' },
+      html: { type: 'string', description: 'HTML with inline <style> and <script>. It cannot fetch by itself: use await bob.call("/today") to call this package\'s own routes. Also bob.resize(width, height), bob.prefill(text) to put text in the message box, bob.toast(text), bob.theme, bob.lang, bob.city and bob.timezone. The app\'s colours are CSS variables such as var(--text), var(--muted), var(--accent), var(--surface), already correct for light and dark; never set color-scheme or an opaque page background. KEEP WHAT YOU SHOW: bob.state holds what you last stored with bob.save(value) (any small JSON, null the first time, and it may come from an older version of your widget, so check its shape). Draw bob.state at once, then refresh in the background and bob.save the new value, so the widget never shows an empty placeholder like "-" while loading; with nothing saved yet, stay blank until the data arrives. Start when bob.ready is true or on the "bob-ready" event (it fires once; "bob-theme" fires when the theme changes; "bob-location" fires immediately whenever the user changes their city or timezone in Settings — listen to "bob-location" to re-fetch city-dependent data automatically!).' },
       width: { type: 'integer' }, height: { type: 'integer', description: 'Pixels. header-right is at most 160 by 40' },
     }, required: ['id', 'anchor', 'html'] } },
     css: { type: 'string', description: 'Optional styling for the app itself, plain CSS. It cannot reach approval cards.' },
@@ -593,7 +593,8 @@ const humanTime = ms => (ms === null || ms === undefined ? 'never' : formatLocal
 function nowHeader() {
   const now = Date.now()
   const day = new Intl.DateTimeFormat('en-US', { timeZone: clerk.timezone, weekday: 'long' }).format(now)
-  return `[Current time: ${humanTime(now)}, ${day}. The user's time zone: ${clerk.timezone}.]`
+  const cityPart = clerk.city ? ` The user's city: ${clerk.city}.` : ''
+  return `[Current time: ${humanTime(now)}, ${day}.${cityPart} The user's time zone: ${clerk.timezone}.]`
 }
 
 function jobLine(job) {
@@ -1032,7 +1033,7 @@ function inboxCid(entry) {
 
 function clerkView() {
   return {
-    timezone: clerk.timezone, timezoneChosen: clerk.timezoneChosen, busy: Boolean(runningCid),
+    timezone: clerk.timezone, timezoneChosen: clerk.timezoneChosen, city: clerk.city, busy: Boolean(runningCid),
     jobs: clerk.jobs.filter(j => !j.todoId).map(jobView), todos: clerk.todos,
     inbox: clerk.inbox.map(entry => ({ ...entry, cid: inboxCid(entry) })),
     channels: clerk.channels.map(publicChannel), unread: clerk.unread(),
@@ -1551,14 +1552,19 @@ const frameSdk = theme => `(() => {
     if (e.source !== parent || !m) return
     if (m.bob === 'result') { const w = waiting.get(m.id); if (!w) return; waiting.delete(m.id); m.ok ? w.resolve(m.data) : w.reject(new Error(m.error || 'failed')) }
     if (m.bob === 'init') {
-      bob.theme = m.theme; bob.lang = m.lang; root.lang = m.lang; setScheme(m.theme)
+      const locChanged = started && (m.city !== bob.city || m.timezone !== bob.timezone)
+      const themeChanged = started && m.theme !== bob.theme
+      bob.theme = m.theme; bob.lang = m.lang; bob.city = m.city ?? ''; bob.timezone = m.timezone ?? ''; root.lang = m.lang; setScheme(m.theme)
       for (const [k, v] of Object.entries(m.vars || {})) root.style.setProperty(k, v)
       if (!started) { started = true; bob.ready = true; bob.state = m.state ?? null; dispatchEvent(new Event('bob-ready')) }
-      else dispatchEvent(new Event('bob-theme'))
+      else {
+        if (themeChanged) dispatchEvent(new Event('bob-theme'))
+        if (locChanged) dispatchEvent(new Event('bob-location'))
+      }
     }
   })
   window.bob = {
-    ready: false, state: null, theme: ${JSON.stringify(theme)}, lang: 'zh',
+    ready: false, state: null, theme: ${JSON.stringify(theme)}, lang: 'zh', city: '', timezone: '',
     call: (path, body) => new Promise((resolve, reject) => { const id = ++seq; waiting.set(id, { resolve, reject }); send({ bob: 'call', id, path, body }); setTimeout(() => { if (waiting.delete(id)) reject(new Error('timeout')) }, 20000) }),
     save: value => send({ bob: 'save', value }),
     resize: (width, height) => send({ bob: 'resize', width, height }),
@@ -2030,8 +2036,15 @@ async function route(req, res) {
     if (!features.hasRoute(featureName, req.method, subpath)) return send(res, 404, { error: 'NO_FEATURE_ROUTE' })
     const body = req.method === 'GET' ? null : JSON.parse(await readBody(req) || '{}')
     try {
-      return send(res, 200, await features.callRoute(featureName, req.method, subpath, { query: Object.fromEntries(new URL(req.url, 'http://local').searchParams), body }))
+      return send(res, 200, await features.callRoute(featureName, req.method, subpath, {
+        query: Object.fromEntries(new URL(req.url, 'http://local').searchParams),
+        body,
+        location: { city: clerk.city, timezone: clerk.timezone },
+      }))
     } catch (error) { return send(res, 502, { error: 'FEATURE_FAILED', message: error.message }) }
+  }
+  if (req.method === 'GET' && pathname === '/api/location') {
+    return send(res, 200, { city: clerk.city, timezone: clerk.timezone })
   }
   if (req.method === 'POST' && pathname === '/api/logout') {
     return send(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(req, '', 0) })
@@ -2418,9 +2431,9 @@ async function route(req, res) {
       }
     }
     case '/api/clerk/timezone': {
-      try { clerk.setTimezone(String(body.timezone ?? '')) } catch { return send(res, 400, { error: 'BAD_TIMEZONE' }) }
+      try { clerk.setTimezone(String(body.timezone ?? ''), body.city !== undefined ? String(body.city ?? '') : undefined) } catch { return send(res, 400, { error: 'BAD_TIMEZONE' }) }
       broadcast({ type: 'clerk' })
-      return send(res, 200, { ok: true, timezone: clerk.timezone })
+      return send(res, 200, { ok: true, timezone: clerk.timezone, city: clerk.city })
     }
     case '/api/clerk/todo/toggle': {
       if (!clerk.todo(body.id)) return send(res, 404, { error: 'NO_TODO' })

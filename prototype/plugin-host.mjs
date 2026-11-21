@@ -64,7 +64,7 @@ async function handle(msg) {
   }
   if (msg.op === 'route') {
     const handler = entry.routes.get(`${msg.method} ${msg.path}`) ?? fail('No such route.')
-    return (await handler({ query: new URLSearchParams(msg.query ?? {}), body: msg.body ?? null })) ?? { ok: true }
+    return (await handler({ query: new URLSearchParams(msg.query ?? {}), body: msg.body ?? null, location: msg.location ?? { city: '', timezone: '' } })) ?? { ok: true }
   }
   return fail('Unknown request.')
 }

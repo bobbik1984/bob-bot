@@ -2231,6 +2231,8 @@ function channelRow(ch) {
   row.append(top, el('div', 'ch-meta', `${t('ch_' + ch.type)} · ${ch.hint}${ch.signed ? ' · ' + t('signed') : ''}`), actions)
   return row
 }
+let currentCity = (() => { try { return localStorage.getItem('bobbot.city') || '' } catch { return '' } })()
+let currentTimezone = ''
 function drawClerk() {
   const d = clerkData
   const drafts = d.drafts ?? []
@@ -2249,9 +2251,15 @@ function drawClerk() {
   $('inboxHead').hidden = d.inbox.length === 0
   $('markRead').hidden = d.unread === 0
   $('channelList').replaceChildren(...d.channels.map(channelRow))
+  const serverCity = (d.city || '').trim()
+  const savedCity = serverCity || localStorage.getItem('bobbot.city') || ''
+  if (serverCity) { try { localStorage.setItem('bobbot.city', serverCity) } catch {} }
+  const matched = savedCity && (!d.timezone || resolveCityTimezone(savedCity) === d.timezone) ? savedCity : (TZ_TO_CITY[d.timezone] ?? d.timezone)
+  const locChanged = (currentCity !== matched) || (currentTimezone !== (d.timezone || ''))
+  currentCity = matched || ''
+  currentTimezone = d.timezone || ''
+  if (locChanged) syncFrames()
   if (document.activeElement !== $('zone')) {
-    const savedCity = localStorage.getItem('bobbot.city')
-    const matched = savedCity && resolveCityTimezone(savedCity) === d.timezone ? savedCity : (TZ_TO_CITY[d.timezone] ?? d.timezone)
     $('zone').value = matched
     $('zoneResolved').textContent = d.timezone ? t('zoneMatched', d.timezone) : ''
   }
@@ -2356,7 +2364,10 @@ function widgetState(frame) {
 }
 function frameInit(frame) {
   const style = getComputedStyle(document.documentElement)
-  return { bob: 'init', theme: frameTheme(), lang, state: widgetState(frame), vars: Object.fromEntries(FRAME_VARS.map(v => [v, style.getPropertyValue(v).trim()])) }
+  return { bob: 'init', theme: frameTheme(), lang, city: currentCity, timezone: currentTimezone, state: widgetState(frame), vars: Object.fromEntries(FRAME_VARS.map(v => [v, style.getPropertyValue(v).trim()])) }
+}
+function syncFrames() {
+  document.querySelectorAll('.plugin-widget, #fpFrame').forEach(frame => frame.contentWindow?.postMessage(frameInit(frame), '*'))
 }
 function sizeWidget(frame, width, height) {
   const inHeader = frame.dataset.anchor === 'header-right'
@@ -2392,7 +2403,7 @@ function mountFeatures(items) {
   }
 }
 // When the theme changes, by the owner's choice or because the phone switched, every open frame follows at once.
-new MutationObserver(() => document.querySelectorAll('.plugin-widget, #fpFrame').forEach(frame => frame.contentWindow?.postMessage(frameInit(frame), '*')))
+new MutationObserver(syncFrames)
   .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
 // A frame has no login of its own. It asks the page, and the page only ever calls that feature's own routes.
 addEventListener('message', async e => {
@@ -2686,9 +2697,12 @@ $('saveZone').onclick = async () => {
   const raw = $('zone').value.trim()
   const tz = resolveCityTimezone(raw)
   if (!tz) { $('zoneMsg').textContent = t('zoneUnknownCity'); return }
-  const { status, data } = await post('/api/clerk/timezone', { timezone: tz })
+  const { status, data } = await post('/api/clerk/timezone', { timezone: tz, city: raw })
   if (status === 200) {
     localStorage.setItem('bobbot.city', raw)
+    currentCity = raw
+    currentTimezone = tz
+    syncFrames()
     $('zoneResolved').textContent = t('zoneMatched', tz)
     $('zoneMsg').textContent = `${t('saved')} (${tz})`
   } else $('zoneMsg').textContent = errText(data, status)

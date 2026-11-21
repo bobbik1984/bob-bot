@@ -127,8 +127,8 @@ export class Features {
     return Boolean(this.items.get(name)?.routes.some(r => r.method === method && r.path === subpath))
   }
 
-  callRoute(name, method, subpath, { query = {}, body = null } = {}) {
-    return this.#call({ op: 'route', name, method, path: subpath, query, body })
+  callRoute(name, method, subpath, { query = {}, body = null, location = null } = {}) {
+    return this.#call({ op: 'route', name, method, path: subpath, query, body, location })
   }
 
   /** The text of a file a frame or the page may load: the panel, a widget, or the styling. */

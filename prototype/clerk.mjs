@@ -113,6 +113,7 @@ export class Clerk {
     try { saved = JSON.parse(fs.readFileSync(this.file, 'utf8')) } catch { /* first run */ }
     this.timezone = validTimezone(saved.timezone) ? saved.timezone : serverTimezone
     this.timezoneChosen = Boolean(saved.timezoneChosen)
+    this.city = typeof saved.city === 'string' ? saved.city.trim().slice(0, 40) : ''
     this.jobs = saved.jobs ?? []
     this.todos = saved.todos ?? []
     this.channels = saved.channels ?? []
@@ -122,15 +123,16 @@ export class Clerk {
   }
 
   #save() {
-    writeAtomic(this.file, JSON.stringify({ timezone: this.timezone, timezoneChosen: this.timezoneChosen, jobs: this.jobs, todos: this.todos, channels: this.channels }))
+    writeAtomic(this.file, JSON.stringify({ timezone: this.timezone, timezoneChosen: this.timezoneChosen, city: this.city, jobs: this.jobs, todos: this.todos, channels: this.channels }))
   }
 
   #saveInbox() { writeAtomic(this.inboxFile, JSON.stringify(this.inbox.slice(0, MAX_INBOX))) }
 
-  setTimezone(tz) {
+  setTimezone(tz, city) {
     if (!validTimezone(tz)) throw fail('BAD_TIMEZONE')
     this.timezone = tz
     this.timezoneChosen = true
+    if (city !== undefined) this.city = String(city ?? '').trim().slice(0, 40)
     const now = Date.now()
     for (const job of this.jobs) if (job.enabled) job.nextRun = nextRun(job.schedule, tz, now)
     this.#save()
