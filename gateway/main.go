@@ -605,7 +605,7 @@ func handleState(w http.ResponseWriter, r *http.Request) {
 			"exceeded": cfg.BudgetCapUsd > 0 && cfg.BudgetSpentUsd >= cfg.BudgetCapUsd,
 		}
 		resp["unread"] = 0
-		resp["build"] = map[string]string{"version": "0.4.0-go", "commit": "go-unify", "at": "2026-11-19"}
+		resp["build"] = map[string]string{"version": life.Version}
 		cfgLock.RUnlock()
 	}
 	jsonResp(w, 200, resp)
@@ -614,7 +614,7 @@ func handleState(w http.ResponseWriter, r *http.Request) {
 func handleVersion(w http.ResponseWriter, r *http.Request) {
 	jsonResp(w, 200, map[string]string{
 		"name":     "bobbot",
-		"version":  "0.3.0-go",
+		"version":  life.Version,
 		"engine":   "Multi-Provider Go Native Gateway",
 		"provider": cfg.ActiveProvider,
 		"model":    cfg.ActiveModel,

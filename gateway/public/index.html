@@ -343,7 +343,8 @@ select.field { appearance:none; background-image:linear-gradient(45deg,transpare
 #composer { display:flex; flex-direction:column; flex:none; margin:6px 12px 8px; padding:5px 5px 5px 6px; background:var(--surface); border:1px solid var(--line); border-radius:26px; box-shadow:var(--shadow); transition:border-color .15s, box-shadow .15s; }
 #composer .input-row { display:flex; align-items:flex-end; gap:4px; }
 #composer textarea { font-size:16px; flex:1; min-width:0; border:0; background:none; resize:none; height:42px; max-height:160px; padding:10px 2px; line-height:22px; outline:0; }
-#composer:focus-within { border-color:var(--accent); box-shadow:var(--shadow), 0 0 0 3px var(--accent-soft); }
+#composer:has(textarea:focus) { border-color:var(--accent); box-shadow:var(--shadow), 0 0 0 3px var(--accent-soft); }
+#chatModel[data-pointer]:focus { outline:none; }
 #composer .send { width:42px; height:42px; border-radius:50%; background:var(--accent); color:var(--accent-text); display:inline-flex; align-items:center; justify-content:center; flex:none; transition:background-color .15s, color .15s, transform .12s var(--ease); }
 #composer .send:active { transform:scale(.94); }
 #composer.empty .send { background:var(--surface-3); color:var(--muted); }
@@ -2618,8 +2619,8 @@ const PRESET_PROVIDERS = {
     name: { zh: 'DeepSeek (V4.1 Flash / V4 Pro)', en: 'DeepSeek (V4.1 Flash / V4 Pro)' },
     baseUrl: 'https://api.deepseek.com/v1',
     models: [
-      { id: 'deepseek-flash', zh: 'deepseek-flash (推荐 · V4.1-Flash 默认主力)', en: 'deepseek-flash (Recommended · V4.1-Flash)' },
-      { id: 'deepseek-v4-pro', zh: 'deepseek-v4-pro (V4 Pro 旗舰推理)', en: 'deepseek-v4-pro (V4 Pro Flagship Reasoning)' }
+      { id: 'deepseek-flash', label: 'DeepSeek V4.1 Flash · 1017' },
+      { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro · 0813' }
     ],
     defaultModel: 'deepseek-flash',
     placeholder: 'sk-... (DeepSeek API Key)'
@@ -2686,6 +2687,9 @@ const PRESET_PROVIDERS = {
 function providerName(id) {
   return PRESET_PROVIDERS[id]?.name?.[lang]?.split(' (')[0] || id.replace(/^custom:/, '')
 }
+function modelName(provider, id) {
+  return PRESET_PROVIDERS[provider]?.models.find(m => m.id === id)?.label || id
+}
 function drawChatModels() {
   const select = $('chatModel')
   select.replaceChildren()
@@ -2695,15 +2699,19 @@ function drawChatModels() {
     group.label = providerName(provider)
     const models = new Set([profile.model, ...(PRESET_PROVIDERS[provider]?.models || []).map(m => m.id)])
     for (const model of models) {
-      if (model) group.append(new Option(model, JSON.stringify([provider,model])))
+      if (model) group.append(new Option(modelName(provider, model), JSON.stringify([provider,model])))
     }
     select.append(group)
   }
   select.add(new Option(t('manageModels'), '@manage'))
   select.value = JSON.stringify([appState.provider,appState.model])
 }
-$('chatModel').onchange = async e => {
+const chatModel = $('chatModel')
+chatModel.onpointerdown = () => { chatModel.dataset.pointer = '' }
+chatModel.onkeydown = chatModel.onblur = () => { delete chatModel.dataset.pointer }
+chatModel.onchange = async e => {
   const select = e.currentTarget
+  select.blur()
   if (select.value === '@manage') { drawChatModels(); show('settings'); return }
   const [provider,model] = JSON.parse(select.value)
   select.disabled = true
@@ -2747,9 +2755,7 @@ let isManualModel = false
 
 function showBuild(s) {
   const b = s?.build
-  if (!b?.commit) return
-  const commit = b.commit === 'dev' ? 'dev' : b.commit.slice(0, 7)
-  $('buildInfo').textContent = t('build') + ' ' + commit + (b.at ? ' · ' + b.at : '')
+  if (b?.version) $('buildInfo').textContent = t('build') + ' ' + b.version
 }
 
 function syncProviderUI(keepEndpoint) {
@@ -2763,7 +2769,7 @@ function syncProviderUI(keepEndpoint) {
   const sel = $('modelSel')
   sel.textContent = ''
   for (const m of preset.models) {
-    sel.append(new Option(m.id, m.id))
+    sel.append(new Option(m.label || m.id, m.id))
   }
   
   if (preset.models.length > 0) {
@@ -2809,7 +2815,9 @@ async function loadModelCard() {
   drawChatModels()
   $('providerName').hidden = true
   const activeP = appState.provider || 'gemini'
-  $('activeModel').textContent = t('currentModel') + ' · ' + providerName(activeP) + ' · ' + appState.model
+  const name = modelName(activeP, appState.model)
+  const description = name === appState.model ? providerName(activeP) + ' · ' + name : name
+  $('activeModel').textContent = t('currentModel') + ' · ' + description
   $('endpointGroup').open = activeP === 'custom' || !Object.hasOwn(PRESET_PROVIDERS,activeP)
   $('providerSel').value = activeP
   syncProviderUI(true)
