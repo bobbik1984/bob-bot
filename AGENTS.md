@@ -49,6 +49,15 @@
 3. **无 SSH 权限的云端沙盒 Agent 边界**：
    - 若当前 Agent 无法直连 `ssh gcp`，不得伪造部署成功；应把代码提交到 GitHub 后，提示用户在本地终端（或由本地 Agent）执行 `.\scripts\deploy-gcp.ps1` 完成上线。
 
+## 5. VPS3 完全体全能办公版 (`ry.bobbik.org`) 部署规范
+
+1. **定位与运行环境**：
+   - 托管在 **VPS3 (`contabo`, 4C/8G)** 的 `/home/ubuntu/bob-bot/`，运行完整版 `prototype/`（Node 24 + `@deepseek-ai/dsh` + Chromium `/snap/bin/chromium` + Python 文稿虚拟环境 `/home/ubuntu/bob-bot-venv`），支持 PDF/Excel/Word/PPT/HTML 二进制上传（落盘至 `data/workspace/uploads/`）与鉴权预览/下载（`/api/workspace/file?path=...`）。
+   - 用户态常驻服务：`systemctl --user status bobbot`（监听 `127.0.0.1:8787`）+ `systemctl --user status cloudflared`（隧道 `4ab19cdb-9e5c-49f9-90f6-2b5ff011cef9` 映射 `https://ry.bobbik.org`）。
+2. **标准一键发布**：
+   - 修改 `prototype/` 后，在仓库根目录直接运行：`.\scripts\deploy-vps3.ps1`（如改动了 `package.json` 依赖，追加 `-NpmInstall`）。
+   - 脚本会自动保留远端 `data/`、更新内置 `office-docs` 技能、重启用户态 `bobbot.service` 并校验 `https://ry.bobbik.org/` 返回 HTTP 200。
+
 4. **RY 独立实例**：使用同一份 `gateway/` 源码和 [release-ry.json](release-ry.json)。运行 `python -X utf8 scripts/deploy-gcp.py deploy --target release-ry.json` 发布至 RY。原位保留该用户的 PIN 配置和整个 `data/`。
 
 ## 5. PWA 身份与推送升级契约

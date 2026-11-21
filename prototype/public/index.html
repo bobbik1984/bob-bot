@@ -731,7 +731,7 @@ nav button.on span:first-child { background:var(--accent-soft); }
       <iframe id="fpFrame" title="feature" sandbox="allow-scripts allow-forms" src="about:blank"></iframe>
     </div>
   </div>
-  <input type="file" id="filePick" multiple hidden accept=".txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.log,.xml,.html,.htm,.yaml,.yml,.ini,.sql,text/*">
+  <input type="file" id="filePick" multiple hidden accept=".pdf,.xlsx,.xls,.docx,.doc,.pptx,.ppt,.csv,.tsv,.txt,.md,.markdown,.json,.jsonl,.log,.xml,.html,.htm,.yaml,.yml,.ini,.sql,.png,.jpg,.jpeg,.webp,.zip,text/*">
   <nav>
     <button class="on" data-view="chat"><span data-i="chat"></span><span data-t="tabChat"></span></button>
     <button data-view="clerk"><span data-i="clock"></span><span data-t="tabClerk"></span><span class="badge" id="badge" hidden></span></button>
@@ -944,9 +944,9 @@ const I18N = {
   desktopSite:['电脑版网页','Desktop site'], mobileSite:['手机版网页','Mobile site'], fit:['还原缩放','Reset zoom'],
   handBack:['我已处理好，交还给 Bob','Done, hand back to Bob'],
   attach:['添加附件','Attach file'],
-  fileUnsupported:['暂只支持文本类文件（txt、md、csv、json 等）：{n}','Text files only for now (txt, md, csv, json…): {n}'],
-  fileBig:['文件太大（单个上限约 200KB）：{n}','File too large (about 200KB each): {n}'], fileBinary:['无法读取为文本：{n}','Cannot read as text: {n}'],
-  filesMany:['最多添加 5 个文件','At most 5 files'], filesTotal:['附件总量过大（合计上限约 500KB）','Attachments are too large in total (about 500KB)'],
+  fileUnsupported:['不支持的文件类型（支持 PDF、Excel、Word、PPT、HTML、CSV、文本及图片）：{n}','Unsupported file type (supports PDF, Excel, Word, PPT, HTML, CSV, text, and images): {n}'],
+  fileBig:['文件太大（文本上限 200KB，办公/二进制文档上限 15MB）：{n}','File too large (200KB text / 15MB Office & PDF): {n}'], fileBinary:['无法读取该文件：{n}','Cannot read file: {n}'],
+  filesMany:['最多添加 5 个文件','At most 5 files'], filesTotal:['附件总量过大（文本上限 500KB，办公/二进制文档上限 25MB）','Attachments are too large in total (500KB text / 25MB binary)'],
   err_TOO_MANY_MCP:['工具服务器数量已达上限（10 个）','Too many tool servers (at most 10)'], err_TOO_MANY_SKILLS:['技能数量已达上限（50 个）','Too many skills (at most 50)'],
   extensionsBroken:['有一个扩展没能启动，已临时停用所有扩展，Bob 仍在正常工作。可在设置里移除有问题的扩展。','An extension failed to start, so all extensions were turned off for now. Bob keeps working; remove the broken one in Settings.'],
   err_UNKNOWN_MODEL:['不支持这个模型','Unknown model'], err_BAD_MODEL:['模型名称无效','Invalid model name'], err_BAD_PRICE:['价格无效','Invalid price'],
@@ -2528,11 +2528,13 @@ async function loadExtensions() {
   $('extEmpty').hidden = data.mcp.length + data.skills.length > 0
 }
 
-// ---- attachments (text files) ----
+// ---- attachments (text & binary office/media files) ----
 const MAX_FILES = 5, MAX_FILE_CHARS = 200000, MAX_TOTAL_CHARS = 500000
+const MAX_BINARY_BYTES = 15 * 1024 * 1024, MAX_TOTAL_BINARY_BYTES = 25 * 1024 * 1024
 const TEXT_NAME = /\.(txt|md|markdown|csv|tsv|json|jsonl|log|xml|html?|ya?ml|ini|sql)$/i
+const BINARY_NAME = /\.(pdf|xlsx?|docx?|pptx?|png|jpe?g|webp|zip)$/i
 let attachments = []
-const kb = n => (n < 1024 ? n + ' B' : Math.round(n / 1024) + ' KB')
+const kb = n => (n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1) + ' MB')
 function drawAttachments() {
   $('composer').classList.toggle('empty', !$('text').value.trim() && !attachments.length)
   const row = $('attachRow')
@@ -2543,8 +2545,16 @@ function drawAttachments() {
     chip.insertAdjacentHTML('afterbegin', icon('file'))
     const x = el('button'); x.type = 'button'; x.title = t('remove'); x.setAttribute('aria-label', t('remove')); x.innerHTML = icon('cross')
     x.onclick = () => { attachments.splice(i, 1); drawAttachments() }
-    chip.append(el('span', 'n', f.name), el('small', '', kb(f.text.length)), x)
+    chip.append(el('span', 'n', f.name), el('small', '', kb(f.bytes ?? f.text?.length ?? 0)), x)
     row.append(chip)
+  })
+}
+async function readBase64(file) {
+  return await new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(String(r.result || '').replace(/^data:[^;]*;base64,/, ''))
+    r.onerror = () => reject(r.error)
+    r.readAsDataURL(file)
   })
 }
 async function readText(file) {
@@ -2589,13 +2599,23 @@ $('filePick').onchange = async () => {
   $('filePick').value = ''
   for (const file of picked) {
     if (attachments.length >= MAX_FILES) { notice(t('filesMany'), true); break }
+    if (BINARY_NAME.test(file.name)) {
+      if (file.size > MAX_BINARY_BYTES) { notice(t('fileBig', file.name), true); continue }
+      const usedBin = attachments.reduce((n, f) => n + (f.dataBase64 ? (f.bytes ?? 0) : 0), 0)
+      if (usedBin + file.size > MAX_TOTAL_BINARY_BYTES) { notice(t('filesTotal'), true); continue }
+      try {
+        const dataBase64 = await readBase64(file)
+        attachments.push({ name: file.name, dataBase64, bytes: file.size })
+      } catch { notice(t('fileBinary', file.name), true) }
+      continue
+    }
     if (!TEXT_NAME.test(file.name) && !file.type.startsWith('text/')) { notice(t('fileUnsupported', file.name), true); continue }
     if (file.size > MAX_FILE_CHARS * 4) { notice(t('fileBig', file.name), true); continue }
     const text = await readText(file)
     if (text === null) { notice(t('fileBinary', file.name), true); continue }
     if (text.length > MAX_FILE_CHARS) { notice(t('fileBig', file.name), true); continue }
-    if (attachments.reduce((n, f) => n + f.text.length, 0) + text.length > MAX_TOTAL_CHARS) { notice(t('filesTotal'), true); continue }
-    attachments.push({ name: file.name, text })
+    if (attachments.reduce((n, f) => n + (f.text?.length ?? 0), 0) + text.length > MAX_TOTAL_CHARS) { notice(t('filesTotal'), true); continue }
+    attachments.push({ name: file.name, text, bytes: text.length })
   }
   drawAttachments()
 }
