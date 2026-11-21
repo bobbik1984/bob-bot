@@ -1635,15 +1635,26 @@ async function ensureAgent(cfg, apiKey) {
   let providerPatch = null
   if (!direct) {
     providerPatch = path.join(DATA_DIR, 'provider.patch.yml')
-    const isGoogle = (cfg.api || '') === 'google-generative-ai'
+    const api = cfg.api || 'openai-completions'
+    const baseUrl = cfg.baseUrl || ''
+    const isGoogle = cfg.kind === 'google' || /generativelanguage\.googleapis\.com/i.test(baseUrl)
+    const isNativeGoogle = api === 'google-generative-ai'
+    const isNonOpenAiCompletions = api === 'openai-completions' && !/^https:\/\/api\.openai\.com(\/|$)/i.test(baseUrl)
+    const compatLines = isNonOpenAiCompletions
+      ? [
+          '            compat:',
+          '              supportsStore: false',
+          '              supportsDeveloperRole: false',
+        ]
+      : []
     const effortLines = piEffort && piEffort !== 'off'
       ? [
           '                reasoningEfforts:',
           '                  off: null',
-          `                  low: ${isGoogle ? 'LOW' : 'low'}`,
-          `                  medium: ${isGoogle ? 'MEDIUM' : 'medium'}`,
-          `                  high: ${isGoogle ? 'HIGH' : 'high'}`,
-          `                  xhigh: ${isGoogle ? 'HIGH' : 'xhigh'}`,
+          `                  low: ${isNativeGoogle ? 'LOW' : 'low'}`,
+          `                  medium: ${isNativeGoogle ? 'MEDIUM' : 'medium'}`,
+          `                  high: ${isNativeGoogle ? 'HIGH' : 'high'}`,
+          `                  xhigh: ${isNativeGoogle ? 'HIGH' : (isGoogle ? 'high' : 'xhigh')}`,
         ]
       : []
     const yaml = [
@@ -1654,9 +1665,10 @@ async function ensureAgent(cfg, apiKey) {
       '        providers:',
       '          bob:',
       `            displayName: ${JSON.stringify(cfg.name || 'Model')}`,
-      `            api: ${JSON.stringify(cfg.api || 'openai-completions')}`,
-      `            baseURL: ${JSON.stringify(cfg.baseUrl || '')}`,
+      `            api: ${JSON.stringify(api)}`,
+      `            baseURL: ${JSON.stringify(baseUrl)}`,
       '            apiKeyEnv: BOBBOT_PROVIDER_KEY',
+      ...compatLines,
       ...(piEffort && piEffort !== 'off' ? [`            reasoning: ${JSON.stringify(piEffort)}`] : []),
       `            defaultContextWindow: ${Number(cfg.contextWindow) || 1000000}`,
       `            defaultMaxTokens: ${Number(cfg.maxTokens) || 8192}`,
