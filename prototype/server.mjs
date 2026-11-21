@@ -2070,6 +2070,34 @@ async function route(req, res) {
     if (!convOf(id)) return send(res, 404, { error: 'NO_CONVERSATION' })
     return send(res, 200, { id, events: historyOf(id) })
   }
+  if (req.method === 'GET' && pathname === '/api/workspace/preview') {
+    const q = new URL(req.url, 'http://localhost').searchParams
+    const rel = String(q.get('path') ?? '').trim()
+    if (!rel) return send(res, 400, { error: 'MISSING_PATH' })
+    const where = host.classify(rel)
+    if (where.blocked || !where.inWorkspace) return send(res, 403, { error: 'FORBIDDEN' })
+    let stat
+    try { stat = fs.statSync(where.path) } catch { return send(res, 404, { error: 'NOT_FOUND' }) }
+    if (!stat.isFile()) return send(res, 404, { error: 'NOT_FOUND' })
+    const ext = path.extname(where.path).toLowerCase()
+    if (['.pdf', '.html', '.htm', '.png', '.jpg', '.jpeg', '.webp', '.svg'].includes(ext)) {
+      res.writeHead(302, { Location: `/api/workspace/file?path=${encodeURIComponent(rel)}` })
+      res.end()
+      return
+    }
+    const r = spawnSync('python3', [path.join(here, 'preview_render.py'), where.path], { timeout: 15000, maxBuffer: 8 * 1024 * 1024 })
+    if (r.status !== 0 || !r.stdout?.length) {
+      return send(res, 500, { error: 'PREVIEW_FAILED', detail: String(r.stderr || '').slice(0, 300) })
+    }
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:",
+    })
+    res.end(r.stdout)
+    return
+  }
   if (req.method === 'GET' && pathname === '/api/workspace/file') {
     const q = new URL(req.url, 'http://localhost').searchParams
     const rel = String(q.get('path') ?? '').trim()

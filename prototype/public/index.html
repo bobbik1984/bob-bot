@@ -381,6 +381,26 @@ select.field { appearance:none; background-image:linear-gradient(45deg,transpare
 .md a.file-dl-link { display:inline-flex; align-items:center; gap:6px; margin:4px 4px 4px 0; padding:6px 12px; border-radius:12px; background:var(--accent-soft); color:var(--accent-ink); border:1px solid var(--line); font-weight:600; font-size:13.5px; text-decoration:none; transition:background-color .15s var(--ease), border-color .15s var(--ease); }
 .md a.file-dl-link:hover { border-color:var(--accent); }
 .md a.md-link { color:var(--accent-ink); text-decoration:underline; text-underline-offset:2px; }
+.file-card { display:flex; align-items:center; gap:10px; margin:8px 0; padding:10px 12px; border-radius:14px; background:var(--surface); border:1px solid var(--line); box-shadow:var(--shadow-1); max-width:100%; }
+.file-badge { display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:10px; font-size:11px; font-weight:800; letter-spacing:.02em; flex:none; }
+.file-badge.mini { width:26px; height:20px; border-radius:6px; font-size:9.5px; }
+.file-badge.xls { background:var(--ok-soft); color:var(--ok); }
+.file-badge.pdf { background:var(--danger-soft); color:var(--danger); }
+.file-badge.doc { background:var(--accent-soft); color:var(--accent-ink); }
+.file-badge.ppt { background:var(--warn-soft); color:var(--warn); }
+.file-badge.html { background:var(--accent-soft); color:var(--accent); }
+.file-badge.img { background:var(--ok-soft); color:var(--ok); }
+.file-badge.txt { background:var(--surface-2); color:var(--muted); }
+.file-card-info { flex:1; min-width:0; display:flex; flex-direction:column; }
+.file-card-name { font-size:13.5px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.file-card-meta { font-size:11.5px; color:var(--muted); }
+.file-card-acts { display:flex; gap:6px; flex:none; }
+.file-card-acts .btn, .file-card-acts a.btn { min-height:30px; padding:0 11px; border-radius:9px; font-size:12.5px; text-decoration:none; }
+#filePreviewModal { position:fixed; inset:0; background:var(--shade); z-index:90; display:flex; align-items:center; justify-content:center; padding:14px; }
+#filePreviewModal .fp-box { width:min(960px, 100%); height:min(86vh, 860px); background:var(--surface); border:1px solid var(--line); border-radius:18px; box-shadow:var(--shadow-pop); display:flex; flex-direction:column; overflow:hidden; }
+#filePreviewModal .fp-head { display:flex; align-items:center; gap:10px; padding:12px 14px; border-bottom:1px solid var(--line); background:var(--surface); }
+#filePreviewModal .fp-title { flex:1; min-width:0; font-size:14.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#filePreviewModal iframe { flex:1; width:100%; border:0; background:var(--bg); }
 .file-chip { display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:5px 6px 5px 10px; border-radius:999px; background:var(--accent-soft); color:var(--accent-ink); font-size:13px; }
 .file-chip span.n { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px; }
 .file-chip small { opacity:.7; }
@@ -776,6 +796,17 @@ nav button.on span:first-child { background:var(--accent-soft); }
       <iframe id="fpFrame" title="feature" sandbox="allow-scripts allow-forms" src="about:blank"></iframe>
     </div>
   </div>
+  <div id="filePreviewModal" hidden>
+    <div class="fp-box">
+      <div class="fp-head">
+        <span class="file-badge mini" id="filePreviewBadge"></span>
+        <span class="fp-title" id="filePreviewTitle"></span>
+        <a class="btn small" id="filePreviewDl" target="_blank" rel="noopener" data-t="downloadFile"></a>
+        <button type="button" class="icon-btn" id="filePreviewClose" aria-label="close" data-i="cross"></button>
+      </div>
+      <iframe id="filePreviewFrame" title="preview" src="about:blank"></iframe>
+    </div>
+  </div>
   <input type="file" id="filePick" multiple hidden accept=".pdf,.xlsx,.xls,.docx,.doc,.pptx,.ppt,.csv,.tsv,.txt,.md,.markdown,.json,.jsonl,.log,.xml,.html,.htm,.yaml,.yml,.ini,.sql,.png,.jpg,.jpeg,.webp,.zip,text/*">
   <nav>
     <button class="on" data-view="chat"><span data-i="chat"></span><span data-t="tabChat"></span></button>
@@ -868,6 +899,7 @@ const I18N = {
   addChannel:['添加渠道','Add a channel'], zoneTitle:['所在城市','City'], cityPlaceholder:['输入或选择城市，如上海、北京、东京、纽约','Enter or pick a city, e.g. Shanghai, Tokyo, New York'],
   zoneMatched:['自动匹配时区：{n}','Matched timezone: {n}'], zoneUnknownCity:['暂未识别该城市，可换附近大城市或直接填时区名（如 Asia/Shanghai）','City not recognized; try a nearby major city or IANA timezone (e.g. Asia/Shanghai)'],
   modelSwitched:['已切换模型：{n}','Switched model: {n}'], effortTitle:['思考强度','Thinking effort'], effortSwitched:['思考强度：{n}','Thinking effort: {n}'],
+  previewFile:['预览','Preview'], downloadFile:['下载','Download'],
   kindTask:['任务','Task'], kindReminder:['提醒','Reminder'], nextRun:['下次：{n}','Next: {n}'], paused:['已暂停','Paused'], neverRun:['还没运行过','Not run yet'],
   runNow:['立即运行','Run now'], sendNow:['立即发送','Send now'], pause:['暂停','Pause'], resume:['恢复','Resume'], remove:['移除','Remove'], del:['删除','Del'],
   openRun:['查看过程','See the run'], openClerk:['去文员查看','Open in Clerk'], running:['运行中…','Running…'], inboxTo:['发送到：','Sent to: '],
@@ -1347,15 +1379,61 @@ function clearFeed() {
   cards.clear(); lastKind = null; stepsBox = null; lastStamp = 0
   updateWelcome()
 }
+function fileKindInfo(name) {
+  const ext = (String(name || '').split('.').pop() || '').toLowerCase()
+  if (['xlsx', 'xls', 'csv'].includes(ext)) return { cls: 'xls', tag: ext === 'csv' ? 'CSV' : 'XLS', label: zh ? 'Excel 表格' : 'Spreadsheet' }
+  if (ext === 'pdf') return { cls: 'pdf', tag: 'PDF', label: zh ? 'PDF 文档' : 'PDF Document' }
+  if (['docx', 'doc'].includes(ext)) return { cls: 'doc', tag: 'DOC', label: zh ? 'Word 文档' : 'Word Document' }
+  if (['pptx', 'ppt'].includes(ext)) return { cls: 'ppt', tag: 'PPT', label: zh ? 'PPT 演示' : 'Presentation' }
+  if (['html', 'htm'].includes(ext)) return { cls: 'html', tag: 'HTML', label: zh ? '网页报告' : 'HTML Report' }
+  if (['png', 'jpg', 'jpeg', 'webp', 'svg'].includes(ext)) return { cls: 'img', tag: 'IMG', label: zh ? '图片' : 'Image' }
+  return { cls: 'txt', tag: (ext || 'FILE').slice(0, 4).toUpperCase(), label: zh ? '文档' : 'File' }
+}
+function openFilePreview(relPath, displayName) {
+  const info = fileKindInfo(displayName || relPath)
+  $('filePreviewBadge').className = 'file-badge mini ' + info.cls
+  $('filePreviewBadge').textContent = info.tag
+  $('filePreviewTitle').textContent = displayName || relPath.split('/').pop()
+  $('filePreviewDl').href = '/api/workspace/file?path=' + encodeURIComponent(relPath) + '&download=1'
+  $('filePreviewFrame').src = '/api/workspace/preview?path=' + encodeURIComponent(relPath)
+  $('filePreviewModal').hidden = false
+}
+function closeFilePreview() {
+  $('filePreviewModal').hidden = true
+  $('filePreviewFrame').src = 'about:blank'
+}
+$('filePreviewClose').onclick = closeFilePreview
+$('filePreviewModal').onclick = e => { if (e.target === $('filePreviewModal')) closeFilePreview() }
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('filePreviewModal').hidden) closeFilePreview() })
+
 function inlineMd(node, s) {
   for (const part of s.split(/(\[[^\]]+\]\((?:\/api\/workspace\/file\?[^)\s]+|\/a\/[^)\s]+|https?:\/\/[^)\s]+)\)|\*\*[^*]+\*\*|`[^`]+`)/)) {
     if (!part) continue
     if (part.startsWith('[')) {
       const m = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(part)
       if (m) {
-        const a = el('a', m[2].startsWith('/api/workspace/file') ? 'file-dl-link' : 'md-link')
+        if (m[2].startsWith('/api/workspace/file')) {
+          const u = new URL(m[2], location.origin)
+          const relPath = u.searchParams.get('path') || ''
+          const fname = relPath.split('/').pop() || m[1]
+          const info = fileKindInfo(fname)
+          const card = el('div', 'file-card')
+          card.append(el('span', 'file-badge ' + info.cls, info.tag))
+          const meta = el('div', 'file-card-info')
+          meta.append(el('span', 'file-card-name', fname), el('span', 'file-card-meta', info.label))
+          const acts = el('div', 'file-card-acts')
+          const pv = el('button', 'btn primary', t('previewFile')); pv.type = 'button'
+          pv.onclick = () => openFilePreview(relPath, fname)
+          const dl = el('a', 'btn', t('downloadFile'))
+          dl.href = '/api/workspace/file?path=' + encodeURIComponent(relPath) + '&download=1'
+          dl.target = '_blank'; dl.rel = 'noopener noreferrer'
+          acts.append(pv, dl)
+          card.append(meta, acts)
+          node.append(card)
+          continue
+        }
+        const a = el('a', 'md-link')
         a.href = m[2]; a.target = '_blank'; a.rel = 'noopener noreferrer'
-        if (m[2].startsWith('/api/workspace/file')) a.insertAdjacentHTML('afterbegin', icon('file'))
         a.append(document.createTextNode(m[1]))
         node.append(a)
         continue
@@ -1386,7 +1464,14 @@ function message(role, text, files = []) {
   if (role === 'user') bubble.textContent = text
   else renderMd(bubble, text)
   for (const f of files) {
-    const line = el('div', 'fileline'); line.insertAdjacentHTML('afterbegin', icon('file')); line.append(el('span', '', f.name))
+    const info = fileKindInfo(f.name)
+    const line = el('div', 'fileline')
+    line.append(el('span', 'file-badge mini ' + info.cls, info.tag), el('span', '', f.name))
+    if (f.relPath) {
+      line.style.cursor = 'pointer'
+      line.title = t('previewFile')
+      line.onclick = () => openFilePreview(f.relPath, f.name)
+    }
     bubble.append(line)
   }
   row.append(bubble)
@@ -2663,8 +2748,9 @@ function drawAttachments() {
   row.textContent = ''
   row.hidden = attachments.length === 0 || $('composer').hidden
   attachments.forEach((f, i) => {
+    const info = fileKindInfo(f.name)
     const chip = el('span', 'file-chip')
-    chip.insertAdjacentHTML('afterbegin', icon('file'))
+    chip.append(el('span', 'file-badge mini ' + info.cls, info.tag))
     const x = el('button'); x.type = 'button'; x.title = t('remove'); x.setAttribute('aria-label', t('remove')); x.innerHTML = icon('cross')
     x.onclick = () => { attachments.splice(i, 1); drawAttachments() }
     chip.append(el('span', 'n', f.name), el('small', '', kb(f.bytes ?? f.text?.length ?? 0)), x)
