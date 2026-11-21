@@ -217,6 +217,10 @@ export class Agent extends EventEmitter {
       if (text.trim()) this.emit('text', sessionId, text)
     } else if (event.type === 'tool/call') {
       this.emit('tool', sessionId, event.data.name)
+    } else if (event.type === 'turn/end' && event.data?.reason?.kind === 'error') {
+      const err = event.data.reason.error ?? event.data.reason.failure ?? {}
+      const msg = err.message || err.code || 'Model request failed'
+      this.emit('error_turn', sessionId, msg)
     }
   }
 }

@@ -375,6 +375,9 @@ select.field { appearance:none; background-image:linear-gradient(45deg,transpare
 .pill-opt.on .pill-opt-sub { color:var(--accent-ink); opacity:.8; }
 .pill-check { width:15px; height:15px; color:var(--accent); flex:none; }
 #attachRow { display:flex; flex-wrap:wrap; gap:6px; margin:6px 12px 0; }
+#liveStatus { display:inline-flex; align-items:center; gap:8px; margin:8px 0 4px; padding:8px 14px; border-radius:999px; background:var(--surface); border:1px solid var(--line); color:var(--muted); font-size:13px; box-shadow:var(--shadow-1); align-self:flex-start; }
+#liveStatus .pulse { width:8px; height:8px; border-radius:50%; background:var(--accent); flex:none; animation:livePulse 1.2s ease-in-out infinite; }
+@keyframes livePulse { 0%,100% { opacity:.35; transform:scale(.85); } 50% { opacity:1; transform:scale(1.1); } }
 .file-chip { display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:5px 6px 5px 10px; border-radius:999px; background:var(--accent-soft); color:var(--accent-ink); font-size:13px; }
 .file-chip span.n { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px; }
 .file-chip small { opacity:.7; }
@@ -580,6 +583,7 @@ nav button.on span:first-child { background:var(--accent-soft); }
         <div class="slot" id="slotHome"></div>
       </div>
       <div id="feed" aria-live="polite"></div>
+      <div id="liveStatus" role="status" hidden><span class="pulse"></span><span id="liveStatusText"></span></div>
     </div>
     <div class="view" id="viewClerk" hidden>
       <div class="slot" id="slotClerk"></div>
@@ -835,6 +839,7 @@ const I18N = {
   tabChat:['对话','Chat'], tabClerk:['文员','Clerk'], tabSettings:['设置','Settings'],
   clerkTitle:['文员','Clerk'], settingsTitle:['设置','Settings'],
   stateNap:['休息中','Napping'], stateThink:['思考中…','Thinking…'], stateSpeak:['回复中','Replying'], stateWait:['等你确认','Waiting for you'],
+  uploadingFile:['正在上传附件并交给 Bob…','Uploading attachment…'], sendingMsg:['正在发送…','Sending…'],
   menu:['历史对话','History'], history:['历史对话','History'], newChat:['新对话','New chat'], noChats:['还没有对话','No chats yet'],
   delChat:['删除对话','Delete chat'], renameChat:['重命名','Rename'], voiceInput:['语音输入','Voice input'], micDenied:['无法使用麦克风，请检查权限','Cannot use the microphone; check permissions'], cantDelete:['Bob 正在这个对话里工作，暂时不能删除','Bob is working in this chat, so it can\'t be deleted yet'],
   busyOther:['Bob 正在另一个对话里工作，请稍后再试','Bob is busy in another chat. Try again in a moment'], spendLabel:['本月花费','This month'],
@@ -1656,10 +1661,20 @@ function offerRoutine() {
   link.onclick = () => { link.remove(); setText(t('saveRoutinePrompt')); $('composer').requestSubmit() }
   add(link, 'notice')
 }
+function setLiveStatus(text) {
+  const elBox = $('liveStatus')
+  if (!elBox) return
+  if (!text) { elBox.hidden = true; return }
+  $('liveStatusText').textContent = text
+  elBox.hidden = false
+  if (currentView === 'chat') atEnd()
+}
 function route(e) {
   track(e)
   if (e.cid !== activeCid) return
   if (e.type === 'step' && /browser_(navigate|click|type|select|read)|web_fetch|_file|run_command|mcp__/.test(e.name)) workSteps += 1
+  if (e.type === 'step') setLiveStatus(t('step_' + e.name.replace(/^mcp__bobbot__/, '')) || e.name)
+  if ((e.type === 'message' && e.role === 'assistant') || e.type === 'error') setLiveStatus('')
   render(e)
   if (e.type === 'message' && e.role === 'assistant') speak(e.text)
 }
@@ -1907,10 +1922,10 @@ function connect() {
     else if (e.type === 'memory') { if (currentView === 'settings') loadMemory() }
     else if (e.type === 'budget') showBudget(e)
     else if (e.type === 'status') {
-      if (e.status === 'running') { if (runningCid !== e.cid) workSteps = 0; runningCid = e.cid }
+      if (e.status === 'running') { if (runningCid !== e.cid) workSteps = 0; runningCid = e.cid; if (e.cid === activeCid) setLiveStatus(t('stateThink')) }
       else if (runningCid === e.cid) {
         runningCid = null
-        if (e.cid === activeCid && workSteps >= 2 && !clerkData?.jobs.some(j => j.cid === e.cid)) offerRoutine()
+        if (e.cid === activeCid) { setLiveStatus(''); if (workSteps >= 2 && !clerkData?.jobs.some(j => j.cid === e.cid)) offerRoutine() }
         workSteps = 0
       }
       refreshOrb()
@@ -2734,14 +2749,15 @@ $('composer').onsubmit = async e => {
   const files = attachments
   setText('')
   attachments = []; drawAttachments()
-  const restore = () => { setText(text); attachments = files; drawAttachments() } // keep the draft so nothing is lost
+  setLiveStatus(files.length ? t('uploadingFile') : t('sendingMsg'))
+  const restore = () => { setLiveStatus(''); setText(text); attachments = files; drawAttachments() } // keep the draft so nothing is lost
   if (!activeCid) {
     const made = await post('/api/conversations')
     if (made.status !== 200) { restore(); notice(errText(made.data, made.status), true); return }
     activeCid = made.data.id
   }
   const { status, data } = await post('/api/chat', { cid: activeCid, text, files })
-  if (status === 200) { refreshConvs(); return }
+  if (status === 200) { setLiveStatus(t('stateThink')); refreshConvs(); return }
   restore()
   if (data.error === 'NO_KEY') { $('settingsMsg').textContent = t('noKey'); show('settings') }
   else if (data.error === 'BUDGET_EXCEEDED') notice(t('budgetExceeded'), true)

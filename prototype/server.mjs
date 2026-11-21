@@ -1689,6 +1689,14 @@ agent.on('tool', (cid, name) => {
   if (turns.has(cid)) turns.get(cid).steps += 1
   if (convOf(cid) && !name.startsWith('mcp__bobbot__')) push({ type: 'step', name }, true, cid)
 })
+agent.on('error_turn', (cid, message) => {
+  if (!convOf(cid)) return
+  if (runningCid === cid) runningCid = null
+  clearTaskGrants()
+  finishTurn(cid, `出错：${String(message).slice(0, 80)}`)
+  push({ type: 'error', text: String(message) }, true, cid)
+  push({ type: 'status', status: 'idle' }, false, cid)
+})
 agent.on('exit', code => {
   for (const waiter of [...turnWaiters.values()]) waiter.finish()
   const cid = runningCid ?? lastPromptCid
@@ -2130,12 +2138,15 @@ async function route(req, res) {
       const prior = priorContext(cid)
       files = persistBinaryFiles(files)
       push({ type: 'message', role: 'user', text, files: files.map(f => ({ name: f.name, chars: f.text ? f.text.length : f.bytes, ...(f.relPath ? { relPath: f.relPath } : {}) })) }, true, cid)
+      push({ type: 'status', status: 'running' }, false, cid)
       try {
         await ensureAgent(cfg, apiKey)
         const context = agent.isFresh(cid) ? prior : ''
         await agent.prompt(cid, `${memoryPrefix(cid, text)}${context}${nowHeader()}\n${promptWithFiles(text || '(see the attached files)', files)}`)
       } catch (error) {
         if (runningCid === cid) runningCid = null
+        push({ type: 'error', text: error.message || 'Failed to start agent' }, true, cid)
+        push({ type: 'status', status: 'idle' }, false, cid)
         throw error
       }
       return send(res, 200, { ok: true, cid })
