@@ -20,8 +20,8 @@ var sourceBuild string
 type Host struct {
 	Authorized func(*http.Request) bool
 	Classic    http.HandlerFunc
-	// Read the owner's existing official OpenAI key and remaining budget on each call.
-	VisionConfig func() (apiKey string, remainingUSD float64)
+	// Snapshot the active gateway settings for each explicit extraction.
+	VisionConfig func() VisionConfig
 }
 
 func (a *App) Mount(m *http.ServeMux, host Host) {
@@ -73,7 +73,7 @@ func (a *App) Mount(m *http.ServeMux, host Host) {
 					code = 409
 				case "visionUnavailable", "budget":
 					code = 409
-				case "provider":
+				case "provider", "providerAuth", "providerLimit", "providerRejected":
 					code = 502
 				}
 				http.Error(w, e.Error(), code)

@@ -7,11 +7,9 @@ from pathlib import Path
 import re
 import sys
 import zipfile
-import shutil
 import subprocess
 import tempfile
 
-VERSION = "0.4.0-life.3"
 
 
 def run(cmd, cwd=None, env=None, **opts):
@@ -23,64 +21,49 @@ def git(repo, *args):
 
 
 def stage_gateway(repo, ref, gw):
-    """Combine working gateway files with local Life edits, or with Life from a pinned Git ref."""
-    source=repo/"gateway"
+    """Copy deployable Go sources and embedded assets, byte for byte from one revision."""
+    source = repo / "gateway"
     gw.mkdir()
-    for name in ("main.go","features.go","go.mod"):
-        if not (source/name).is_file(): raise ValueError(f"Missing gateway/{name}")
-    for path in [*source.glob("*.go"),source/"go.mod",source/"go.sum"]:
-        if path.is_file() and path.name!="life_host.go":
-            if path.is_symlink() or not path.resolve().is_relative_to(source.resolve()): raise ValueError("Unexpected gateway source link")
-            shutil.copy2(path,gw/path.name)
+    asset_types = {".html", ".css", ".js", ".mjs", ".webmanifest", ".png", ".ico", ".svg", ".woff2"}
+    def allowed(path):
+        if any(p.startswith(".") or p.lower() in {"data", "credentials", "node_modules"} for p in path.parts):
+            return False
+        if path.parent in (Path("."), Path("life")) and path.suffix == ".go":
+            return True
+        if path.as_posix() in {"go.mod", "go.sum", "life/calendar.test.mjs", "life/web/manifest.json"}:
+            return True
+        return (path.parts[0] == "public" or path.parts[:2] == ("life", "web")) and path.suffix in asset_types
 
-    public=source/"public"
-    for path in public.rglob("*"):
-        rel=path.relative_to(public)
-        if not path.is_file() or any(part.startswith(".") or part.lower() in {"data","credentials","node_modules"} for part in rel.parts): continue
-        if path.is_symlink() or not path.resolve().is_relative_to(public.resolve()): raise ValueError("Unexpected public asset link")
-        if path.suffix.lower() not in {".html",".css",".js",".mjs",".webmanifest",".png",".ico",".svg",".woff2"}: continue
-        dest=gw/"public"/rel
-        dest.parent.mkdir(parents=True,exist_ok=True)
-        shutil.copy2(path,dest)
-    if not (gw/"public/index.html").is_file(): raise ValueError("Missing classic gateway UI")
-    inputs={p.relative_to(gw).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(gw.rglob("*")) if p.is_file()}
     if ref:
-        names=git(repo,"ls-tree","-r","--name-only",ref,"--","gateway/life").decode("utf-8").splitlines()
-        for name in names:
-            dest=gw.parent/name
-            if not dest.resolve().is_relative_to(gw/"life"): raise ValueError("Unexpected Life source path")
-            dest.parent.mkdir(parents=True,exist_ok=True)
-            dest.write_bytes(git(repo,"show",f"{ref}:{name}"))
-        (gw/"life_host.go").write_bytes(git(repo,"show",ref+":scripts/life-host.go.in"))
+        names = git(repo, "ls-tree", "-r", "-z", "--name-only", ref, "--", "gateway")
+        paths = [Path(n.decode("utf-8")).relative_to("gateway") for n in names.split(bytes([0])) if n]
     else:
-        module=source/"life"
-        selected=[*module.glob("*.go"), module/"go.mod", module/"go.sum", module/"calendar.test.mjs",
-                  *[module/"web"/n for n in ("calendar.mjs","home.html","life.js","manifest.json","sw.js")]]
-        for path in selected:
-            if not path.is_file(): continue
-            if path.is_symlink() or not path.resolve().is_relative_to(source.resolve()): raise ValueError("Unexpected Life source link")
-            dest=gw/"life"/path.relative_to(module)
-            dest.parent.mkdir(parents=True,exist_ok=True)
-            shutil.copy2(path,dest)
-        adapter=source/"life_host.go"
-        shutil.copy2(adapter if adapter.is_file() else repo/"scripts/life-host.go.in", gw/"life_host.go")
-    if not (gw/"life/go.mod").is_file(): raise ValueError("Missing Life module. Use the source bundle or the mobile-life branch with your working gateway files.")
-    entry=gw/"main.go"
-    code=entry.read_text(encoding="utf-8-sig")
-    anchor="mux := http.NewServeMux()"
-    if code.count(anchor)!=1: raise ValueError("Unrecognized gateway entry")
-    if "mountLife(mux)" not in code: code=code.replace(anchor,anchor+"\n\tmountLife(mux)")
-    for var, fallback in (("pin",'log.Fatal("Owner PIN is required")'),("secret","secret = lifeSessionSecret()")):
-        pattern=r'(if '+var+r' == "" \{\s*)'+var+r' = "[^"\n]*"'
-        code=re.sub(pattern,lambda m:m[1]+fallback,code)
-    entry.write_text(code,encoding="utf-8")
-    return inputs
+        # Limit traversal to source locations. Never enumerate the owner's runtime data.
+        candidates = [*source.glob("*.go"), source/"go.mod", source/"go.sum", *(source/"life").glob("*.go"),
+                      source/"life/calendar.test.mjs", *(source/"life/web").glob("*"), *(source/"public").rglob("*")]
+        paths = [p.relative_to(source) for p in candidates if p.is_file()]
+    hashes = {}
+    for path in sorted(filter(allowed, paths)):
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError("Unexpected gateway path")
+        src = source/path
+        if not ref and (src.is_symlink() or not src.resolve().is_relative_to(source.resolve())):
+            raise ValueError("Unexpected gateway source link")
+        data = git(repo, "show", f"{ref}:gateway/{path.as_posix()}") if ref else src.read_bytes()
+        dest = gw/path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(data)
+        hashes[path.as_posix()] = hashlib.sha256(data).hexdigest()
+    required = {"go.mod", "main.go", "features.go", "life_host.go", "public/index.html", "life/life.go"}
+    if required - hashes.keys():
+        raise ValueError("Missing gateway sources: " + ", ".join(sorted(required - hashes.keys())))
+    return hashes
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--repo", type=Path, default=Path.cwd())
-    p.add_argument("--ref", default="FETCH_HEAD")
+    p.add_argument("--ref", default="HEAD")
     p.add_argument("--host", default=None)
     p.add_argument("--url", default=None)
     operation = p.add_mutually_exclusive_group()
@@ -101,9 +84,6 @@ def main():
         stage = Path(tmp)
         gw = stage / "gateway"
         input_hashes=stage_gateway(repo,ref,gw)
-        entry=gw/"main.go"
-        run(["go", "mod", "edit", "-require=bobbot/life@v0.0.0", "-replace=bobbot/life=./life"], cwd=gw)
-        run(["go","test","./..."],cwd=gw/"life")
         run(["go","test","./..."],cwd=gw)
         target_env=dict(os.environ,CGO_ENABLED="0",GOARCH="amd64")
         linux_binary=stage/"bobbot"
@@ -116,13 +96,8 @@ def main():
         runtime=stage/"life_release.py"
         runtime.write_bytes(git(repo,"show",ref+":scripts/life_release.py"))
         digest=hashlib.sha256(linux_binary.read_bytes()).hexdigest()
-        manifest={"version":VERSION,"source":ref,"gateway_inputs_sha256":input_hashes,"origin":origin,"ssh_alias":args.host,"port":args.port,"sha256":{"bobbot":digest}}
+        manifest={"version":re.search(r'^const Version = "([a-zA-Z0-9.-]+)"$', (gw/"life/life.go").read_text(encoding="utf-8"), re.MULTILINE)[1],"source":ref,"gateway_inputs_sha256":input_hashes,"origin":origin,"ssh_alias":args.host,"port":args.port,"sha256":{"bobbot":digest}}
         if args.bundle:
-            code=entry.read_text(encoding="utf-8")
-            pattern=r'(?m)^(\s*Addr:\s*)":" \+ cfg\.Port,'
-            code,n=re.subn(pattern,r'\g<1>"127.0.0.1:" + cfg.Port,',code)
-            if n!=1:raise ValueError("Could not bind local preview to loopback")
-            entry.write_text(code,encoding="utf-8")
             win_binary=stage/"bobbot-local.exe"
             run(flags+["-o",str(win_binary),"."],cwd=gw,env=dict(target_env,GOOS="windows"))
             manifest["sha256"][win_binary.name]=hashlib.sha256(win_binary.read_bytes()).hexdigest()

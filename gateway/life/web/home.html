@@ -13,7 +13,8 @@ dialog{width:min(94%,390px);border:1px solid var(--line);border-radius:14px;back
 <section><form id="capture"><label><span data-t="capture"></span><textarea maxlength="1200" id="note"></textarea></label>
 <div class="row"><label><span data-t="kind"></span><select id="kind"><option value="wish" data-t="wish"></option><option value="save" data-t="save"></option><option value="plan" data-t="plan"></option></select></label>
 <label><span data-t="image"></span><input type="file" id="photo" accept="image/*"></label></div>
-<details id="details"><summary data-t="details"></summary><div class="row"><label><span data-t="where"></span><input maxlength="60" id="place"></label><label><span id="whenLabel"></span><input id="when" type="datetime-local"></label></div></details>
+<details id="details"><summary data-t="details"></summary><div class="row"><label><span data-t="where"></span><input maxlength="60" id="place"></label><label><span id="whenLabel"></span><input id="when" type="datetime-local"></label></div>
+<div class="row"><label><span data-t="city"></span><input maxlength="60" id="city"></label><label><span data-t="area"></span><input maxlength="60" id="area"></label></div></details>
 <small id="filehint"></small><div class="actions"><button class="primary" id="submit" data-t="submit"></button><button type="button" id="read" data-t="read"></button></div><small data-t="readhint"></small></form></section>
 <details id="calendarPanel"><summary data-t="calendar"></summary><small data-t="calendarHelp"></small><label><span data-t="chooseCalendar"></span><input type="file" id="calendarFile" accept=".ics,text/calendar"></label><div id="calendarRows"></div><small id="importInfo" role="status"></small><button id="confirmCalendar" type="button" data-t="confirmCalendar" hidden></button></details>
 <h2 data-t="watching"></h2><div id="open"></div><details><summary data-t="history"></summary><div id="closed"></div></details>

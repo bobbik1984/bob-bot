@@ -16,7 +16,7 @@ SCRIPTS = Path(__file__).resolve().parent
 ROOT = SCRIPTS.parent
 BUILD = runpy.run_path(str(SCRIPTS / "deploy-life.py"))
 RELEASE = runpy.run_path(str(SCRIPTS / "life_release.py"))
-TOOLS = ("deploy-gcp.py","deploy-gcp.ps1","deploy-life.py","life_release.py","build-gcp.sh","life-host.go.in")
+TOOLS = ("deploy-gcp.py","deploy-gcp.ps1","deploy-life.py","life_release.py","build-gcp.sh")
 
 
 def package(output, gateway, target):

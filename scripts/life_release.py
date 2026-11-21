@@ -134,7 +134,7 @@ def preview(binary, version):
         except OSError: raise ValueError("A local Bob preview is already running.")
         with socket.socket() as sock:
             sock.bind(("127.0.0.1",0)); port=sock.getsockname()[1]
-        env=dict(os.environ, PORT=str(port), BOBBOT_PIN=pin, BOBBOT_SECRET=secrets.token_hex(32))
+        env=dict(os.environ, PORT=str(port), BOBBOT_LISTEN_HOST="127.0.0.1", BOBBOT_PIN=pin, BOBBOT_SECRET=secrets.token_hex(32))
         for key in ("GEMINI_API_KEY","GOOGLE_API_KEY"): env.pop(key,None)
         proc=subprocess.Popen([str(binary)],cwd=wd,env=env)
         try:

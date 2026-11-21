@@ -346,6 +346,10 @@ select.field { appearance:none; background-image:linear-gradient(45deg,transpare
 .file-chip button { width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; color:inherit; }
 .file-chip svg { width:1em; height:1em; }
 nav { display:flex; border-top:1px solid var(--line); background:var(--surface); padding-bottom:env(safe-area-inset-bottom); }
+.life-home { display:inline-flex; min-height:44px; align-items:center; justify-content:center; gap:4px; color:var(--accent); text-decoration:none; }
+nav .life-home { flex:1; flex-direction:column; font-size:12px; }
+nav .life-home svg { display:block; width:24px; height:24px; }
+@media(min-width:760px) { nav .life-home { flex-direction:row; } nav .life-home svg { width:18px; height:18px; } }
 nav button { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 0 7px; font-size:12px; color:var(--muted); position:relative; }
 nav button.on { color:var(--accent); font-weight:600; }
 nav button svg { width:24px; height:24px; }
@@ -507,6 +511,7 @@ nav button.on span:first-child { background:var(--accent-soft); }
 <section id="login" hidden>
   <span class="orb big" data-orb data-state="nap"></span>
   <p class="sub" data-t="loginSub"></p>
+  <a class="life-home" href="/" data-t="lifeHome"></a>
   <div class="dots" id="dots"><i></i><i></i><i></i><i></i></div>
   <div id="loginMsg" role="status"></div>
   <div class="pad" id="pad"></div>
@@ -715,6 +720,7 @@ nav button.on span:first-child { background:var(--accent-soft); }
   </div>
   <input type="file" id="filePick" multiple hidden accept=".txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.log,.xml,.html,.htm,.yaml,.yml,.ini,.sql,text/*">
   <nav>
+    <a class="life-home" href="/"><span data-i="calendar"></span><span data-t="lifeHome"></span></a>
     <button class="on" data-view="chat"><span data-i="chat"></span><span data-t="tabChat"></span></button>
     <button data-view="clerk"><span data-i="clock"></span><span data-t="tabClerk"></span><span class="badge" id="badge" hidden></span></button>
     <button data-view="settings"><span data-i="sliders"></span><span data-t="tabSettings"></span></button>
@@ -767,6 +773,7 @@ const lang = savedLang === 'auto' ? (navigator.language.startsWith('zh') ? 'zh' 
 const langIndex = Math.max(0, LANGS.findIndex(l => l.code === lang))
 const zh = lang === 'zh'
 const I18N = {
+  lifeHome:['日程首页','Life home'],
   greetNight:['夜深了','Up late'], greetMorning:['早上好','Good morning'], greetNoon:['中午好','Good afternoon'], greetAfternoon:['下午好','Good afternoon'], greetEvening:['晚上好','Good evening'],
   glanceDrafts:['待你批准','to approve'], glanceNeeds:['需要你处理','need you'], glanceTodos:['待办','to-dos'], glanceUnread:['未读','unread'],
   jumpLatest:['最新消息','Latest'], offline:['连接中断，正在重连…','Connection lost. Reconnecting…'], yesterday:['昨天','Yesterday'],

@@ -15,7 +15,7 @@
 
 ## 云端执行与验收
 
-发布器经 SCP 上传源码，在现有 systemd 工作目录的独立目录中执行两个模块的测试和 `CGO_ENABLED=0 go build -p 1 -trimpath -ldflags="…" -o bobbot.candidate .`。本机无需 Go。通过后备份旧程序、原子切换、以免交互 sudo 重启现有服务。程序继续从原工作目录使用 `data/`。编译器版本会打印在终端。
+发布器经 SCP 上传源码，在现有 systemd 工作目录的独立目录中执行一次完整网关测试（含 Life 子包）和 `CGO_ENABLED=0 go build -p 1 -trimpath -ldflags="…" -o bobbot.candidate .`。本机无需 Go。通过后备份旧程序、原子切换、以免交互 sudo 重启现有服务。程序继续从原工作目录使用 `data/`。编译器版本会打印在终端。
 
 保留原有服务 PIN。如果原服务没有配置 `BOBBOT_SECRET`，首次启动会在私有数据目录生成并保存会话签名密钥，先前登录的浏览器需用原 PIN 重新登录。已配置的显式签名密钥继续生效。发布包不包含线上配置及 API 密钥。
 

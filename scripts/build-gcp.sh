@@ -29,8 +29,6 @@ if [ -z "$go_bin" ] && [ -x /usr/local/go/bin/go ]; then go_bin=/usr/local/go/bi
 test -x "$go_bin" || { echo "Go compiler missing in SSH session" >&2; exit 1; }
 "$go_bin" version
 export CGO_ENABLED=0 GOTOOLCHAIN=local GOPROXY=off GOWORK=off
-"$go_bin" mod edit -require=bobbot/life@v0.0.0 -replace=bobbot/life=./life
-(cd life && "$go_bin" test -p 1 ./...)
 "$go_bin" test -p 1 ./...
 "$go_bin" build -p 1 -trimpath -buildvcs=false -ldflags "-s -w -X bobbot/life.publicOrigin=$origin -X bobbot/life.sourceBuild=$expected" -o bobbot.candidate .
 BOB_SOURCE_BUILD=$expected

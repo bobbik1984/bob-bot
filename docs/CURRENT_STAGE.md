@@ -6,6 +6,10 @@
 > **本原型当前下一步**：作为快速试验场，先行配合 3～5 个真实办公站点与真实模型验证浏览器接管、白领办公文档/IM 交互原型与小组件自生长手感，将验证结论回哺上游 `WP-E1`～`WP-E4`（见 [todo.md](../todo.md)）。
 > 长期路线见 [DEVELOPMENT_ROUTE.md](DEVELOPMENT_ROUTE.md)，技术规范见 [ARCHITECTURE.md](ARCHITECTURE.md)。
 
+### Go 网关 Life 试测版 · 2026-11-21
+
+`0.4.0-life.4` 纳入主网关构建。试测重点是用当前视觉模型读一张截图、在手机上切换聊天设置与日程首页，以及在未来 72 小时的行程里验证同一街区提醒。线上实际版本以 `/api/life/version` 为准。操作入口见 [Life 试测说明](../gateway/life/README.md)。
+
 ---
 
 ## 1. 当前基线（2026-11-08）

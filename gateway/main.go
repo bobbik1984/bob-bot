@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bobbot/life"
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"embed"
@@ -12,6 +14,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -102,6 +105,12 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+	app, err := life.Open(filepath.Join("data", "life"))
+	if err != nil {
+		log.Fatal("life storage: ", err)
+	}
+	app.Mount(mux, life.Host{Authorized: authed, Classic: serveClassic, VisionConfig: activeVision})
+	go app.Run(context.Background())
 
 	// Static routes
 	subFS, err := fs.Sub(embeddedPublic, "public")
@@ -109,21 +118,7 @@ func main() {
 		log.Fatalf("Failed to sub embed FS: %v", err)
 	}
 
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" {
-			data, err := subFS.Open("index.html")
-			if err != nil {
-				http.Error(w, "index.html missing", 500)
-				return
-			}
-			defer data.Close()
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.Header().Set("Cache-Control", "no-store")
-			io.Copy(w, data)
-			return
-		}
-		http.FileServer(http.FS(subFS)).ServeHTTP(w, r)
-	})
+	mux.Handle("GET /", http.FileServer(http.FS(subFS)))
 
 	// API routes
 	mux.HandleFunc("GET /api/state", handleState)
@@ -153,19 +148,33 @@ func main() {
 	mux.HandleFunc("GET /f/", handleServeFeatureAsset)
 
 	// Stub endpoints to satisfy remaining UI tabs
-	mux.HandleFunc("GET /api/extensions", func(w http.ResponseWriter, r *http.Request) { jsonResp(w, 200, map[string]interface{}{"mcp": []string{}, "skills": []string{}}) })
-	mux.HandleFunc("GET /api/memory", func(w http.ResponseWriter, r *http.Request) { jsonResp(w, 200, map[string]interface{}{"items": []string{}, "insights": []string{}}) })
-	mux.HandleFunc("GET /api/wechat/status", func(w http.ResponseWriter, r *http.Request) { jsonResp(w, 200, map[string]interface{}{"running": false}) })
-	mux.HandleFunc("GET /api/push/config", func(w http.ResponseWriter, r *http.Request) { jsonResp(w, 200, map[string]interface{}{"publicKey": "", "subscriptions": 0}) })
-	mux.HandleFunc("GET /api/push/log", func(w http.ResponseWriter, r *http.Request) { jsonResp(w, 200, map[string]interface{}{"items": []string{}}) })
-	mux.HandleFunc("GET /api/models", func(w http.ResponseWriter, r *http.Request) { jsonResp(w, 200, map[string]interface{}{"deepseek": []string{}, "current": cfg.ActiveModel}) })
+	mux.HandleFunc("GET /api/extensions", func(w http.ResponseWriter, r *http.Request) {
+		jsonResp(w, 200, map[string]interface{}{"mcp": []string{}, "skills": []string{}})
+	})
+	mux.HandleFunc("GET /api/memory", func(w http.ResponseWriter, r *http.Request) {
+		jsonResp(w, 200, map[string]interface{}{"items": []string{}, "insights": []string{}})
+	})
+	mux.HandleFunc("GET /api/wechat/status", func(w http.ResponseWriter, r *http.Request) {
+		jsonResp(w, 200, map[string]interface{}{"running": false})
+	})
+	mux.HandleFunc("GET /api/push/config", func(w http.ResponseWriter, r *http.Request) {
+		jsonResp(w, 200, map[string]interface{}{"publicKey": "", "subscriptions": 0})
+	})
+	mux.HandleFunc("GET /api/push/log", func(w http.ResponseWriter, r *http.Request) {
+		jsonResp(w, 200, map[string]interface{}{"items": []string{}})
+	})
+	mux.HandleFunc("GET /api/models", func(w http.ResponseWriter, r *http.Request) {
+		jsonResp(w, 200, map[string]interface{}{"deepseek": []string{}, "current": cfg.ActiveModel})
+	})
 
 	// WeChat bridge compatibility endpoints
 	mux.HandleFunc("POST /v1/chat", handleV1Chat)
-	mux.HandleFunc("GET /v1/health", func(w http.ResponseWriter, r *http.Request) { jsonResp(w, 200, map[string]string{"status": "ok", "model": cfg.ActiveModel}) })
+	mux.HandleFunc("GET /v1/health", func(w http.ResponseWriter, r *http.Request) {
+		jsonResp(w, 200, map[string]string{"status": "ok", "model": cfg.ActiveModel})
+	})
 
 	server := &http.Server{
-		Addr:         ":" + cfg.Port,
+		Addr:         net.JoinHostPort(os.Getenv("BOBBOT_LISTEN_HOST"), cfg.Port),
 		Handler:      mux,
 		ReadTimeout:  120 * time.Second,
 		WriteTimeout: 120 * time.Second,
@@ -191,11 +200,11 @@ func loadConfig() Config {
 	}
 	pin := os.Getenv("BOBBOT_PIN")
 	if pin == "" {
-		pin = "1234"
+		log.Fatal("Owner PIN is required")
 	}
 	secret := os.Getenv("BOBBOT_SECRET")
 	if secret == "" {
-		secret = "bobbot_secret_token_salt_2026"
+		secret = lifeSessionSecret()
 	}
 
 	dataDir := "./data"

@@ -22,25 +22,26 @@ import (
 	"time"
 )
 
-const Version = "0.4.0-life.3"
+const Version = "0.4.0-life.4"
 
 type Item struct {
-	ID      string
-	Kind    string // wish, plan or save
-	Text    string
-	Place   string
-	At      int64 // deadline for wishes; start time for plans, Unix milliseconds
-	Created int64
-	Status  string
-	Image   string
-	Snooze  int64
-	Signal  string
-	Related string
-	Seen    string
+	ID         string
+	Kind       string // wish, plan or save
+	Text       string
+	City, Area string
+	Place      string
+	At         int64 // deadline for wishes; start time for plans, Unix milliseconds
+	Created    int64
+	Status     string
+	Image      string
+	Snooze     int64
+	Signal     string
+	Related    string
+	Seen       string
 }
 type Input struct {
-	ID, Kind, Text, Place, Photo string
-	At                           int64
+	ID, Kind, Text, Place, City, Area, Photo string
+	At                                       int64
 }
 type store struct {
 	Items     []Item
@@ -154,20 +155,33 @@ func match(i Item, items []Item, now time.Time) (string, string) {
 	if i.Kind != "wish" || i.Status != "open" || i.Snooze > n || (i.At != 0 && i.At < n) {
 		return "", ""
 	}
-	place := norm(i.Place)
+	place := placeOf(i)
 	var best *Item
-	if place != "" {
+	var matchedCity string
+	ambiguous := false
+	if place.name != "" {
 		for j := range items {
 			p := &items[j]
-			if p.Kind != "plan" || p.Status != "open" || norm(p.Place) != place || p.At < n || p.At > now.Add(72*time.Hour).UnixMilli() || (i.At != 0 && p.At > i.At) {
+			if p.Kind != "plan" || p.Status != "open" || p.At < n || p.At > now.Add(72*time.Hour).UnixMilli() || (i.At != 0 && p.At > i.At) {
 				continue
+			}
+			where := placeOf(*p)
+			if !samePlace(place, where) {
+				continue
+			}
+			if place.city == "" && where.city != "" {
+				if matchedCity != "" && matchedCity != where.city {
+					ambiguous = true
+					break
+				}
+				matchedCity = where.city
 			}
 			if best == nil || p.At < best.At {
 				best = p
 			}
 		}
 	}
-	if best != nil {
+	if best != nil && !ambiguous {
 		return "visit:" + best.ID, best.ID
 	}
 	if i.At != 0 && i.At <= now.Add(24*time.Hour).UnixMilli() {
@@ -193,7 +207,8 @@ func (a *App) add(v Input) (Item, error) {
 	now := a.now()
 	v.Text = strings.TrimSpace(v.Text)
 	v.Place = strings.TrimSpace(v.Place)
-	if !fileID(v.ID) || len(v.Text) > 4800 || len(v.Place) > 240 || (v.Text == "" && v.Photo == "") || (v.Kind != "wish" && v.Kind != "plan" && v.Kind != "save") {
+	v.City, v.Area = strings.TrimSpace(v.City), strings.TrimSpace(v.Area)
+	if !fileID(v.ID) || len(v.Text) > 4800 || len(v.Place) > 240 || len(v.City) > 240 || len(v.Area) > 240 || (v.Text == "" && v.Photo == "") || (v.Kind != "wish" && v.Kind != "plan" && v.Kind != "save") {
 		return Item{}, errors.New("invalid")
 	}
 	for _, i := range a.state.Items {
@@ -205,7 +220,7 @@ func (a *App) add(v Input) (Item, error) {
 		return Item{}, errors.New("time")
 	}
 	s := a.copy()
-	i := Item{ID: v.ID, Kind: v.Kind, Text: v.Text, Place: v.Place, At: v.At, Created: now.UnixMilli(), Status: "open"}
+	i := Item{ID: v.ID, Kind: v.Kind, Text: v.Text, Place: v.Place, City: v.City, Area: v.Area, At: v.At, Created: now.UnixMilli(), Status: "open"}
 	if v.Photo != "" {
 		b, kind, e := validatePhoto(v.Photo)
 		if e != nil {
