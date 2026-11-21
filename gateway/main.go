@@ -1354,6 +1354,10 @@ func callOpenAIStream(baseURL, apiKey, model string, history []Message, cid stri
 		u = u + "/chat/completions"
 	}
 
+	if u == "https://api.openai.com/v1/chat/completions" && model == "gpt-6.2-sol" {
+		return callResponsesStream("https://api.openai.com/v1/responses", apiKey, model, history, cid)
+	}
+
 	messages := make([]map[string]interface{}, 0, len(history)+5)
 	messages = append(messages, map[string]interface{}{
 		"role":    "system",
