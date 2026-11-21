@@ -11,9 +11,9 @@ $ProtoDir = Join-Path $RepoRoot 'prototype'
 Write-Host "Deploying bob-bot full prototype to $SshAlias ($PublicUrl)..."
 
 $remoteCmd = if ($NpmInstall) {
-    'mkdir -p ~/bob-bot ~/bob-bot/data/skills/office-docs ~/bob-bot/data/workspace/uploads ~/bob-bot/data/workspace/outputs && tar -xzf - -C ~/bob-bot && cp -f ~/bob-bot/skills-presets/office-docs/SKILL.md ~/bob-bot/data/skills/office-docs/SKILL.md && cd ~/bob-bot && npm install --omit=dev && systemctl --user restart bobbot && sleep 2 && systemctl --user is-active bobbot'
+    'mkdir -p ~/bob-bot ~/bob-bot/data/skills ~/bob-bot/data/workspace/uploads ~/bob-bot/data/workspace/outputs && tar -xzf - -C ~/bob-bot && cp -rf ~/bob-bot/skills-presets/* ~/bob-bot/data/skills/ && cd ~/bob-bot && npm install --omit=dev && systemctl --user restart bobbot && sleep 2 && systemctl --user is-active bobbot'
 } else {
-    'mkdir -p ~/bob-bot ~/bob-bot/data/skills/office-docs ~/bob-bot/data/workspace/uploads ~/bob-bot/data/workspace/outputs && tar -xzf - -C ~/bob-bot && cp -f ~/bob-bot/skills-presets/office-docs/SKILL.md ~/bob-bot/data/skills/office-docs/SKILL.md && systemctl --user restart bobbot && sleep 2 && systemctl --user is-active bobbot'
+    'mkdir -p ~/bob-bot ~/bob-bot/data/skills ~/bob-bot/data/workspace/uploads ~/bob-bot/data/workspace/outputs && tar -xzf - -C ~/bob-bot && cp -rf ~/bob-bot/skills-presets/* ~/bob-bot/data/skills/ && systemctl --user restart bobbot && sleep 2 && systemctl --user is-active bobbot'
 }
 
 python -X utf8 -c @"
