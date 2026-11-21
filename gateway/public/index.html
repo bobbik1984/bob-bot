@@ -71,11 +71,11 @@ svg { width:1.25em; height:1.25em; flex:none; }
 @property --k { syntax:'<number>'; inherits:false; initial-value:1; }
 @property --p { syntax:'<number>'; inherits:false; initial-value:1; }
 :root {
-  --drop-fill:rgba(205,230,255,.38); --drop-mid:rgba(150,200,246,.50); --drop-edge:rgba(82,146,222,.70);
-  --drop-rim:rgba(120,176,236,.55); --drop-shade:rgba(56,118,196,.30); --drop-light:rgba(255,255,255,.92); --drop-through:rgba(255,255,255,.55);
+  --drop-core:rgba(161,204,234,.35); --drop-fill:rgba(135,186,222,.54); --drop-edge:rgba(82,146,200,.74);
+  --drop-rim:rgba(88,144,195,.70); --drop-shade:rgba(72,132,182,.54); --drop-light:rgba(255,255,255,.92); --drop-through:rgba(255,255,255,.55);
 }
 html[data-theme=dark] {
-  --drop-fill:rgba(130,190,250,.16); --drop-mid:rgba(120,185,250,.28); --drop-edge:rgba(150,205,255,.58);
+  --drop-core:transparent; --drop-fill:rgba(130,190,250,.16); --drop-edge:rgba(150,205,255,.58);
   --drop-rim:rgba(170,215,255,.50); --drop-shade:rgba(10,30,70,.55); --drop-light:rgba(235,246,255,.85); --drop-through:rgba(180,225,255,.35);
 }
 .orb { --s:28px; --t:9s; position:relative; width:var(--s); height:var(--s); flex:none; display:inline-block; }
@@ -86,7 +86,7 @@ html[data-theme=dark] {
   border-radius:49% 51% 48% 52% / 51% 47% 53% 49%;
   background:
     radial-gradient(ellipse at 68% 83%, var(--drop-through), transparent 27%),
-    radial-gradient(ellipse at 42% 32%, transparent 20%, var(--drop-fill) 58%, var(--drop-shade) 78%, var(--drop-edge) 94%, var(--drop-rim));
+    radial-gradient(ellipse at 42% 32%, var(--drop-core) 20%, var(--drop-fill) 58%, var(--drop-shade) 78%, var(--drop-edge) 94%, var(--drop-rim));
   box-shadow:inset 0 0 0 1px var(--drop-rim), inset 0 calc(var(--s) * .015) calc(var(--s) * .035) var(--drop-light),
     inset calc(var(--s) * -.025) calc(var(--s) * -.04) calc(var(--s) * .07) var(--drop-through);
 }
@@ -339,8 +339,9 @@ select.field { appearance:none; background-image:linear-gradient(45deg,transpare
 .ext code { font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--muted); overflow-wrap:anywhere; }
 
 /* composer and tabs */
-#chatModel { align-self:flex-start; max-width:calc(100% - 32px); margin:0 16px; padding:5px 7px; border:0; border-radius:8px; background:var(--surface); color:var(--muted); font:inherit; font-size:13px; cursor:pointer; }
-#composer { display:flex; align-items:flex-end; gap:4px; margin:4px 12px 8px; padding:5px 5px 5px 6px; background:var(--surface); border:1px solid var(--line); border-radius:26px; box-shadow:var(--shadow); transition:border-color .15s, box-shadow .15s; }
+#chatModel { align-self:flex-start; max-width:calc(100% - 20px); margin:1px 10px 0; padding:4px 2px; border:0; border-radius:6px; background:var(--surface); color:var(--muted); font:inherit; font-size:13px; cursor:pointer; }
+#composer { display:flex; flex-direction:column; flex:none; margin:6px 12px 8px; padding:5px 5px 5px 6px; background:var(--surface); border:1px solid var(--line); border-radius:26px; box-shadow:var(--shadow); transition:border-color .15s, box-shadow .15s; }
+#composer .input-row { display:flex; align-items:flex-end; gap:4px; }
 #composer textarea { font-size:16px; flex:1; min-width:0; border:0; background:none; resize:none; height:42px; max-height:160px; padding:10px 2px; line-height:22px; outline:0; }
 #composer:focus-within { border-color:var(--accent); box-shadow:var(--shadow), 0 0 0 3px var(--accent-soft); }
 #composer .send { width:42px; height:42px; border-radius:50%; background:var(--accent); color:var(--accent-text); display:inline-flex; align-items:center; justify-content:center; flex:none; transition:background-color .15s, color .15s, transform .12s var(--ease); }
@@ -734,12 +735,14 @@ html::-webkit-scrollbar-thumb,.life-tools::-webkit-scrollbar-thumb { border-radi
   </main>
   <button id="banner" hidden></button>
   <div id="attachRow" hidden></div>
-  <select id="chatModel" data-al="modelTitle"></select>
   <form id="composer" class="empty">
-    <button type="button" class="attach" id="attachBtn" data-al="attach" data-i="clip"></button>
-    <textarea id="text" rows="1" autocomplete="off" enterkeyhint="send" data-ph="placeholder" aria-label="Message"></textarea>
-    <button type="button" class="mic" id="micBtn" data-al="voiceInput" data-i="mic"></button>
-    <button class="send" data-al="send" data-i="send"></button>
+    <select id="chatModel" data-al="modelTitle"></select>
+    <div class="input-row">
+      <button type="button" class="attach" id="attachBtn" data-al="attach" data-i="clip"></button>
+      <textarea id="text" rows="1" autocomplete="off" enterkeyhint="send" data-ph="placeholder" aria-label="Message"></textarea>
+      <button type="button" class="mic" id="micBtn" data-al="voiceInput" data-i="mic"></button>
+      <button class="send" data-al="send" data-i="send"></button>
+    </div>
   </form>
   <nav><button type="button" data-view="chat" data-t="tabChat"></button><button type="button" data-view="clerk" data-t="tabClerk"></button><button type="button" data-view="settings" data-t="tabSettings"></button></nav>
   <div id="fpModal" hidden>
