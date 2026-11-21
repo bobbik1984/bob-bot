@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {interpret} from './web/turn.mjs';
+const now=new Date(2026,10,21,10,0);
+test('explicit turns, including reminders without a model',()=>{
+ const read=s=>interpret(s,now);
+ assert.deepEqual(read('十分钟后提醒我取快递'),{type:'reminder',text:'取快递',at:+now+600000,repeat:''});
+ assert.equal(read('Remind me in 10 minutes to pick up my parcel').text,'pick up my parcel');
+ assert.equal(read('明天下午三点提醒我取报告').at,+new Date(2026,10,22,15));
+ assert.equal(read('每周一早上九点提醒我买花').at,+new Date(2026,10,23,9));
+ assert.equal(read('每天晚上八点提醒我散步').repeat,'daily');
+ assert.equal(read('下次路过西岸时提醒我看展').place,'西岸');
+ assert.equal(read('提醒我把书还了').type,'when');
+ assert.equal(read('下周一上午九点提醒我带材料').type,'when');
+ assert.equal(read('不要提醒我取快递'),null);
+ assert.equal(read('你好'),null);
+ assert.deepEqual(read('帮我记着雨伞在前台'),{type:'wish',text:'雨伞在前台',place:''});
+ assert.equal(read('Remind me tomorrow at 2 pm to call Alex').at,+new Date(2026,10,22,14));
+ assert.equal(read('Remind me every Monday at 2 pm to call Alex').type,'clarify');
+ assert.equal(read('办好了').type,'done');
+});

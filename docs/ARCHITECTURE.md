@@ -267,7 +267,7 @@ data/features/<name>/
 
 ## Go 原型 · Life 网关接入
 
-`gateway/go.mod` 是网关及 `bobbot/life` 的共同模块入口。`main.go` 显式挂载 Life 路由和巡检，`life_host.go` 提供既有认证、经典页和一次请求使用的活动模型配置快照。GCP 仅暂存源码和内嵌资源的原始字节，并从同一入口编译。地点原名与可选城市、街区共同存储，已保存的记录按需匹配。
+`gateway/go.mod` 是网关及 `bobbot/life` 的共同模块入口。`main.go` 显式挂载 Life 路由和巡检，`life_host.go` 提供既有认证、统一助理界面和一次请求使用的活动模型配置快照。GCP 仅暂存源码和内嵌资源的原始字节，并从同一入口编译。地点原名与可选城市、街区共同存储，已保存的记录按需匹配。
 
 <a id="pwa-push-contract"></a>
 ### iOS 主屏幕推送的持久化契约

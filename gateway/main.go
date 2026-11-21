@@ -64,6 +64,7 @@ type Message struct {
 }
 
 type Event struct {
+	At     int64       `json:"at,omitempty"`
 	Type   string      `json:"type"`
 	Role   string      `json:"role,omitempty"`
 	Text   string      `json:"text,omitempty"`
@@ -110,7 +111,7 @@ func main() {
 		log.Fatal("life storage: ", err)
 	}
 	life.MountPWA(mux)
-	app.Mount(mux, life.Host{Authorized: authed, Classic: serveClassic, VisionConfig: activeVision})
+	app.Mount(mux, life.Host{Authorized: authed, Assistant: serveAssistant, VisionConfig: activeVision})
 	go app.Run(context.Background())
 
 	// Static routes
@@ -126,19 +127,28 @@ func main() {
 	mux.HandleFunc("GET /api/version", handleVersion)
 	mux.HandleFunc("POST /api/login", handleLogin)
 	mux.HandleFunc("POST /api/logout", handleLogout)
-	mux.HandleFunc("GET /api/events", handleEvents)
+	owner := func(handler http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if !authed(r) {
+				http.Error(w, "auth", http.StatusUnauthorized)
+				return
+			}
+			handler(w, r)
+		}
+	}
+	mux.HandleFunc("GET /api/events", owner(handleEvents))
 
-	mux.HandleFunc("GET /api/conversations", handleListConversations)
-	mux.HandleFunc("POST /api/conversations", handleCreateConversation)
-	mux.HandleFunc("GET /api/conversations/", handleGetConversation)
-	mux.HandleFunc("POST /api/conversations/delete", handleDeleteConversation)
-	mux.HandleFunc("POST /api/conversations/rename", handleRenameConversation)
+	mux.HandleFunc("GET /api/conversations", owner(handleListConversations))
+	mux.HandleFunc("POST /api/conversations", owner(handleCreateConversation))
+	mux.HandleFunc("GET /api/conversations/", owner(handleGetConversation))
+	mux.HandleFunc("POST /api/conversations/delete", owner(handleDeleteConversation))
+	mux.HandleFunc("POST /api/conversations/rename", owner(handleRenameConversation))
 
-	mux.HandleFunc("POST /api/chat", handleChat)
-	mux.HandleFunc("POST /api/model", handleSaveModel)
-	mux.HandleFunc("POST /api/key", handleSaveKey)
-	mux.HandleFunc("POST /api/budget", handleSaveBudget)
-	mux.HandleFunc("POST /api/prefs", handleSavePrefs)
+	mux.HandleFunc("POST /api/chat", owner(handleChat))
+	mux.HandleFunc("POST /api/model", owner(handleSaveModel))
+	mux.HandleFunc("POST /api/key", owner(handleSaveKey))
+	mux.HandleFunc("POST /api/budget", owner(handleSaveBudget))
+	mux.HandleFunc("POST /api/prefs", owner(handleSavePrefs))
 	mux.HandleFunc("GET /api/clerk", handleGetClerk)
 	mux.HandleFunc("POST /api/clerk/timezone", handleSaveTimezone)
 	mux.HandleFunc("GET /api/proactive", handleGetProactive)
@@ -384,16 +394,20 @@ func loadConversations() {
 	}
 }
 
+var conversationSave sync.Mutex
+
 func saveConversations() {
+	conversationSave.Lock()
+	defer conversationSave.Unlock()
 	convsLock.RLock()
 	list := make([]*Conversation, 0, len(conversations))
 	for _, c := range conversations {
 		list = append(list, c)
 	}
+	b, err := json.MarshalIndent(list, "", "  ")
 	convsLock.RUnlock()
 
 	os.MkdirAll("./data", 0755)
-	b, err := json.MarshalIndent(list, "", "  ")
 	if err != nil {
 		log.Printf("Failed to marshal conversations: %v", err)
 		return
@@ -620,10 +634,13 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 	cfgLock.RLock()
 	initBudget := map[string]interface{}{"spentUsd": cfg.BudgetSpentUsd, "capUsd": cfg.BudgetCapUsd, "exceeded": cfg.BudgetCapUsd > 0 && cfg.BudgetSpentUsd >= cfg.BudgetCapUsd}
 	cfgLock.RUnlock()
+	convsLock.RLock()
+	active := runningCID
+	convsLock.RUnlock()
 	initData, _ := json.Marshal(map[string]interface{}{
 		"type":    "hello",
 		"budget":  initBudget,
-		"running": runningCID,
+		"running": active,
 		"pending": []string{},
 		"unread":  0,
 	})
@@ -702,7 +719,7 @@ func handleGetConversation(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/api/conversations/")
 	convsLock.RLock()
 	conv, exists := conversations[id]
-	convsLock.RUnlock()
+	defer convsLock.RUnlock()
 
 	if !exists {
 		jsonResp(w, 404, map[string]string{"error": "NO_CONVERSATION"})
@@ -720,6 +737,11 @@ func handleDeleteConversation(w http.ResponseWriter, r *http.Request) {
 	}
 	json.NewDecoder(r.Body).Decode(&body)
 	convsLock.Lock()
+	if body.ID == runningCID {
+		convsLock.Unlock()
+		jsonResp(w, http.StatusConflict, map[string]string{"error": "BUSY_OTHER"})
+		return
+	}
 	delete(conversations, body.ID)
 	convsLock.Unlock()
 	saveConversations()
@@ -990,16 +1012,26 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		jsonResp(w, 400, map[string]string{"error": "EMPTY"})
 		return
 	}
-	if cfg.ActiveAPIKey == "" {
+	cfgLock.RLock()
+	provider, baseURL, key, model := cfg.ActiveProvider, cfg.ActiveBaseURL, cfg.ActiveAPIKey, cfg.ActiveModel
+	cfgLock.RUnlock()
+	if key == "" {
 		jsonResp(w, 400, map[string]string{"error": "NO_KEY", "message": "Please configure API key in Settings"})
 		return
 	}
 
 	cid := body.CID
 	convsLock.Lock()
+	if runningCID != "" {
+		convsLock.Unlock()
+		jsonResp(w, http.StatusConflict, map[string]string{"error": "BUSY_OTHER"})
+		return
+	}
 	conv, ok := conversations[cid]
 	if !ok {
-		cid = fmt.Sprintf("conv_%d", time.Now().UnixNano())
+		if cid != "assistant" {
+			cid = fmt.Sprintf("conv_%d", time.Now().UnixNano())
+		}
 		conv = &Conversation{
 			ID:        cid,
 			Title:     text,
@@ -1018,7 +1050,7 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 	runningCID = cid
 	convsLock.Unlock()
 
-	userEv := Event{Type: "message", Role: "user", Text: text, CID: cid}
+	userEv := Event{At: time.Now().UnixMilli(), Type: "message", Role: "user", Text: text, CID: cid}
 	convsLock.Lock()
 	conv.Events = append(conv.Events, userEv)
 	conv.History = append(conv.History, Message{Role: "user", Text: text, Time: time.Now().Unix()})
@@ -1039,10 +1071,10 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		var aiText string
 		var err error
 
-		if cfg.ActiveProvider == "gemini" && !strings.Contains(cfg.ActiveBaseURL, "openai") {
+		if provider == "gemini" && !strings.Contains(baseURL, "openai") {
 			aiText, err = callGeminiStream(conv.History, cid)
 		} else {
-			aiText, err = callOpenAIStream(cfg.ActiveBaseURL, cfg.ActiveAPIKey, cfg.ActiveModel, conv.History, cid)
+			aiText, err = callOpenAIStream(baseURL, key, model, conv.History, cid)
 		}
 
 		if err != nil {
@@ -1052,7 +1084,7 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		aiEv := Event{Type: "message", Role: "assistant", Text: aiText, CID: cid}
+		aiEv := Event{At: time.Now().UnixMilli(), Type: "message", Role: "assistant", Text: aiText, CID: cid}
 		convsLock.Lock()
 		conv.Events = append(conv.Events, aiEv)
 		conv.History = append(conv.History, Message{Role: "model", Text: aiText, Time: time.Now().Unix()})

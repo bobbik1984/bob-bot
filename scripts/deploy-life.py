@@ -30,7 +30,7 @@ def stage_gateway(repo, ref, gw):
             return False
         if path.parent in (Path("."), Path("life")) and path.suffix == ".go":
             return True
-        if path.as_posix() in {"go.mod", "go.sum", "life/calendar.test.mjs", "life/push-client.test.mjs", "life/web/manifest.json"}:
+        if path.as_posix() in {"go.mod", "go.sum", "life/calendar.test.mjs", "life/push-client.test.mjs", "life/turn.test.mjs", "life/web/manifest.json"}:
             return True
         return (path.parts[0] == "public" or path.parts[:2] == ("life", "web")) and path.suffix in asset_types
 

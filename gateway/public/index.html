@@ -481,27 +481,40 @@ nav button.on span:first-child { background:var(--accent-soft); }
 .conv-del { top:1px; bottom:1px; right:1px; border-radius:0 13px 13px 0; }
 .card .actions .btn { padding:0 10px; font-size:15px; }
 
-/* ---- a wide screen gets a sidebar instead of a phone in the middle ---- */
-@media (min-width:1000px) {
-  #app { max-width:none; display:grid; grid-template-columns:300px minmax(0,1fr); grid-template-rows:auto minmax(0,1fr) auto auto auto; }
-  #app > nav { grid-column:1; grid-row:1; border-top:0; border-right:1px solid var(--line); padding:10px 10px 6px; gap:4px; }
-  #app > nav button { flex-direction:row; justify-content:center; gap:6px; padding:9px 0; border-radius:12px; font-size:13px; }
-  #app > nav button span:first-child { padding:0; background:none; }
-  #app > nav button.on { background:var(--accent-soft); }
-  #app > nav button svg { width:18px; height:18px; }
-  #app > nav .badge { position:static; }
-  #drawer { position:static; grid-column:1; grid-row:2 / -1; width:auto; transform:none; transition:none; box-shadow:none; border-right:1px solid var(--line); padding-top:8px; z-index:auto; }
-  #scrim, .dhead { display:none; }
-  #app > header { grid-column:2; grid-row:1; }
-  #app > main { grid-column:2; grid-row:2; }
-  #banner { grid-column:2; grid-row:3; }
-  #attachRow { grid-column:2; grid-row:4; }
-  #composer { grid-column:2; grid-row:5; margin-bottom:20px; }
-  #banner, #attachRow, #composer { width:min(760px, calc(100% - 48px)); margin-left:auto; margin-right:auto; }
-  .view { padding-left:max(24px, calc((100% - 760px) / 2)); padding-right:max(24px, calc((100% - 760px) / 2)); }
-  .orb-btn { left:316px; pointer-events:none; }
-  #app.hero .orb-btn { left:calc(300px + (100% - 300px) / 2 - var(--hd, 132px) / 2); }
-}
+html { scrollbar-gutter:stable; }
+#app { max-width:850px; }
+#app .orb-btn, #app.hero .orb-btn { width:30px; height:30px; left:16px; top:calc(13px + env(safe-area-inset-top)); transition:none; }
+#app .orb-btn .orb, #app.hero .orb-btn .orb { --s:30px; }
+#welcome { min-height:min(58dvh,440px); justify-content:center; padding:0; }
+[data-receipt] .msg { min-width:min(220px,70vw); }
+[data-receipt] .msg>small { color:var(--muted); }
+[data-receipt] .msg>strong { display:block; font-size:17px; margin:4px 0; }
+[data-receipt] .msg>.link { font-size:14px; }
+
+#composer { margin-bottom:max(12px, env(safe-area-inset-bottom)); }
+#pinForm, .life-tools form, .life-tools label { display:grid; gap:8px; }
+#pinForm { width:min(240px, 90vw); }
+.life-tools { width:min(480px, calc(100vw - 28px)); max-height:84dvh; overflow:auto; border:1px solid var(--line); border-radius:20px; background:var(--surface); color:var(--text); padding:18px; }
+.life-tools::backdrop { background:var(--scrim, var(--surface-3)); opacity:.78; }
+.life-tools .dhead { padding:0; display:flex; justify-content:space-between; align-items:center; }
+.life-tools section, .life-tools details, .life-tools form>label, .life-tools form>.row { margin-top:12px; }
+.life-tools input:not([type=checkbox]), .life-tools select, .life-tools textarea, #whenEntry { border:1px solid var(--line); border-radius:10px; padding:9px; max-width:100%; min-width:0; background:var(--bg); color:var(--text); font:inherit; }
+.life-tools .row, .life-tools .actions, #attention .actions, #turnPrompt .actions { display:flex; flex-wrap:wrap; gap:8px; }
+.life-tools .row>* { flex:1 1 145px; min-width:0; }
+.life-tools button, #attention button, #turnPrompt button { color:var(--accent-ink); padding:8px 12px; border-radius:10px; background:var(--accent-soft); min-height:40px; }
+.msg [type=button].link { display:block; margin-top:8px; }
+.life-tools h2,.life-tools h3,#attention h3 { margin:4px 0; }
+.life-tools summary { cursor:pointer; padding:8px 0; }
+#attention .card, #turnPrompt:not(:empty), .life-tools article { margin:8px 0; border:1px solid var(--line); border-radius:16px; padding:12px 14px; background:var(--surface); overflow-wrap:anywhere; }
+#attention small, .life-tools small { display:block; color:var(--muted); }
+#attention .actions,.life-tools article .actions,#turnPrompt .actions { margin-top:8px; }
+#assistantMenu button { display:block; width:100%; margin:6px 0; text-align:start; }
+#assistantMenu .dhead button,.life-tools .dhead button { width:auto; }
+#profileMenu { min-width:44px; min-height:44px; }
+#app:not(.hero) #orbBtn { pointer-events:none; }
+#app.hero #viewChat { overflow-y:auto; }
+html::-webkit-scrollbar, .life-tools::-webkit-scrollbar { width:6px; }
+html::-webkit-scrollbar-thumb,.life-tools::-webkit-scrollbar-thumb { border-radius:6px; background:var(--line); }
 @media (prefers-reduced-motion: reduce) {
   #feed > .in, .view, .dots.shake, .check.on, #toast, #jump { animation:none !important; }
 }
@@ -512,18 +525,17 @@ nav button.on span:first-child { background:var(--accent-soft); }
 <section id="login" hidden>
   <span class="orb big" data-orb data-state="nap"></span>
   <p class="sub" data-t="loginSub"></p>
-  <a class="life-home" href="/" data-t="lifeHome"></a>
-  <div class="dots" id="dots"><i></i><i></i><i></i><i></i></div>
+  <form id="pinForm"><input class="field" id="ownerPin" type="password" autocomplete="current-password" inputmode="numeric" data-al="loginSub" required>
+    <button class="btn primary" data-t="signIn"></button></form>
   <div id="loginMsg" role="status"></div>
-  <div class="pad" id="pad"></div>
 </section>
 
 <section id="app" class="hero" hidden>
-  <button class="orb-btn" id="orbBtn" data-al="menu"><span class="orb" id="hOrb" data-orb data-state="nap"></span></button>
+  <span aria-hidden="true" class="orb-btn" id="orbBtn"><span class="orb" id="hOrb" data-orb data-state="nap"></span></span>
   <header>
     <span></span>
     <div class="title" id="title"></div>
-    <div class="right" id="slotHeader"></div>
+    <div class="right"><div id="slotHeader"></div><button id="returnBob" class="link" data-t="backBob" hidden></button><button id="profileMenu" class="icon-btn" data-al="moreOptions" aria-haspopup="dialog" data-i="sliders"></button></div>
   </header>
   <main>
     <div class="view" id="viewChat">
@@ -533,7 +545,7 @@ nav button.on span:first-child { background:var(--accent-soft); }
         <div id="glance" hidden></div>
         <div class="slot" id="slotHome"></div>
       </div>
-      <div id="feed" aria-live="polite"></div>
+      <div id="feed" aria-live="polite"></div><section id="attention" aria-live="polite" tabindex="-1"><div id="notices"></div></section><div id="turnPrompt" aria-live="polite"></div>
     </div>
     <div class="view" id="viewClerk" hidden>
       <div class="slot" id="slotClerk"></div>
@@ -548,7 +560,7 @@ nav button.on span:first-child { background:var(--accent-soft); }
       <div id="jobList"></div>
       <p class="hint empty-note" id="jobEmpty" data-t="jobsEmpty" hidden></p>
       <div class="sect-head" id="inboxHead"><h3 data-t="inboxTitle"></h3><button class="link" id="markRead" data-t="markRead"></button></div>
-      <div id="inboxList"></div>
+      <span id="badge" hidden></span><div id="inboxList"></div>
     </div>
     <div class="view" id="viewSettings" hidden>
       <div class="slot" id="slotSettings"></div>
@@ -721,22 +733,29 @@ nav button.on span:first-child { background:var(--accent-soft); }
     </div>
   </div>
   <input type="file" id="filePick" multiple hidden accept=".txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.log,.xml,.html,.htm,.yaml,.yml,.ini,.sql,text/*">
-  <nav>
-    <a class="life-home" href="/"><span data-i="calendar"></span><span data-t="lifeHome"></span></a>
-    <button class="on" data-view="chat"><span data-i="chat"></span><span data-t="tabChat"></span></button>
-    <button data-view="clerk"><span data-i="clock"></span><span data-t="tabClerk"></span><span class="badge" id="badge" hidden></span></button>
-    <button data-view="settings"><span data-i="sliders"></span><span data-t="tabSettings"></span></button>
-  </nav>
-
   <div id="scrim"></div>
   <aside id="drawer" aria-label="History">
     <div class="dhead"><b data-t="history"></b><button class="icon-btn" id="closeDrawer" data-al="close" data-i="cross"></button></div>
-    <button class="btn primary" id="newChat" data-i="plus" data-t="newChat"></button>
+    <button class="btn primary" id="newChat" data-t="backBob"></button>
     <ul id="convList"></ul>
     <p class="hint" id="convMsg" role="status"></p>
     <button id="drawerSpend"></button>
   </aside>
 </section>
+
+<dialog id="assistantMenu" class="life-tools" aria-labelledby="assistantMenuTitle"><div class="dhead"><b id="assistantMenuTitle">Bob</b><button type="button" data-dismiss data-t="close"></button></div>
+<button id="viewRecords" data-t="myRecords"></button><button id="captureTools" data-t="sourceTools"></button><button id="archiveChats" data-t="history"></button><button id="preferences" data-t="tabSettings"></button></dialog>
+<dialog id="recordsDialog" class="life-tools" aria-labelledby="recordsTitle"><div class="dhead"><b id="recordsTitle" data-t="myRecords"></b><button data-dismiss data-t="close"></button></div><details id="agenda"><summary id="agendaCount"></summary><ol id="agendaList"></ol><small id="agendaEmpty" data-life-t="agendaEmpty"></small></details>
+<div id="open"></div><details><summary data-life-t="history"></summary><div id="closed"></div></details>
+</dialog>
+<dialog id="captureDialog" class="life-tools" aria-labelledby="sourceTitle"><div class="dhead"><b id="sourceTitle" data-t="sourceTools"></b><button data-dismiss data-t="close"></button></div><section><form id="capture"><label><span data-life-t="capture"></span><textarea maxlength="1200" id="note"></textarea></label>
+<div class="row"><label><span data-life-t="kind"></span><select id="kind"><option value="wish" data-life-t="wish"></option><option value="save" data-life-t="save"></option><option value="plan" data-life-t="plan"></option></select></label>
+<label><span data-life-t="image"></span><input type="file" id="photo" accept="image/*"></label></div>
+<details id="details"><summary data-life-t="details"></summary><div class="row"><label><span data-life-t="where"></span><input maxlength="60" id="place"></label><label><span id="whenLabel"></span><input id="when" type="datetime-local"></label></div>
+<div class="row"><label><span data-life-t="city"></span><input maxlength="60" id="city"></label><label><span data-life-t="area"></span><input maxlength="60" id="area"></label></div></details>
+<small id="filehint"></small><div class="actions"><button class="primary" id="submit" data-life-t="submit"></button><button type="button" id="read" data-life-t="read"></button></div><small data-life-t="readhint"></small></form></section>
+<details id="calendarPanel"><summary data-life-t="calendar"></summary><small data-life-t="calendarHelp"></small><label><span data-life-t="chooseCalendar"></span><input type="file" id="calendarFile" accept=".ics,text/calendar"></label><div id="calendarRows"></div><small id="importInfo" role="status"></small><button id="confirmCalendar" type="button" data-life-t="confirmCalendar" hidden></button></details>
+<p id="msg" role="status"></p></dialog><dialog class="life-tools" id="draftDialog" aria-labelledby="draftHeading"><form id="draftForm"><h2 id="draftHeading" data-life-t="draftLabel"></h2><small data-life-t="draftHelp"></small><label><span data-life-t="draftName"></span><input id="draftTitle" maxlength="1200" required></label><label><span data-life-t="where"></span><input id="draftPlace" maxlength="60"></label><label><span data-life-t="draftAt"></span><input type="datetime-local" id="draftAt" required></label><div class="actions"><button type="submit" class="primary" data-life-t="downloadDraft"></button><button id="cancelDraft" type="button" data-life-t="cancel"></button></div></form></dialog>
 
 <div id="toast" role="status" hidden></div>
 
@@ -770,11 +789,13 @@ nav button.on span:first-child { background:var(--accent-soft); }
 // Languages: every string below is a list in the same order as LANGS. Add a language by adding its code
 // and one more entry to each list; anything missing falls back to English.
 const LANGS = [{ code: 'zh', label: '简体中文' }, { code: 'en', label: 'English' }]
-const savedLang = localStorage.getItem('bobbot.lang') || 'auto'
+const savedLang = localStorage.getItem('bobbot.lang') || localStorage.getItem('bob-life-lang') || 'auto'
 const lang = savedLang === 'auto' ? (navigator.language.startsWith('zh') ? 'zh' : 'en') : savedLang
 const langIndex = Math.max(0, LANGS.findIndex(l => l.code === lang))
 const zh = lang === 'zh'
 const I18N = {
+  signIn:['进入','Sign in'], backBob:['返回 Bob','Back to Bob'], myRecords:['Bob 记着的事','What Bob is tracking'], sourceTools:['添加截图或日历','Add a screenshot or calendar'], moreOptions:['更多','More'],
+
   devicePushOff:['关闭本机通知','Disable on this device'], pushAccepted:['推送服务已接受，请查看本机通知中心。','Push service accepted the test. Check this device’s notifications.'],
   pushPreview:['锁屏显示提醒正文','Show reminder details on the lock screen'],
   lifeHome:['日程首页','Life home'],
@@ -786,7 +807,7 @@ const I18N = {
   pagePrefix:['页面：','Page: '], textPrefix:['文字：','Text: '],
   draftDone:['已按草稿执行','Done as drafted'], draftFailed:['没能执行，详情在收件箱','Could not finish. See the inbox'], draftDiscarded:['草稿已放弃','Draft discarded'],
   ch_webpush:['手机通知','Phone notifications'],
-  loginSub:['输入 PIN 进入','Enter your PIN'], welcomeSub:['今天想让我做点什么？','What can I do for you today?'],
+  loginSub:['输入 PIN 进入','Enter your PIN'], welcomeSub:['有什么事想让我替你记着？','What would you like me to remember?'],
   tabChat:['对话','Chat'], tabClerk:['文员','Clerk'], tabSettings:['设置','Settings'],
   clerkTitle:['文员','Clerk'], settingsTitle:['设置','Settings'],
   stateNap:['休息中','Napping'], stateThink:['思考中…','Thinking…'], stateSpeak:['回复中','Replying'], stateWait:['等你确认','Waiting for you'],
@@ -993,41 +1014,24 @@ const getJson = async url => { const res = await fetch(url); return res.ok ? res
 const errText = (data, status) => I18N['err_' + data.error] ? t('err_' + data.error) : t('failed') + (data.error ?? status)
 
 // ---- PIN ----
-let entered = ''
-const drawDots = () => [...$('dots').children].forEach((d, i) => d.classList.toggle('on', i < entered.length))
-async function submitPin() {
-  const { status, data } = await post('/api/login', { pin: entered })
-  entered = ''
-  drawDots()
-  if (status === 200) return boot()
-  $('dots').classList.remove('shake'); void $('dots').offsetWidth; $('dots').classList.add('shake')
-  $('loginMsg').textContent = data.error === 'LOCKED' ? t('locked', Math.ceil(data.retryAfter / 60)) : data.error === 'PIN_NOT_SET' ? t('noPin') : t('wrongPin', data.remaining)
+$('pinForm').onsubmit = async e => {
+  e.preventDefault()
+  const input = $('ownerPin'), button = e.currentTarget.querySelector('button')
+  button.disabled = true
+  try {
+    const {status, data} = await post('/api/login', {pin:input.value})
+    if (status === 200) { input.value=''; await boot(); return }
+    $('loginMsg').textContent = data.error === 'LOCKED' ? t('locked', Math.ceil(data.retryAfter/60)) : t('wrongPin',data.remaining ?? '')
+    input.select()
+  } catch { $('loginMsg').textContent=t('offline') } finally { button.disabled=false }
 }
-const press = d => {
-  if (entered.length >= 4) return
-  entered += d
-  drawDots()
-  $('loginMsg').textContent = ''
-  if (entered.length === 4) submitPin()
-}
-;['1','2','3','4','5','6','7','8','9',null,'0','del'].forEach(k => {
-  const b = document.createElement('button')
-  if (k === null) { b.style.visibility = 'hidden'; b.tabIndex = -1 }
-  else if (k === 'del') { b.className = 'ghost'; b.textContent = t('del'); b.onclick = () => { entered = entered.slice(0, -1); drawDots() } }
-  else { b.textContent = k; b.onclick = () => press(k) }
-  $('pad').append(b)
-})
-addEventListener('keydown', e => {
-  if (!$('login').hidden && /^\d$/.test(e.key)) press(e.key)
-  if (e.key === 'Escape') closeDrawer()
-})
-
 // ---- views ----
 const VIEWS = ['chat', 'clerk', 'settings']
 let currentView = 'chat'
 let persistView = false
 function show(view) {
   currentView = view
+  $('returnBob').hidden = view === 'chat'
   if (persistView && (view === 'chat' || view === 'clerk')) localStorage.setItem('bobbot.lastView', view)
   VIEWS.forEach(v => { $('view' + v[0].toUpperCase() + v.slice(1)).hidden = v !== view })
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.view === view))
@@ -1081,7 +1085,7 @@ new ResizeObserver(layoutHero).observe($('viewChat'))
 
 // The orb is large in the middle of a new chat, and moves to the top left, small, once there is something to read.
 function setHero() {
-  const hero = currentView === 'chat' && feed.children.length <= 1
+  const hero = currentView === 'chat' && feed.children.length <= 1 && !$('notices').childElementCount && !$('turnPrompt').childElementCount
   $('app').classList.toggle('hero', hero)
   $('welcome').hidden = !hero
   if (hero) {
@@ -1100,7 +1104,7 @@ function refreshOrb() {
   const mood = t({ nap: 'stateNap', think: 'stateThink', speak: 'stateSpeak', wait: 'stateWait' }[state])
   document.querySelectorAll('[data-orb]').forEach(orb => { orb.dataset.state = state; orb.setAttribute('aria-label', mood) })
   // The mood is drawn by the orb itself, so the header stays quiet.
-  $('title').textContent = currentView === 'chat' ? '' : t(currentView === 'clerk' ? 'clerkTitle' : 'settingsTitle')
+  $('title').textContent = currentView === 'chat' ? 'Bob' : t(currentView === 'clerk' ? 'clerkTitle' : 'settingsTitle')
   typing.hidden = !mine
   if (mine) { feed.append(typing); follow() }
 }
@@ -1175,7 +1179,7 @@ function renderMd(parent, text) { // bold, code, bullets and headings only, buil
     const p = el('p'); inlineMd(p, line.replace(/^#{1,6}\s+/, '')); parent.append(p)
   }
 }
-function message(role, text, files = []) {
+function message(role, text, files = [], at=Date.now()) {
   const row = el('div', 'bubble-row' + (role === 'user' ? ' user' : ''))
   if (role !== 'user') {
     if (lastKind === 'assistant') row.append(el('div', 'spacer'))
@@ -1188,6 +1192,7 @@ function message(role, text, files = []) {
     const line = el('div', 'fileline'); line.insertAdjacentHTML('afterbegin', icon('file')); line.append(el('span', '', f.name))
     bubble.append(line)
   }
+  row.dataset.at=String(at)
   row.append(bubble)
   add(row, role === 'user' ? 'user' : 'assistant')
 }
@@ -1450,7 +1455,7 @@ function render(e) {
       return
     }
     streamBubble = null
-    stamp(e.at); message(e.role, e.text, e.files ?? [])
+    stamp(e.at); message(e.role, e.text, e.files ?? [], e.at || 1)
   }
   else if (e.type === 'step') { streamBubble = null; step(e.name) }
   else if (e.type === 'error') { streamBubble = null; notice(e.text, true) }
@@ -1508,16 +1513,19 @@ async function loadHistory(cid) {
   clearFeed()
   quiet = true
   try { events.forEach(render) } finally { quiet = false }
-  refreshOrb(); updateWelcome(); atEnd()
+  window.BobLife?.paint(); refreshOrb(); updateWelcome(); atEnd()
   return true
 }
-const STALE_SESSION_MS = 3 * 60 * 60 * 1000
 let restoredOnce = false
-// A chat that has been quiet for three hours starts a new session; otherwise come back to where you were.
 /** Opens what a notification was about, from the address it started with or from a message sent to an open app. */
 async function openFromLink(link) {
   let params
   try { params = new URL(link, location.origin).searchParams } catch { return false }
+  if (new URL(link,location.origin).hash==='#attention') {
+    await openAssistant()
+    await window.BobLife?.attention()
+    return true
+  }
   const cid = params.get('c'), view = params.get('v')
   if (cid && !convs.some(c => c.id === cid)) await loadConvs() // a chat that began a moment ago
   let went = false
@@ -1527,24 +1535,21 @@ async function openFromLink(link) {
   return went
 }
 async function restoreLastPage() {
-  if (location.search && await openFromLink(location.href)) { history.replaceState(null, '', '/'); persistView = true; return } // opened by a notification
-  history.replaceState(null, '', '/')
-  let lastCid = ''
-  let savedView = 'chat'
-  try { lastCid = localStorage.getItem('bobbot.lastCid') || ''; savedView = localStorage.getItem('bobbot.lastView') || 'chat' } catch { /* private mode */ }
-  const target = convs.find(c => c.id === lastCid)
-  const stale = !target || Date.now() - (target.updatedAt ?? 0) > STALE_SESSION_MS
-  if (stale) newChat()
-  else await selectConv(target.id)
-  if (savedView === 'clerk') show('clerk')
+  if (await openFromLink(location.href)) { persistView=true; return }
+  await openAssistant()
   persistView = true
+}
+async function openAssistant() {
+  if (convs.some(c => c.id === 'assistant')) await selectConv('assistant')
+  else { activeCid='assistant'; closeDrawer(); show('chat'); clearFeed(); refreshOrb() }
+  window.BobLife?.paint()
 }
 async function selectConv(cid) {
   try { localStorage.setItem('bobbot.lastCid', cid); localStorage.setItem('bobbot.lastAt', String(Date.now())) } catch { /* private mode */ }
   activeCid = cid
   closeDrawer(); show('chat'); clearFeed(); drawConvs(); refreshOrb()
   if (!await loadHistory(cid) && activeCid === cid) { activeCid = null; drawConvs(); refreshOrb() }
-  refreshBanner()
+  refreshBanner(); window.BobLife?.paint()
 }
 function newChat() {
   try { localStorage.removeItem('bobbot.lastCid') } catch { /* private mode */ }
@@ -1679,19 +1684,22 @@ function openDrawer() {
   $('drawer').classList.add('open'); $('scrim').classList.add('on')
   loadConvs()
 }
-// On a wide screen the history is a sidebar that is always there.
-const wide = matchMedia('(min-width: 1000px)')
 function closeDrawer() {
-  $('drawer').classList.remove('open'); $('scrim').classList.remove('on')
-  $('drawer').inert = !wide.matches
+  $('drawer').classList.remove('open'); $('scrim').classList.remove('on'); $('drawer').inert=true
 }
-$('drawer').inert = !wide.matches
-wide.addEventListener('change', () => { closeDrawer(); drawConvs() })
-$('orbBtn').onclick = openDrawer
+closeDrawer()
+$('profileMenu').onclick=()=>$('assistantMenu').showModal()
+document.querySelectorAll('[data-dismiss]').forEach(b=>b.onclick=()=>b.closest('dialog').close())
+function menuAction(fn) { return () => { $('assistantMenu').close(); fn() } }
+$('viewRecords').onclick=menuAction(()=>$('recordsDialog').showModal())
+$('captureTools').onclick=menuAction(()=>$('captureDialog').showModal())
+$('preferences').onclick=menuAction(()=>show('settings'))
+$('archiveChats').onclick=menuAction(openDrawer)
+$('returnBob').onclick=openAssistant
 $('orbBtn').addEventListener('pointerdown', () => poke())
 $('closeDrawer').onclick = closeDrawer
 $('scrim').onclick = closeDrawer
-$('newChat').onclick = newChat
+$('newChat').onclick = openAssistant
 $('drawerSpend').onclick = () => { closeDrawer(); show('settings') }
 
 let source
@@ -1709,7 +1717,7 @@ function connect() {
       $('handBack').hidden = !activeTakeover
       showBudget(e.budget); runningCid = e.running; setBadge(e.unread)
       await loadConvs()
-      if (activeCid === undefined && !restoredOnce) { restoredOnce = true; await restoreLastPage() }
+      if (!restoredOnce) { restoredOnce = true; await restoreLastPage() }
       else if (activeCid) await loadHistory(activeCid) // catch up after a dropped connection
       refreshBanner()
     }
@@ -2465,6 +2473,13 @@ $('composer').onsubmit = async e => {
   setText('')
   attachments = []; drawAttachments()
   const restore = () => { setText(text); attachments = files; drawAttachments() } // keep the draft so nothing is lost
+  if (!files.length) {
+    try {
+      const life = await lifeReady
+      if (await life.handle(text)) return
+    } catch { restore(); notice(t('failed'),true); return }
+  }
+  if (activeCid === undefined) activeCid='assistant'
   if (!activeCid) {
     const made = await post('/api/conversations')
     if (made.status !== 200) { restore(); notice(errText(made.data, made.status), true); return }
@@ -2473,7 +2488,7 @@ $('composer').onsubmit = async e => {
   const { status, data } = await post('/api/chat', { cid: activeCid, text, files })
   if (status === 200) { refreshConvs(); return }
   restore()
-  if (data.error === 'NO_KEY') { $('settingsMsg').textContent = t('noKey'); show('settings') }
+  if (data.error === 'NO_KEY') notice(t('noKey'), true)
   else if (data.error === 'BUDGET_EXCEEDED') notice(t('budgetExceeded'), true)
   else if (data.error === 'BUSY_OTHER') notice(t('busyOther'), true)
   else notice(errText(data, status), true)
@@ -3033,12 +3048,16 @@ async function boot() {
   showBuild(s)
   setBadge(s.unread)
   show('chat')
-  if (!s.hasKey) { $('settingsMsg').textContent = t('noKey'); show('settings') }
+  lifeReady.then(life => life.start()).catch(()=>notice(t('failed'),true))
   connect()
   reportPresence(true)
   loadClerk() // the front page shows what is waiting
   loadFeatures() // widgets and styling the owner has kept
 }
+const lifeReady = import('/life-ui.js')
+window.assistantUI = { lang, active:()=>activeCid, showChat:()=>show('chat'), openAssistant, notice, setHero, atEnd,
+  compose:text=>{ show('chat'); setText(text); $('text').focus() },
+  say:(role,text)=>message(role,text), settings:()=>show('settings') }
 boot()
 </script>
 </body>

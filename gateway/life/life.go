@@ -22,25 +22,29 @@ import (
 	"time"
 )
 
-const Version = "0.4.0-life.5"
+const Version = "0.4.0-life.6"
 
 type Item struct {
-	ID         string
-	Kind       string // wish, plan or save
-	Text       string
-	City, Area string
-	Place      string
-	At         int64 // deadline for wishes; start time for plans, Unix milliseconds
-	Created    int64
-	Status     string
-	Image      string
-	Snooze     int64
-	Signal     string
-	Related    string
-	Seen       string
+	ID           string
+	Kind         string // wish, plan, save or reminder
+	Repeat, Zone string
+	Spoken       bool
+	Text         string
+	City, Area   string
+	Place        string
+	At           int64 // deadline for wishes; start time for plans, Unix milliseconds
+	Created      int64
+	Status       string
+	Image        string
+	Snooze       int64
+	Signal       string
+	Related      string
+	Seen         string
 }
 type Input struct {
 	ID, Kind, Text, Place, City, Area, Photo string
+	Repeat, Zone                             string
+	Spoken                                   bool
 	At                                       int64
 }
 type store struct {
@@ -152,6 +156,9 @@ func validatePhoto(raw string) ([]byte, string, error) {
 func norm(s string) string { return strings.ToLower(strings.Join(strings.Fields(s), "")) }
 func match(i Item, items []Item, now time.Time) (string, string) {
 	n := now.UnixMilli()
+	if i.Kind == "reminder" {
+		return reminderSignal(i, now), ""
+	}
 	if i.Kind != "wish" || i.Status != "open" || i.Snooze > n || (i.At != 0 && i.At < n) {
 		return "", ""
 	}
@@ -208,7 +215,7 @@ func (a *App) add(v Input) (Item, error) {
 	v.Text = strings.TrimSpace(v.Text)
 	v.Place = strings.TrimSpace(v.Place)
 	v.City, v.Area = strings.TrimSpace(v.City), strings.TrimSpace(v.Area)
-	if !fileID(v.ID) || len(v.Text) > 4800 || len(v.Place) > 240 || len(v.City) > 240 || len(v.Area) > 240 || (v.Text == "" && v.Photo == "") || (v.Kind != "wish" && v.Kind != "plan" && v.Kind != "save") {
+	if !fileID(v.ID) || len(v.Text) > 4800 || len(v.Place) > 240 || len(v.City) > 240 || len(v.Area) > 240 || (v.Text == "" && v.Photo == "") || (v.Kind != "wish" && v.Kind != "plan" && v.Kind != "save" && v.Kind != "reminder") {
 		return Item{}, errors.New("invalid")
 	}
 	for _, i := range a.state.Items {
@@ -216,11 +223,14 @@ func (a *App) add(v Input) (Item, error) {
 			return i, nil
 		}
 	}
-	if v.At < 0 || v.At > now.AddDate(10, 0, 0).UnixMilli() || (v.Kind == "plan" && v.At <= now.UnixMilli()) {
+	if err := validateRepeat(v); err != nil {
+		return Item{}, err
+	}
+	if v.At < 0 || v.At > now.AddDate(10, 0, 0).UnixMilli() || ((v.Kind == "plan" || v.Kind == "reminder") && v.At <= now.UnixMilli()) {
 		return Item{}, errors.New("time")
 	}
 	s := a.copy()
-	i := Item{ID: v.ID, Kind: v.Kind, Text: v.Text, Place: v.Place, City: v.City, Area: v.Area, At: v.At, Created: now.UnixMilli(), Status: "open"}
+	i := Item{ID: v.ID, Kind: v.Kind, Repeat: v.Repeat, Zone: v.Zone, Spoken: v.Spoken, Text: v.Text, Place: v.Place, City: v.City, Area: v.Area, At: v.At, Created: now.UnixMilli(), Status: "open"}
 	if v.Photo != "" {
 		b, kind, e := validatePhoto(v.Photo)
 		if e != nil {

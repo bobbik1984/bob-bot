@@ -13,7 +13,7 @@
 
 ## GCP 源码发布
 
-现在的 GCP 迭代方式是上传完整网关源码，在目标机用 Go 编译所有文件，再重启现有服务。首次试测可解压完整源码包，运行其中的 `Deploy-to-GCP.cmd` 或 `scripts/deploy-gcp.ps1`。首页使用 `gateway/life/web/home.html`，Go 版经典界面使用 `gateway/public/index.html`。使用条件、会话迁移及验证见[源码发布说明](../../scripts/gcp-source-guide.md)。
+现在的 GCP 迭代方式是上传完整网关源码，在目标机用 Go 编译所有文件，再重启现有服务。首次试测可解压完整源码包，运行其中的 `Deploy-to-GCP.cmd` 或 `scripts/deploy-gcp.ps1`。首页与设置共用 `gateway/public/index.html`。`/classic` 回到同一入口。提醒、截图与日历交互在 `gateway/life/web/life.js`。使用条件、会话迁移及验证见[源码发布说明](../../scripts/gcp-source-guide.md)。
 
 ## 本地编译后发布二进制
 

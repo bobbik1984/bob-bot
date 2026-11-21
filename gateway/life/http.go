@@ -19,7 +19,7 @@ var sourceBuild string
 
 type Host struct {
 	Authorized func(*http.Request) bool
-	Classic    http.HandlerFunc
+	Assistant  http.HandlerFunc
 	// Snapshot the active gateway settings for each explicit extraction.
 	VisionConfig func() VisionConfig
 }
@@ -46,8 +46,13 @@ func MountPWA(m *http.ServeMux) {
 	m.HandleFunc("GET /manifest.webmanifest", manifest)
 }
 func (a *App) Mount(m *http.ServeMux, host Host) {
-	m.HandleFunc("GET /{$}", webFile("home.html", "text/html; charset=utf-8"))
-	m.HandleFunc("GET /classic", host.Classic)
+	m.HandleFunc("GET /{$}", host.Assistant)
+	m.HandleFunc("GET /classic", func(w http.ResponseWriter, r *http.Request) {
+		u := *r.URL
+		u.Path = "/"
+		http.Redirect(w, r, u.RequestURI(), http.StatusTemporaryRedirect)
+	})
+	m.HandleFunc("GET /life-turn.mjs", webFile("turn.mjs", "text/javascript; charset=utf-8"))
 	m.HandleFunc("GET /life-ui.js", webFile("life.js", "text/javascript; charset=utf-8"))
 	m.HandleFunc("GET /life-calendar.mjs", webFile("calendar.mjs", "text/javascript; charset=utf-8"))
 	m.HandleFunc("GET /api/life/version", func(w http.ResponseWriter, r *http.Request) {

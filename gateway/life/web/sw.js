@@ -50,7 +50,7 @@ self.addEventListener('notificationclick',event=>{
   const target=localURL(event.notification.data?.url);
   const open=await clients.matchAll({type:'window',includeUncontrolled:true});
   const same=open.find(c=>c.url===target);
-  if(same){await same.focus();return}
+  if(same){await same.focus();same.postMessage({type:'open',url:target});return}
   const app=open.find(c=>new URL(c.url).origin===self.location.origin);
   if(app){try{const next=await app.navigate(target);if(next){await next.focus();return}}catch{}}
   await clients.openWindow(target);

@@ -84,7 +84,7 @@ func TestInputAndHTTP(t *testing.T) {
 		t.Fatal(e)
 	}
 	m := http.NewServeMux()
-	a.Mount(m, Host{Authorized: func(r *http.Request) bool { return r.Header.Get("X-Test") == "ok" }, Classic: func(http.ResponseWriter, *http.Request) {}})
+	a.Mount(m, Host{Authorized: func(r *http.Request) bool { return r.Header.Get("X-Test") == "ok" }, Assistant: func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("assistant shell")) }})
 	for _, p := range []string{"/api/life/items", "/api/life/art/bogus", "/api/life/push"} {
 		w := httptest.NewRecorder()
 		m.ServeHTTP(w, httptest.NewRequest("GET", p, nil))
@@ -94,7 +94,7 @@ func TestInputAndHTTP(t *testing.T) {
 	}
 	w := httptest.NewRecorder()
 	m.ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "life-ui.js") {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "assistant shell") {
 		t.Fatal("home")
 	}
 	in := Input{ID: id(), Kind: "save", Text: "poster", Photo: "data:image/png;base64,SGVsbG8="}

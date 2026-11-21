@@ -191,7 +191,7 @@ func TestPushMigrationDeliveryAndRecovery(t *testing.T) {
 		t.Fatal("custom payload mismatch")
 	}
 	mux := http.NewServeMux()
-	app.Mount(mux, Host{Authorized: func(r *http.Request) bool { return r.Header.Get("X-Test") == "ok" }, Classic: func(http.ResponseWriter, *http.Request) {}})
+	app.Mount(mux, Host{Authorized: func(r *http.Request) bool { return r.Header.Get("X-Test") == "ok" }, Assistant: func(http.ResponseWriter, *http.Request) {}})
 	test := func(authed bool, endpoint string) int {
 		w := httptest.NewRecorder()
 		data, _ := json.Marshal(map[string]string{"endpoint": endpoint})

@@ -41,7 +41,7 @@
 ## 4. GCP 轻量网关 (`gcp-bobbot` / `bot.bobbik.org`) 编译与发布规范
 
 1. **源码组成**：
-   - Go 原生单二进制网关位于 `gateway/`：`main.go`、`features.go`、`go.mod`、`public/`（经典聊天页在 `gateway/public/index.html`）及 `life/`（新版移动首页在 `gateway/life/web/home.html`）。
+   - Go 原生单二进制网关位于 `gateway/`：`main.go`、`features.go`、`go.mod`、`public/`（唯一主界面在 `gateway/public/index.html`）及 `life/`（提醒、日历与推送）。
    - 远端实例部署目录为 `/home/bobbik_hbz_gmail_com/bob-bot/`，由 `bobbot.service`（端口 `:8080`）+ `cloudflared` 隧道对外提供 `https://bot.bobbik.org` 服务；各服务商 API Key 持久化于远端 `data/config.json`，发布不会覆盖密钥。
 2. **标准一键发布（本地有 `ssh gcp` 权限的 Agent 必须使用）**：
    - 直接运行：`.\scripts\deploy-gcp.ps1`（或 `python -X utf8 scripts/deploy-gcp.py deploy`），参数已默认固化在根目录 [release.json](release.json)。

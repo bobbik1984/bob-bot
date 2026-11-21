@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 )
 
-func serveClassic(w http.ResponseWriter, r *http.Request) {
+func serveAssistant(w http.ResponseWriter, r *http.Request) {
 	b, err := embeddedPublic.ReadFile("public/index.html")
 	if err != nil {
 		http.NotFound(w, r)

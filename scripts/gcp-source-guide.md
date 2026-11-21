@@ -6,9 +6,9 @@
 
 | 内容 | 包内源码 |
 |---|---|
-| 手机助理首页、交互与日历 | `gateway/life/web/home.html`、`life.js`、`calendar.mjs` |
+| 手机助理首页、交互与日历 | `gateway/life/web/life.js`、`turn.mjs`、`calendar.mjs` |
 | 顺路匹配、待办、推送、图片提取 | `gateway/life/` |
-| 经典聊天界面及设置 | `gateway/public/index.html` |
+| 助理唯一主界面及设置 | `gateway/public/index.html` |
 | 网关与路由 | `gateway/main.go`、`features.go`、`life_host.go` |
 
 这个包使用已验收的 Go 版经典界面，其中包含偏好设置；原 Node 原型的 `prototype/public/index.html` 和这份文件存在差异。在已含完整 Go 网关与 Life 模块的源码仓库运行同一发布器时，按节点台账和服务地图传入 `-SshAlias`、`-PublicOrigin`、`-GatewayPort`。
