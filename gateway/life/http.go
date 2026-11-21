@@ -24,25 +24,32 @@ type Host struct {
 	VisionConfig func() VisionConfig
 }
 
-func (a *App) Mount(m *http.ServeMux, host Host) {
-	file := func(name, typ string) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			b, e := web.ReadFile("web/" + name)
-			if e != nil {
-				http.NotFound(w, r)
-				return
-			}
-			w.Header().Set("Cache-Control", "no-cache")
-			w.Header().Set("Content-Type", typ)
-			w.Write(b)
+func webFile(name, typ string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		b, e := web.ReadFile("web/" + name)
+		if e != nil {
+			http.NotFound(w, r)
+			return
 		}
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Content-Type", typ)
+		w.Write(b)
 	}
-	m.HandleFunc("GET /{$}", file("home.html", "text/html; charset=utf-8"))
+}
+
+// MountPWA owns the origin-wide installation and push anchors, separately from either UI.
+func MountPWA(m *http.ServeMux) {
+	m.HandleFunc("GET /sw.js", webFile("sw.js", "text/javascript; charset=utf-8"))
+	m.HandleFunc("GET /push-client.js", webFile("push-client.js", "text/javascript; charset=utf-8"))
+	manifest := webFile("manifest.json", "application/manifest+json")
+	m.HandleFunc("GET /life.webmanifest", manifest)
+	m.HandleFunc("GET /manifest.webmanifest", manifest)
+}
+func (a *App) Mount(m *http.ServeMux, host Host) {
+	m.HandleFunc("GET /{$}", webFile("home.html", "text/html; charset=utf-8"))
 	m.HandleFunc("GET /classic", host.Classic)
-	m.HandleFunc("GET /life-ui.js", file("life.js", "text/javascript; charset=utf-8"))
-	m.HandleFunc("GET /life-calendar.mjs", file("calendar.mjs", "text/javascript; charset=utf-8"))
-	m.HandleFunc("GET /sw.js", file("sw.js", "text/javascript; charset=utf-8"))
-	m.HandleFunc("GET /life.webmanifest", file("manifest.json", "application/manifest+json"))
+	m.HandleFunc("GET /life-ui.js", webFile("life.js", "text/javascript; charset=utf-8"))
+	m.HandleFunc("GET /life-calendar.mjs", webFile("calendar.mjs", "text/javascript; charset=utf-8"))
 	m.HandleFunc("GET /api/life/version", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		body := map[string]string{"version": Version}
@@ -65,6 +72,10 @@ func (a *App) Mount(m *http.ServeMux, host Host) {
 			if e := h(w, r); e != nil {
 				code := 400
 				switch e.Error() {
+				case "expired":
+					code = 410
+				case "pushFailed":
+					code = 502
 				case "storage":
 					code = 500
 				case "missing":
@@ -157,45 +168,62 @@ func (a *App) Mount(m *http.ServeMux, host Host) {
 		_, _ = io.Copy(w, f)
 		return nil
 	})
-	route("GET /api/life/push", func(w http.ResponseWriter, r *http.Request) error {
-		a.mu.Lock()
-		defer a.mu.Unlock()
-		k, e := pushPrivate(a.state.Key)
-		if e != nil {
+	config := func(w http.ResponseWriter, r *http.Request) error {
+		key, err := a.Push.publicKey()
+		if err != nil {
 			return errors.New("storage")
 		}
-		pub, e := k.ECDH()
-		if e != nil {
-			return errors.New("storage")
-		}
-		reply(w, 200, map[string]string{"key": web64.EncodeToString(pub.PublicKey().Bytes())})
+		reply(w, 200, map[string]any{"key": key, "publicKey": key, "subscriptions": len(a.Push.endpoints())})
 		return nil
-	})
-	route("POST /api/life/push", func(w http.ResponseWriter, r *http.Request) error {
-		var p struct {
-			Endpoint string
-			Remove   bool
+	}
+	route("GET /api/life/push", config)
+	route("GET /api/push/config", config)
+	syncPush := func(w http.ResponseWriter, r *http.Request) error {
+		var v struct {
+			PushSubscription
+			Subscription     *PushSubscription
+			PreviousEndpoint string
+			Remove           bool
+			Preview          *bool
 		}
-		if e := decode(w, r, &p); e != nil {
-			return e
+		if err := decode(w, r, &v); err != nil {
+			return err
 		}
-		if _, ok := pushURL(p.Endpoint); !ok {
+		if v.Subscription != nil {
+			v.PushSubscription = *v.Subscription
+		}
+		if _, ok := pushURL(v.Endpoint); !ok {
 			return errors.New("pushHost")
 		}
-		a.mu.Lock()
-		defer a.mu.Unlock()
-		s := a.copy()
-		if p.Remove {
-			forgetDevice(s.Subs, p.Endpoint)
-		} else {
-			s.Subs[p.Endpoint] = ""
+		if v.Remove {
+			if err := a.Push.remove(v.Endpoint, nil); err != nil {
+				return errors.New("storage")
+			}
+			reply(w, 200, true)
+			return nil
 		}
-		if e := a.save(s); e != nil {
-			return errors.New("storage")
+		device, err := a.Push.sync(v.PushSubscription, v.PreviousEndpoint, v.Preview)
+		if err != nil {
+			return err
 		}
-		reply(w, 200, true)
+		reply(w, 200, map[string]any{"preview": device.Preview, "subscriptions": len(a.Push.endpoints())})
 		return nil
-	})
+	}
+	route("POST /api/life/push", syncPush)
+	route("POST /api/push/subscribe", syncPush)
+	testPush := func(w http.ResponseWriter, r *http.Request) error {
+		var v struct{ Endpoint string }
+		if err := decode(w, r, &v); err != nil {
+			return err
+		}
+		if err := a.Push.sendTo(r.Context(), v.Endpoint, PushMessage{}, true); err != nil {
+			return err
+		}
+		reply(w, 200, map[string]bool{"accepted": true})
+		return nil
+	}
+	route("POST /api/life/push/test", testPush)
+	route("POST /api/push/test", testPush)
 	route("POST /api/life/read", func(w http.ResponseWriter, r *http.Request) error {
 		var v struct{ Photo, Text, Today string }
 		if e := decode(w, r, &v); e != nil {

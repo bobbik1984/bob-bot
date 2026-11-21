@@ -48,8 +48,10 @@ func (a *App) importCalendar(events []calendarEvent) (importCount, error) {
 					wish := &s.Items[n]
 					if wish.Related == item.ID {
 						wish.Seen = ""
-						for endpoint := range s.Subs {
-							delete(s.Subs, endpoint+"\n"+wish.ID)
+						for receipt := range s.Subs {
+							if strings.HasSuffix(receipt, "\n"+wish.ID) {
+								delete(s.Subs, receipt)
+							}
 						}
 					}
 				}

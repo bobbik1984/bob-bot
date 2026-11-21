@@ -25,7 +25,7 @@ jobs:
       - run: |
           node --input-type=module --check < gateway/life/web/life.js
           node --check gateway/life/web/sw.js
-          node --test gateway/life/calendar.test.mjs
+          node --test gateway/life/*.test.mjs
           python3 -m py_compile scripts/deploy-life.py scripts/life_release.py scripts/deploy-gcp.py
           python3 scripts/test_deploy_gcp.py
           bash -n scripts/build-gcp.sh

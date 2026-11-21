@@ -70,6 +70,9 @@ check(){
   curl -fsS --max-time 8 "$1/api/life/version" | python3 -c 'import json,sys; v=json.load(sys.stdin); sys.exit(0 if v.get("version")==sys.argv[1] and (not sys.argv[2] or v.get("build")==sys.argv[2]) else 1)' "$version" "${BOB_SOURCE_BUILD:-}" &&
   test "$(curl -sS --max-time 8 -o /dev/null -w '%{http_code}' "$1/api/life/items")" = 401 &&
   curl -fsS --max-time 8 "$1/" | grep 'life-ui.js' >/dev/null &&
+  curl -fsS --max-time 8 "$1/life.webmanifest" | python3 -c 'import json,sys; m=json.load(sys.stdin); sys.exit(0 if m.get("id")==m.get("scope")=="/" else 1)' &&
+  curl -fsS --max-time 8 "$1/sw.js" | grep notificationclick >/dev/null &&
+  curl -fsS --max-time 8 "$1/push-client.js" >/dev/null &&
   curl -fsS --max-time 8 "$1/life-calendar.mjs" >/dev/null
 }
 switched=1

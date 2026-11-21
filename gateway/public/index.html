@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#f4f6fb">
-<link rel="manifest" href="/manifest.webmanifest">
+<link rel="manifest" href="/life.webmanifest">
 <link rel="apple-touch-icon" href="/icons/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -506,6 +506,7 @@ nav button.on span:first-child { background:var(--accent-soft); }
   #feed > .in, .view, .dots.shake, .check.on, #toast, #jump { animation:none !important; }
 }
 </style>
+<script src="/push-client.js"></script>
 </head>
 <body>
 <section id="login" hidden>
@@ -617,6 +618,7 @@ nav button.on span:first-child { background:var(--accent-soft); }
         <p class="hint" id="pushDiag" hidden></p>
         <div class="row">
           <button class="btn primary" id="pushEnable" data-t="pushEnable"></button>
+          <label id="classicPreviewLabel" hidden><input type="checkbox" id="classicPreview"><span data-t="pushPreview"></span></label>
           <button class="btn" id="pushTest" data-t="pushTest" hidden></button>
         </div>
       </div>
@@ -773,6 +775,8 @@ const lang = savedLang === 'auto' ? (navigator.language.startsWith('zh') ? 'zh' 
 const langIndex = Math.max(0, LANGS.findIndex(l => l.code === lang))
 const zh = lang === 'zh'
 const I18N = {
+  devicePushOff:['关闭本机通知','Disable on this device'], pushAccepted:['推送服务已接受，请查看本机通知中心。','Push service accepted the test. Check this device’s notifications.'],
+  pushPreview:['锁屏显示提醒正文','Show reminder details on the lock screen'],
   lifeHome:['日程首页','Life home'],
   greetNight:['夜深了','Up late'], greetMorning:['早上好','Good morning'], greetNoon:['中午好','Good afternoon'], greetAfternoon:['下午好','Good afternoon'], greetEvening:['晚上好','Good evening'],
   glanceDrafts:['待你批准','to approve'], glanceNeeds:['需要你处理','need you'], glanceTodos:['待办','to-dos'], glanceUnread:['未读','unread'],
@@ -2182,11 +2186,18 @@ async function loadFeatures() {
 $('fpClose').onclick = () => { $('fpModal').hidden = true; $('fpFrame').src = 'about:blank'; delete $('fpFrame').dataset.plugin }
 let pushConfig = null
 const isInstalled = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
-const urlB64ToBytes = base64 => {
-  const padded = (base64 + '='.repeat((4 - (base64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/')
-  const raw = atob(padded)
-  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)))
+let devicePush=false
+function showDevicePush(state){
+ devicePush=state.enabled
+ $('pushTest').hidden=!devicePush
+ $('classicPreviewLabel').hidden=!devicePush
+ $('classicPreview').checked=!!state.preview
+ $('pushEnable').dataset.t=devicePush?'devicePushOff':'pushEnable'
+ $('pushEnable').textContent=t($('pushEnable').dataset.t)
 }
+function syncDevicePush(){if(!$('app').hidden)BobPush.sync().then(showDevicePush).catch(()=>{})}
+addEventListener('pageshow',syncDevicePush)
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncDevicePush()})
 async function loadPushState() {
   const can = 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window
   pushConfig = (await getJson('/api/push/config')) ?? pushConfig
@@ -2196,7 +2207,7 @@ async function loadPushState() {
   enable.disabled = false
   box.className = 'keystate ' + (count > 0 ? '' : 'none')
   box.textContent = count > 0 ? t('pushOn', count) : t('pushOff')
-  test.hidden = count === 0
+  test.hidden = !devicePush
   const diag = $('pushDiag')
   diag.hidden = false
   const perm = !('Notification' in window) ? t('pushPermDenied') : Notification.permission === 'granted' ? t('pushPermGranted') : Notification.permission === 'denied' ? t('pushPermDenied') : t('pushPermDefault')
@@ -2214,39 +2225,20 @@ async function loadPushState() {
   else $('pushHint').textContent = t('pushHint')
 }
 $('pushEnable').onclick = async () => {
-  // iOS only shows the permission prompt when requestPermission runs inside the tap itself.
-  let permission = 'Notification' in window ? Notification.permission : 'denied'
-  if (permission === 'default') {
-    try { permission = await Notification.requestPermission() } catch (error) { $('pushHint').textContent = String(error?.message ?? error); return }
-  }
-  if (permission !== 'granted') {
-    if ('Notification' in window && Notification.permission === 'default') $('pushHint').textContent = t('pushPromptBlocked')
-    loadPushState()
-    return
-  }
-  try {
-    if (!pushConfig) await loadPushState()
-    const reg = await navigator.serviceWorker.register('/sw.js')
-    await navigator.serviceWorker.ready
-    let sub = await reg.pushManager.getSubscription()
-    if (!sub) {
-      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToBytes(pushConfig.publicKey) })
-    }
-    const saved = await post('/api/push/subscribe', { subscription: sub.toJSON() })
-    if (saved.status !== 200) throw new Error(saved.data.error ?? 'subscribe failed')
-    // the config was cached when Settings opened, so trust the count the server just returned
-    pushConfig = { ...(pushConfig ?? {}), subscriptions: saved.data.subscriptions ?? 1 }
-    await post('/api/push/test')
-    loadClerk()
-    loadPushState()
-  } catch (error) {
-    $('pushHint').textContent = String(error?.message ?? error)
-  }
+ const button=$('pushEnable');button.disabled=true
+ try {showDevicePush(await(devicePush?BobPush.disable():BobPush.enable()));await loadPushState()}
+ catch {$('pushHint').textContent=t('failed')}
+ finally{button.disabled=false}
 }
 $('pushTest').onclick = async () => {
-  const r = await post('/api/push/test')
-  $('pushHint').textContent = r.status === 200 ? t('pushTest') : (r.data.error ?? t('failed'))
-  loadPushState()
+ const button=$('pushTest');button.disabled=true
+ try{await BobPush.test();$('pushHint').textContent=t('pushAccepted')}catch{$('pushHint').textContent=t('failed')}
+ finally{button.disabled=false}
+}
+$('classicPreview').onchange=async()=>{
+ const control=$('classicPreview');control.disabled=true
+ try{showDevicePush(await BobPush.preview(control.checked))}catch{control.checked=!control.checked;$('pushHint').textContent=t('failed')}
+ finally{control.disabled=false}
 }
 
 // Tell the server whether this device is being looked at, so a finished task only notifies when the owner is away.
@@ -2270,7 +2262,7 @@ if ('serviceWorker' in navigator) {
     if (event.data?.type === 'open' && !$('app').hidden) openFromLink(String(event.data.url ?? '/'))
   }
   // Keeps the worker current, so a fix to what a tap does reaches a phone that has already subscribed.
-  if ('Notification' in window && Notification.permission === 'granted') navigator.serviceWorker.register('/sw.js').catch(() => {})
+  if ('Notification' in window && Notification.permission === 'granted') BobPush.ready().catch(() => {})
 }
 let wxLoginTimer = null
 async function loadWechatLogin() {
@@ -3037,6 +3029,7 @@ async function boot() {
   $('app').hidden = !s.authed
   if (!s.authed) { if (!s.pinSet) $('loginMsg').textContent = t('noPin'); return }
   appState = s
+  syncDevicePush()
   showBuild(s)
   setBadge(s.unread)
   show('chat')

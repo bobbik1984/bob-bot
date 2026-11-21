@@ -1,6 +1,7 @@
 package life
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdh"
 	"crypto/ecdsa"
@@ -9,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -50,22 +52,26 @@ func pushURL(s string) (*url.URL, bool) {
 		return nil, false
 	}
 	h := strings.ToLower(u.Hostname())
-	ok := h == "fcm.googleapis.com" || h == "web.push.apple.com" || h == "updates.push.services.mozilla.com" || strings.HasSuffix(h, ".push.services.mozilla.com") || strings.HasSuffix(h, ".notify.windows.com")
+	ok := h == "fcm.googleapis.com" || strings.HasSuffix(h, ".push.apple.com") || h == "updates.push.services.mozilla.com" || strings.HasSuffix(h, ".push.services.mozilla.com") || strings.HasSuffix(h, ".notify.windows.com")
 	return u, ok
 }
 
 var pushClient = &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 
-func sendWake(ctx context.Context, endpoint, secret, topic string) (int, error) {
+func (p *PushService) post(ctx context.Context, endpoint string, payload []byte) (int, error) {
 	u, ok := pushURL(endpoint)
 	if !ok {
 		return 400, fmt.Errorf("unsupported push endpoint")
 	}
-	priv, e := pushPrivate(secret)
+	priv, e := pushPrivate(p.secret())
 	if e != nil {
 		return 0, e
 	}
-	claim, _ := json.Marshal(map[string]any{"aud": "https://" + u.Host, "exp": time.Now().Add(time.Hour).Unix(), "sub": publicOrigin})
+	claims := map[string]any{"aud": "https://" + u.Host, "exp": time.Now().Add(time.Hour).Unix()}
+	if p.origin != "" {
+		claims["sub"] = p.origin
+	}
+	claim, _ := json.Marshal(claims)
 	unsigned := web64.EncodeToString([]byte(`{"typ":"JWT","alg":"ES256"}`)) + "." + web64.EncodeToString(claim)
 	h := sha256.Sum256([]byte(unsigned))
 	r, s, e := ecdsa.Sign(rand.Reader, priv, h[:])
@@ -74,19 +80,79 @@ func sendWake(ctx context.Context, endpoint, secret, topic string) (int, error) 
 	}
 	sig := append(r.FillBytes(make([]byte, 32)), s.FillBytes(make([]byte, 32))...)
 	key := elliptic.Marshal(elliptic.P256(), priv.X, priv.Y)
-	req, e := http.NewRequestWithContext(ctx, "POST", endpoint, http.NoBody)
+	req, e := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(payload))
 	if e != nil {
 		return 0, e
 	}
 	req.Header.Set("Authorization", "vapid t="+unsigned+"."+web64.EncodeToString(sig)+", k="+web64.EncodeToString(key))
 	req.Header.Set("TTL", "1800")
-	req.Header.Set("Topic", topic)
-	res, e := pushClient.Do(req)
+	if len(payload) > 0 {
+		req.Header.Set("Content-Encoding", "aes128gcm")
+		req.Header.Set("Content-Type", "application/octet-stream")
+	}
+	res, e := p.client.Do(req)
 	if e != nil {
 		return 0, e
 	}
 	defer res.Body.Close()
 	return res.StatusCode, nil
+}
+
+// PushMessage is the detailed notification shown on devices that opted in.
+type PushMessage struct {
+	Title string `json:"title,omitempty"`
+	Body  string `json:"body,omitempty"`
+	Tag   string `json:"tag,omitempty"`
+	URL   string `json:"url,omitempty"`
+}
+
+func (p *PushService) sendTo(ctx context.Context, endpoint string, msg PushMessage, test bool) error {
+	d, ok := p.device(endpoint)
+	if !ok {
+		return errors.New("missing")
+	}
+	if d.Expired {
+		return errors.New("expired")
+	}
+	var payload []byte
+	if d.Keys != (PushKeys{}) {
+		var content any = map[string]string{"kind": "reminder"}
+		if test {
+			content = map[string]string{"kind": "test"}
+		} else if d.Preview {
+			if msg.URL != "" {
+				u, err := url.Parse(msg.URL)
+				if err != nil || u.IsAbs() || u.Host != "" || !strings.HasPrefix(msg.URL, "/") || strings.HasPrefix(msg.URL, "//") || strings.ContainsRune(msg.URL, '\\') {
+					return errors.New("invalid")
+				}
+			}
+			content = msg
+		}
+		raw, err := json.Marshal(content)
+		if err != nil || len(raw) > maxPushPlaintext {
+			return errors.New("invalid")
+		}
+		payload, err = encryptPush(d.Keys, raw)
+		if err != nil {
+			return errors.New("pushFailed")
+		}
+	} else if test {
+		return errors.New("pushKeys")
+	}
+	code, err := p.post(ctx, endpoint, payload)
+	if err != nil {
+		return errors.New("pushFailed")
+	}
+	if code == 404 || code == 410 {
+		if err = p.remove(endpoint, &d); err != nil {
+			return errors.New("storage")
+		}
+		return errors.New("expired")
+	}
+	if code < 200 || code >= 300 {
+		return errors.New("pushFailed")
+	}
+	return nil
 }
 func (a *App) tick(ctx context.Context) {
 	a.mu.Lock()
@@ -99,10 +165,7 @@ func (a *App) tick(ctx context.Context) {
 	}
 	a.mu.Unlock()
 	// Store one receipt per device + item, so resolving a second item never replays the first.
-	for endpoint := range next.Subs {
-		if strings.Contains(endpoint, "\n") {
-			continue
-		}
+	for _, endpoint := range a.Push.endpoints() {
 		for _, i := range next.Items {
 			if i.Signal == "" || i.Seen == i.Signal {
 				continue
@@ -111,32 +174,22 @@ func (a *App) tick(ctx context.Context) {
 			if next.Subs[receipt] == i.Signal {
 				continue
 			}
-			code, e := sendWake(ctx, endpoint, next.Key, i.ID)
-			if e != nil {
+			msg := PushMessage{Title: "Bob", Body: i.Text, Tag: i.ID, URL: "/#attention"}
+			// Bound user text before serializing; keep every notification inside one record.
+			if runes := []rune(msg.Body); len(runes) > 240 {
+				msg.Body = string(runes[:240])
+			}
+			if err := a.Push.SendTo(ctx, endpoint, msg); err != nil {
 				break
 			}
 			a.mu.Lock()
 			s := a.copy()
-			_, subscribed := s.Subs[endpoint]
-			if subscribed && (code == 404 || code == 410) {
-				forgetDevice(s.Subs, endpoint)
-				a.save(s)
-			} else if subscribed && code >= 200 && code < 300 {
-				s.Subs[receipt] = i.Signal
-				a.save(s)
-			}
+			s.Subs[receipt] = i.Signal
+			err := a.save(s)
 			a.mu.Unlock()
-			if code < 200 || code >= 300 {
+			if err != nil {
 				break
 			}
-		}
-	}
-}
-func forgetDevice(subs map[string]string, endpoint string) {
-	delete(subs, endpoint)
-	for k := range subs {
-		if strings.HasPrefix(k, endpoint+"\n") {
-			delete(subs, k)
 		}
 	}
 }

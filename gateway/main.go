@@ -109,6 +109,7 @@ func main() {
 	if err != nil {
 		log.Fatal("life storage: ", err)
 	}
+	life.MountPWA(mux)
 	app.Mount(mux, life.Host{Authorized: authed, Classic: serveClassic, VisionConfig: activeVision})
 	go app.Run(context.Background())
 
@@ -156,9 +157,6 @@ func main() {
 	})
 	mux.HandleFunc("GET /api/wechat/status", func(w http.ResponseWriter, r *http.Request) {
 		jsonResp(w, 200, map[string]interface{}{"running": false})
-	})
-	mux.HandleFunc("GET /api/push/config", func(w http.ResponseWriter, r *http.Request) {
-		jsonResp(w, 200, map[string]interface{}{"publicKey": "", "subscriptions": 0})
 	})
 	mux.HandleFunc("GET /api/push/log", func(w http.ResponseWriter, r *http.Request) {
 		jsonResp(w, 200, map[string]interface{}{"items": []string{}})

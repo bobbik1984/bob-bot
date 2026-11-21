@@ -22,7 +22,7 @@ import (
 	"time"
 )
 
-const Version = "0.4.0-life.4"
+const Version = "0.4.0-life.5"
 
 type Item struct {
 	ID         string
@@ -44,13 +44,15 @@ type Input struct {
 	At                                       int64
 }
 type store struct {
-	Items     []Item
-	Key       string
-	Month     string
-	VisionUSD float64
-	Subs      map[string]string // endpoint => last delivered signal
+	PushInitialized bool `json:",omitempty"`
+	Items           []Item
+	Key             string
+	Month           string
+	VisionUSD       float64
+	Subs            map[string]string // endpoint => last delivered signal
 }
 type App struct {
+	Push  *PushService
 	mu    sync.Mutex
 	dir   string
 	state store
@@ -74,18 +76,16 @@ func Open(dir string) (*App, error) {
 	if a.state.Subs == nil {
 		a.state.Subs = map[string]string{}
 	}
-	if a.state.Key == "" {
-		key, e := makePushKey()
-		if e != nil {
-			return nil, e
-		}
-		a.state.Key = key
+	a.Push, e = openPush(dir, a.state)
+	if e != nil {
+		return nil, e
+	}
+	if !a.state.PushInitialized {
+		a.state.PushInitialized = true
+		a.state.Key = a.Push.state.Key
 		if e = a.save(a.state); e != nil {
 			return nil, e
 		}
-	}
-	if _, e = pushPrivate(a.state.Key); e != nil {
-		return nil, e
 	}
 	return a, nil
 }
