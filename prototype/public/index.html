@@ -95,6 +95,12 @@ html[data-theme=dark] {
 .orb[data-state=think] .hl { opacity:1; }
 .orb[data-state=speak] { --t:5s; }
 .orb[data-state=wait] .warm { opacity:1; }
+/* On the empty page the big drop is drawn by the GPU (refraction, Fresnel edge, moving highlights); the CSS drop
+   stays underneath as the fallback and takes over, small, once the chat starts. */
+.orb-btn .drop-gl { position:absolute; left:-5%; top:-5%; width:110%; height:110%; pointer-events:none; opacity:0; transition:opacity .35s; }
+#app.hero .orb-btn .drop-gl { opacity:1; }
+.orb .drop { transition:opacity .35s; }
+#app.hero .orb.gl .drop { opacity:0; }
 /* a tap or a sent message nudges the drop, and it rings out the same way */
 .orb.poke .drop { animation:poke 1.3s ease-in-out; }
 .orb.static .body { animation:none !important; }
@@ -192,6 +198,11 @@ main { flex:1; min-height:0; position:relative; }
 .card img { width:100%; max-height:240px; object-fit:contain; border-radius:12px; background:var(--stage); }
 .card .actions { display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:10px; }
 .card .actions .btn { width:100%; min-height:42px; border-radius:14px; }
+/* a chart or report Bob publishes: its own frame and an Open link, never script access to the app */
+.page-card { background:var(--surface); border:1px solid var(--line); border-radius:20px; overflow:hidden; box-shadow:var(--shadow); }
+.page-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 14px; border-bottom:1px solid var(--line); }
+.page-head b { font-size:15px; overflow-wrap:anywhere; }
+.page-card iframe { display:block; width:100%; border:0; background:var(--surface); }
 .card .actions .link { justify-self:start; }
 .card .done { display:flex; align-items:center; gap:6px; color:var(--ok); font-weight:600; font-size:14px; }
 .card .done.no { color:var(--muted); }
@@ -272,6 +283,7 @@ main { flex:1; min-height:0; position:relative; }
 .inbox-item .title { flex:1; min-width:0; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .inbox-item .top time { flex:none; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
 .inbox-item .body { margin-top:3px; color:var(--muted); font-size:14px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.inbox-item .body.compact { -webkit-line-clamp:2; }
 .inbox-item.unread .title { font-weight:700; }
 .inbox-item.unread .title::after { content:''; display:inline-block; width:6px; height:6px; margin-left:7px; border-radius:50%; background:var(--accent); vertical-align:middle; }
 .inbox-item.unread .body { color:var(--text); }
@@ -464,6 +476,22 @@ html.fine .pad button:hover { border-color:var(--accent); }
 .seg { display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:4px; padding:4px; border-radius:14px; background:var(--surface-2); }
 .seg button { min-height:36px; border-radius:10px; font-size:14px; font-weight:600; color:var(--muted); transition:background-color .15s, color .15s; }
 .seg button.on { background:var(--surface); color:var(--text); box-shadow:var(--shadow-1); }
+/* settings groups: one short page at a time instead of a long scroll */
+.settings-nav { position:sticky; top:0; z-index:6; display:flex; gap:8px; overflow-x:auto; padding:6px 0 12px; background:var(--bg); scrollbar-width:none; }
+.settings-nav::-webkit-scrollbar { display:none; }
+.settings-nav button { flex:none; min-height:34px; padding:0 14px; border-radius:999px; background:var(--surface-2); color:var(--muted); font-size:14px; font-weight:600; white-space:nowrap; }
+.settings-nav button.on { background:var(--accent-soft); color:var(--accent-ink); }
+.settings-panel[hidden] { display:none; }
+.provider-form { margin-top:12px; padding:14px; border-radius:18px; background:var(--surface-2); display:flex; flex-direction:column; gap:10px; }
+.prov { padding:14px; border-radius:18px; background:var(--surface); border:1px solid var(--line); box-shadow:var(--shadow-1); }
+.prov.on { border-color:var(--accent); }
+.prov-head { display:flex; align-items:center; gap:8px; justify-content:space-between; }
+.prov-head b { font-size:15px; overflow-wrap:anywhere; }
+.prov-meta, .prov-price { margin-top:3px; font-size:13px; color:var(--muted); overflow-wrap:anywhere; }
+.prov-price { font-size:12px; }
+.prov-actions { display:flex; gap:8px; margin-top:10px; }
+.prov-actions .btn { flex:1; min-height:36px; font-size:14px; }
+.prov-actions .link { font-size:14px; }
 
 /* ---- feature packages on the page ---- */
 .plugin-widget { display:block; border:0; max-width:100%; background:transparent; }
@@ -531,6 +559,7 @@ nav button.on span:first-child { background:var(--accent-soft); }
     </div>
     <div class="view" id="viewClerk" hidden>
       <div class="slot" id="slotClerk"></div>
+      <p class="hint" data-t="clerkIntro"></p>
       <div id="draftBox" hidden>
         <div class="sect-head" id="draftsHead"><h3 data-t="draftsTitle"></h3></div>
         <div id="draftList"></div>
@@ -542,149 +571,147 @@ nav button.on span:first-child { background:var(--accent-soft); }
       <div id="jobList"></div>
       <p class="hint empty-note" id="jobEmpty" data-t="jobsEmpty" hidden></p>
       <div class="sect-head" id="inboxHead"><h3 data-t="inboxTitle"></h3><button class="link" id="markRead" data-t="markRead"></button></div>
+      <p class="hint" data-t="inboxHint"></p>
       <div id="inboxList"></div>
     </div>
     <div class="view" id="viewSettings" hidden>
       <div class="slot" id="slotSettings"></div>
-      <div class="section">
-        <h3 data-i="moon" data-t="themeTitle"></h3>
-        <div class="seg" id="themeSeg"></div>
-      </div>
-      <div class="section">
-        <h3 data-i="globe" data-t="langTitle"></h3>
-        <select class="field" id="langSel" data-al="langTitle"></select>
-      </div>
-      <div class="section">
-        <h3 data-i="chat" data-t="channelsTitle"></h3>
-        <div id="channelList" class="stack"></div>
-        <details class="add" id="addChannel">
-          <summary data-t="addChannel"></summary>
-          <div class="stack">
-            <select class="field" id="chType" data-al="chType"></select>
-            <p class="hint" id="chHelp"></p>
-            <div class="stack" id="wxLoginBox" hidden>
-              <p class="hint" id="wxLoginMsg"></p>
-              <img id="wxLoginQr" alt="" hidden style="width:220px;height:220px;align-self:center;border-radius:16px;background:var(--canvas)">
-              <button class="btn block" id="wxLoginBtn" data-t="wxLoginBtn"></button>
-            </div>
-            <input class="field" id="chName" autocomplete="off" data-ph="chName" data-al="chName">
-            <input class="field" id="chWebhook" inputmode="url" autocapitalize="off" autocomplete="off" data-ph="chWebhook" data-al="chWebhook">
-            <input class="field" id="chSecret" type="password" autocomplete="off" data-ph="chSecret" data-al="chSecret">
-            <input class="field" id="chToken" type="password" autocomplete="off" data-ph="chToken" data-al="chToken" hidden>
-            <input class="field" id="chChat" autocapitalize="off" autocomplete="off" data-ph="chChat" data-al="chChat" hidden>
-            <button class="btn primary block" id="saveChannel" data-t="save"></button>
-            <p class="hint" id="chMsg" role="status"></p>
-          </div>
-        </details>
-      </div>
-      <div class="section">
-        <h3 data-i="box" data-t="featuresTitle"></h3>
-        <p class="hint" data-t="featuresHint"></p>
-        <div id="featureList" class="stack"></div>
-      </div>
-      <div class="section">
-        <h3 data-i="bookmark" data-t="memoryTitle"></h3>
-        <p class="hint" data-t="memoryHint"></p>
-        <div id="memoryList" class="stack"></div>
-        <p class="hint" id="memoryInsights" hidden></p>
-        <div class="row"><button class="btn" id="memoryDream" data-t="memoryDreamNow"></button><span class="hint" id="memoryLastDream"></span></div>
-        <p class="hint" id="memoryMsg" role="status"></p>
-      </div>
-      <div class="section">
-        <div class="sect-row"><h3 data-i="heart" data-t="proactiveTitle"></h3><button class="switch" type="button" id="toggleProactive" role="switch" aria-checked="false" data-al="proactiveTitle"></button></div>
-        <p class="hint" data-t="proactiveHint"></p>
-        <label class="hint" for="proactiveLevel" data-t="proactiveLevel"></label>
-        <input type="range" id="proactiveLevel" min="0" max="1" step="0.05" style="width:100%;accent-color:var(--accent)">
-        <div class="row" style="justify-content:space-between"><span class="mini" data-t="levelReserved"></span><span class="mini" data-t="levelBalanced"></span><span class="mini" data-t="levelActive"></span><span class="mini" data-t="levelClingy"></span></div>
-        <p class="hint" id="proactiveLevelText"></p>
-        <div class="row"><input class="field" id="proactiveTimes" placeholder="09:00, 18:30" autocapitalize="off" autocomplete="off"><button class="btn" id="saveProactive" data-t="save"></button></div>
-        <div class="row"><button class="btn" id="proactiveNow" data-t="proactiveNow"></button></div>
-        <p class="hint" id="proactiveMsg" role="status"></p>
-      </div>
-      <div class="section">
-        <h3 data-i="phone" data-t="pushTitle"></h3>
-        <div class="keystate none" id="pushState"></div>
-        <p class="hint" id="pushHint" data-t="pushHint"></p>
-        <label class="hint" for="pushChatMode" data-t="pushChatTitle"></label>
-        <select class="field" id="pushChatMode"></select>
-        <p class="hint" data-t="pushChatHint"></p>
-        <p class="hint" id="pushLast"></p>
-        <p class="hint" id="pushDiag" hidden></p>
-        <div class="row">
-          <button class="btn primary" id="pushEnable" data-t="pushEnable"></button>
-          <button class="btn" id="pushTest" data-t="pushTest" hidden></button>
-        </div>
-      </div>
-      <div class="section">
-        <h3 data-i="clock" data-t="zoneTitle"></h3>
-        <div class="row"><input class="field" id="zone" autocapitalize="off" autocomplete="off" aria-label="Time zone"><button class="btn" id="saveZone" data-t="save"></button></div>
-        <p class="hint" id="zoneMsg" role="status"></p>
-      </div>
-      <div class="section">
-        <h3 data-i="cpu" data-t="modelTitle"></h3>
-        
-        <label class="hint" for="providerSel" data-t="providerLabel"></label>
-        <select class="field" id="providerSel">
-          <optgroup label="国外主流 (Overseas)">
-            <option value="gemini">Google Gemini (4 Neon / 4 Carbon)</option>
-            <option value="openai">OpenAI (GPT-6.2 Astra / Sol)</option>
-            <option value="openrouter">OpenRouter (多模型聚合)</option>
-            <option value="xai">xAI (Grok 4.7)</option>
-          </optgroup>
-          <optgroup label="国内主流 (Domestic)">
-            <option value="deepseek">DeepSeek (V4.1 Flash / V4 Pro)</option>
-            <option value="moonshot">Moonshot / Kimi (K3.1 Pro)</option>
-            <option value="qwen">阿里通义千问 (Qwen 4 Max / 3.8)</option>
-            <option value="zhipu">智谱 AI (GLM-5.3 / Flash)</option>
-            <option value="doubao">火山引擎 (豆包 Seed 2.1)</option>
-          </optgroup>
-          <optgroup label="自定义 (Custom)">
-            <option value="custom">自定义 OpenAI 兼容接口</option>
-          </optgroup>
-        </select>
-
-        <div class="row" style="margin-top:10px;justify-content:space-between;align-items:center">
-          <label class="hint" for="modelSel" data-t="modelLabel" style="margin:0"></label>
-          <button class="link mini" id="toggleCustomModel" type="button" data-t="manualModel"></button>
-        </div>
-        <select class="field" id="modelSel"></select>
-        <input class="field" id="customModelInput" placeholder="输入模型名称 (如 deepseek-chat)" autocomplete="off" hidden>
-
-        <div id="endpointGroup" style="margin-top:10px">
-          <div class="row" style="justify-content:space-between;align-items:center">
-            <label class="hint" for="cEndpoint" data-t="endpointLabel" style="margin:0"></label>
-            <button class="link mini" id="resetEndpoint" type="button" data-t="resetDefault"></button>
-          </div>
-          <input class="field" id="cEndpoint" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="https://api.deepseek.com/v1">
-        </div>
-
-        <div style="margin-top:10px">
-          <label class="hint" data-t="keyLabel" style="margin:0"></label>
-          <div class="keystate" id="keyState"></div>
-          <input class="field" id="key" type="password" autocomplete="off" placeholder="粘贴 API Key (留空保持已存密钥)">
-        </div>
-
-        <button class="btn primary block" id="saveModel" data-t="save" style="margin-top:14px"></button>
-      </div>
-      <div class="section">
-        <h3 data-i="wallet" data-t="capTitle"></h3>
-        <div class="big-n" id="spentBig"></div>
-        <div class="bar" id="capBar"><i></i></div>
-        <p class="hint" data-t="capLabel"></p>
-        <div class="row"><input class="field" id="cap" type="number" inputmode="decimal" min="0.01" step="0.5" aria-label="Monthly limit"><button class="btn" id="saveCap" data-t="save"></button></div>
-      </div>
-      <div class="section">
-        <h3 data-i="terminal" data-t="extTitle"></h3>
-        <p class="hint" data-t="extHint"></p>
-        <div id="extList"></div>
-        <p class="hint" id="extEmpty" data-t="extEmpty"></p>
+      <div class="settings-nav" id="settingsNav" role="tablist">
+        <button class="on" type="button" data-panel="model" role="tab" data-t="setGroupModel"></button>
+        <button type="button" data-panel="assistant" role="tab" data-t="setGroupAssistant"></button>
+        <button type="button" data-panel="connect" role="tab" data-t="setGroupConnect"></button>
+        <button type="button" data-panel="general" role="tab" data-t="setGroupGeneral"></button>
+        <button type="button" data-panel="system" role="tab" data-t="setGroupSystem"></button>
       </div>
       <p class="hint" id="settingsMsg" role="status"></p>
-      <p class="hint" id="buildInfo"></p>
-      <div class="section">
-        <h3 data-i="lock" data-t="pinTitle"></h3>
-        <p class="hint" data-t="pinHint"></p>
-        <button class="btn danger block" id="logout" data-t="logout"></button>
+
+      <div class="settings-panel" data-panel="model">
+        <div class="section">
+          <h3 data-i="cpu" data-t="modelTitle"></h3>
+          <p class="hint" data-t="providersHint"></p>
+          <div id="providerList" class="stack"></div>
+          <p class="hint empty-note" id="providerEmpty" data-t="providersEmpty" hidden></p>
+          <button class="btn block" id="addProvider" data-t="addProvider"></button>
+          <div class="provider-form" id="providerForm" hidden>
+            <div class="sect-row"><b data-t="providerFormTitle"></b><button class="link" type="button" id="cancelProvider" data-t="cancel"></button></div>
+            <select class="field" id="pKind" data-al="pKind"></select>
+            <input class="field" id="pName" autocomplete="off" data-ph="pName" data-al="pName">
+            <select class="field" id="pApi" data-al="pApi"></select>
+            <input class="field" id="pBase" inputmode="url" autocapitalize="off" autocomplete="off" data-ph="pBase" data-al="pBase">
+            <input class="field" id="pModel" list="modelHints" autocapitalize="off" autocomplete="off" data-ph="pModel" data-al="pModel">
+            <datalist id="modelHints"></datalist>
+            <input class="field" id="pKey" type="password" autocomplete="off" data-ph="pKey" data-al="pKey">
+            <div class="row" id="pPriceRow"><input class="field" id="pIn" type="number" inputmode="decimal" min="0" step="any" data-ph="cIn" data-al="cIn"><input class="field" id="pOut" type="number" inputmode="decimal" min="0" step="any" data-ph="cOut" data-al="cOut"></div>
+            <p class="hint" data-t="priceWhy"></p>
+            <p class="hint" id="pMsg" role="status"></p>
+            <button class="btn primary block" id="saveProvider" data-t="save"></button>
+          </div>
+        </div>
+        <div class="section">
+          <h3 data-i="wallet" data-t="capTitle"></h3>
+          <div class="big-n" id="spentBig"></div>
+          <div class="bar" id="capBar"><i></i></div>
+          <p class="hint" data-t="capLabel"></p>
+          <div class="row"><input class="field" id="cap" type="number" inputmode="decimal" min="0.01" step="0.5" aria-label="Monthly limit"><button class="btn" id="saveCap" data-t="save"></button></div>
+        </div>
+      </div>
+
+      <div class="settings-panel" data-panel="assistant" hidden>
+        <div class="section">
+          <div class="sect-row"><h3 data-i="heart" data-t="proactiveTitle"></h3><button class="switch" type="button" id="toggleProactive" role="switch" aria-checked="false" data-al="proactiveTitle"></button></div>
+          <p class="hint" data-t="proactiveHint"></p>
+          <label class="hint" for="proactiveLevel" data-t="proactiveLevel"></label>
+          <input type="range" id="proactiveLevel" min="0" max="1" step="0.05" style="width:100%;accent-color:var(--accent)">
+          <div class="row" style="justify-content:space-between"><span class="mini" data-t="levelReserved"></span><span class="mini" data-t="levelBalanced"></span><span class="mini" data-t="levelActive"></span><span class="mini" data-t="levelClingy"></span></div>
+          <p class="hint" id="proactiveLevelText"></p>
+          <div class="row"><input class="field" id="proactiveTimes" placeholder="09:00, 18:30" autocapitalize="off" autocomplete="off"><button class="btn" id="saveProactive" data-t="save"></button></div>
+          <div class="row"><button class="btn" id="proactiveNow" data-t="proactiveNow"></button></div>
+          <p class="hint" id="proactiveMsg" role="status"></p>
+        </div>
+        <div class="section">
+          <h3 data-i="bookmark" data-t="memoryTitle"></h3>
+          <p class="hint" data-t="memoryHint"></p>
+          <div id="memoryList" class="stack"></div>
+          <p class="hint" id="memoryInsights" hidden></p>
+          <div class="row"><button class="btn" id="memoryDream" data-t="memoryDreamNow"></button><span class="hint" id="memoryLastDream"></span></div>
+          <p class="hint" id="memoryMsg" role="status"></p>
+        </div>
+        <div class="section">
+          <h3 data-i="box" data-t="featuresTitle"></h3>
+          <p class="hint" data-t="featuresHint"></p>
+          <div id="featureList" class="stack"></div>
+        </div>
+      </div>
+
+      <div class="settings-panel" data-panel="connect" hidden>
+        <div class="section">
+          <h3 data-i="chat" data-t="channelsTitle"></h3>
+          <div id="channelList" class="stack"></div>
+          <details class="add" id="addChannel">
+            <summary data-t="addChannel"></summary>
+            <div class="stack">
+              <select class="field" id="chType" data-al="chType"></select>
+              <p class="hint" id="chHelp"></p>
+              <div class="stack" id="wxLoginBox" hidden>
+                <p class="hint" id="wxLoginMsg"></p>
+                <img id="wxLoginQr" alt="" hidden style="width:220px;height:220px;align-self:center;border-radius:16px;background:var(--canvas)">
+                <button class="btn block" id="wxLoginBtn" data-t="wxLoginBtn"></button>
+              </div>
+              <input class="field" id="chName" autocomplete="off" data-ph="chName" data-al="chName">
+              <input class="field" id="chWebhook" inputmode="url" autocapitalize="off" autocomplete="off" data-ph="chWebhook" data-al="chWebhook">
+              <input class="field" id="chSecret" type="password" autocomplete="off" data-ph="chSecret" data-al="chSecret">
+              <input class="field" id="chToken" type="password" autocomplete="off" data-ph="chToken" data-al="chToken" hidden>
+              <input class="field" id="chChat" autocapitalize="off" autocomplete="off" data-ph="chChat" data-al="chChat" hidden>
+              <button class="btn primary block" id="saveChannel" data-t="save"></button>
+              <p class="hint" id="chMsg" role="status"></p>
+            </div>
+          </details>
+        </div>
+        <div class="section">
+          <h3 data-i="phone" data-t="pushTitle"></h3>
+          <div class="keystate none" id="pushState"></div>
+          <p class="hint" id="pushHint" data-t="pushHint"></p>
+          <label class="hint" for="pushChatMode" data-t="pushChatTitle"></label>
+          <select class="field" id="pushChatMode"></select>
+          <p class="hint" data-t="pushChatHint"></p>
+          <p class="hint" id="pushLast"></p>
+          <p class="hint" id="pushDiag" hidden></p>
+          <div class="row">
+            <button class="btn primary" id="pushEnable" data-t="pushEnable"></button>
+            <button class="btn" id="pushTest" data-t="pushTest" hidden></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-panel" data-panel="general" hidden>
+        <div class="section">
+          <h3 data-i="moon" data-t="themeTitle"></h3>
+          <div class="seg" id="themeSeg"></div>
+        </div>
+        <div class="section">
+          <h3 data-i="globe" data-t="langTitle"></h3>
+          <select class="field" id="langSel" data-al="langTitle"></select>
+        </div>
+        <div class="section">
+          <h3 data-i="clock" data-t="zoneTitle"></h3>
+          <div class="row"><input class="field" id="zone" autocapitalize="off" autocomplete="off" aria-label="Time zone"><button class="btn" id="saveZone" data-t="save"></button></div>
+          <p class="hint" id="zoneMsg" role="status"></p>
+        </div>
+      </div>
+
+      <div class="settings-panel" data-panel="system" hidden>
+        <div class="section">
+          <h3 data-i="terminal" data-t="extTitle"></h3>
+          <p class="hint" data-t="extHint"></p>
+          <div id="extList"></div>
+          <p class="hint" id="extEmpty" data-t="extEmpty"></p>
+        </div>
+        <div class="section">
+          <h3 data-i="lock" data-t="pinTitle"></h3>
+          <p class="hint" data-t="pinHint"></p>
+          <button class="btn danger block" id="logout" data-t="logout"></button>
+        </div>
+        <p class="hint" id="buildInfo"></p>
       </div>
     </div>
     <button id="jump" type="button" data-i="down" data-t="jumpLatest" hidden></button>
@@ -764,7 +791,7 @@ const I18N = {
   themeTitle:['外观','Appearance'], theme_auto:['跟随系统','System'], theme_light:['浅色','Light'], theme_dark:['深色','Dark'],
   actClick:['点击「{n}」','Click "{n}"'], actTypeEnter:['输入「{n}」并回车','Enter "{n}" and press Enter'], actPressEnter:['在此页面按回车','Press Enter on this page'],
   pagePrefix:['页面：','Page: '], textPrefix:['文字：','Text: '],
-  draftDone:['已按草稿执行','Done as drafted'], draftFailed:['没能执行，详情在收件箱','Could not finish. See the inbox'], draftDiscarded:['草稿已放弃','Draft discarded'],
+  draftDone:['已按草稿执行','Done as drafted'], draftFailed:['没能执行，详情在对应的对话里','Could not finish. See its conversation'], draftDiscarded:['草稿已放弃','Draft discarded'],
   ch_webpush:['手机通知','Phone notifications'],
   loginSub:['输入 PIN 进入','Enter your PIN'], welcomeSub:['今天想让我做点什么？','What can I do for you today?'],
   tabChat:['对话','Chat'], tabClerk:['文员','Clerk'], tabSettings:['设置','Settings'],
@@ -785,9 +812,12 @@ const I18N = {
   langTitle:['语言','Language'], langAuto:['跟随系统','Automatic'],
   today:['今天','Today'], tomorrow:['明天','Tomorrow'], dayAfter:['后天','In two days'],
   cancel:['取消','Cancel'], confirm:['确认','Confirm'], confirmAdd:['确认添加','Add it'], confirmDeleteBtn:['确认删除','Delete'], askDelete:['删除','Delete'], askPause:['暂停','Pause'], askResume:['恢复','Resume'],
+  openPage:['打开链接','Open'],
   firstAt:['首次 {n}','First {n}'], alsoTo:['同时发到 {n}','Also to {n}'],
   inboxSent:['已发送至 {n}','Sent to {n}'], inboxNotSent:['未送达','not delivered'],
-  inboxTitle:['收件箱','Inbox'], inboxEmpty:['提醒和任务结果会出现在这里。','Reminders and task results show up here.'], markRead:['全部已读','Mark all read'],
+  clerkIntro:['这里放待办、定时任务和等你处理的事；任务说了什么、做了什么，都在对应的对话里。','To-dos, schedules and things waiting for you live here; what a task said and did is in the matching chat.'],
+  inboxTitle:['最近结果','Recent results'], inboxEmpty:['定时任务和提醒的结果会显示在这里；完整内容在对应对话里。','Results from scheduled tasks and reminders appear here; the full content is in the conversation.'], markRead:['全部已读','Mark all read'],
+  inboxHint:['点一条打开对应的对话，完整内容和卡片都在那里。','Open a row to see the full result and cards in its conversation.'], openConversation:['打开对话','Open chat'],
   channelsTitle:['消息渠道','Channels'], channelsHint:['提醒和结果除了应用内，还可以发到这些渠道。密钥只保存在服务器上。','Reminders and results can also go to these channels. Secrets stay on the server.'],
   addChannel:['添加渠道','Add a channel'], zoneTitle:['时区','Time zone'],
   kindTask:['任务','Task'], kindReminder:['提醒','Reminder'], nextRun:['下次：{n}','Next: {n}'], paused:['已暂停','Paused'], neverRun:['还没运行过','Not run yet'],
@@ -800,7 +830,7 @@ const I18N = {
   draftsTitle:['待批草稿','Waiting for approval'], tagDraft:['草稿','Draft'], draftApprove:['批准并执行','Approve and run'], draftReject:['放弃','Discard'], draftBusy:['Bob 正在忙，请稍后再批准。','Bob is busy. Approve this in a moment.'],
   lastDrafted:['上次待批准：','Waiting for approval: '], run_drafted:['待批准','Waiting'], runTrial:['试运行','Trial'],
   saveRoutine:['存为日常任务','Save as a routine'], saveRoutinePrompt:['把刚才做成功的步骤存为日常任务。','Save the steps that just worked as a routine.'],
-  routineCheck:['校验','Check'], routineSteps:['步骤','Steps'], routineMissing:['缺数据时','If data is missing'], trialRunning:['正在试运行，结果会进收件箱。启用前不会定时运行。','Trial run in progress. The result goes to your inbox, and nothing is scheduled until you turn it on.'], trialDone:['试运行结束。看过结果后再启用定时。','Trial finished. Turn it on once the result looks right.'], enableRoutine:['启用定时','Turn on'],
+  routineCheck:['校验','Check'], routineSteps:['步骤','Steps'], routineMissing:['缺数据时','If data is missing'], trialRunning:['正在试运行；结果会出现在文员的最近结果里，完整内容在对话中。启用前不会定时运行。','Trial run in progress; the result appears under Recent results in the Clerk tab, with the full content in its chat. Nothing is scheduled until you turn it on.'], trialDone:['试运行结束。看过结果后再启用定时。','Trial finished. Turn it on once the result looks right.'], enableRoutine:['启用定时','Turn on'],
   run_ok:['完成','Done'], run_partial:['部分完成','Partly done'], run_needs_you:['需要你','Needed you'], run_failed:['失败','Failed'], run_missed:['错过','Missed'],
   ch_wechat:['微信（官方 iLink）','WeChat (official iLink)'],
   featuresTitle:['功能扩展','Features'], featuresHint:['Bob 可以给自己加功能：页面上的小部件、新工具、样式或设置面板。新功能先试用几分钟，你点「保留」才留下，否则自动撤销。功能代码在隔离环境里运行，碰不到密钥和登录。','Bob can add to himself: widgets on the page, new tools, styling or a settings panel. A new feature is on trial for a few minutes and stays only if you press Keep. Feature code runs isolated, away from keys and logins.'],
@@ -815,7 +845,7 @@ const I18N = {
   proactiveHint:['在设定的时间，以及主动性档位增加的时间点，Bob 会看一眼你的待办和任务，只有确实值得提醒时才开口；高冷每天最多 1 条，粘人最多 4 条，22:00–08:00 不打扰。','At your set times, plus extra moments at higher levels, Bob checks your to-dos and tasks and speaks only when it is worth it: from 1 message a day (Reserved) to 4 (Clingy), never between 22:00 and 08:00.'],
   proactiveOff:['已关闭','Off'], proactiveOn:['已开启','On'], proactiveNow:['现在试一次','Try now'],
   proactiveLevel:['主动性','Proactivity'], levelReserved:['高冷','Reserved'], levelBalanced:['得体','Balanced'], levelActive:['积极','Active'], levelClingy:['粘人','Clingy'],
-  proactiveSent:['已经发了一条主动消息，去对话或收件箱看看。','Sent a check-in; see the chat or inbox.'],
+  proactiveSent:['已经发了一条主动消息，去「提醒」对话看看。','Sent a check-in; see the reminders chat.'],
   proactiveSilent:['这次没有值得打扰你的内容。','Nothing worth interrupting you this time.'],
   proactiveSkip:['暂时跳过：{n}','Skipped: {n}'],
   pushTitle:['手机通知','Phone notifications'],
@@ -856,6 +886,10 @@ const I18N = {
   secretSet:['已设置','set'], secretNeeded:['需要填写','needed'], secretPh:['{n} 的值','Value for {n}'], setSecret:['保存','Set'], secretSaved:['已保存，Bob 会重启后生效','Saved. Bob restarts to use it'],
   // approvals
   allow:['允许','Allow'], reject:['拒绝','Reject'], approved:['已允许','Allowed'], rejected:['已拒绝','Rejected'], expired:['已过期','Expired'],
+  allowTask:['本任务内同类操作都允许','Allow similar actions for this task'],
+  allowTaskHint:['只在完全信任本轮任务时使用：之后的命令不再逐条确认，仍以你的用户权限运行，本轮结束自动失效。','Only if you trust this whole task: later commands run without another prompt, as your user, until this turn ends.'],
+  allowTaskWriteHint:['本轮对话内，工作区里的写入不再逐条确认。','Writes inside the workspace will not ask again this turn.'],
+  approvedTask:['已允许（本任务）','Allowed (this task)'],
   tagApprove:['待确认','Needs approval'], tagHelp:['待处理','Needs you'],
   needsApproval:['Bob 想执行这个操作','Bob wants to do this'], needsYou:['Bob 需要你帮忙','Bob needs your help'],
   actCommand:['运行命令','Run a command'], actRead:['读取文件','Read file'], actList:['查看文件夹','List folder'], actWrite:['写入文件','Write file'], inFolder:['运行位置：{n}','Runs in: {n}'],
@@ -879,10 +913,20 @@ const I18N = {
   step_skill_remove:['移除技能','Removing a skill'], step_ext_list:['查看扩展','Checking extensions'], step_skill:['使用技能','Using a skill'],
   stepsCount:['共 {n} 步','{n} steps'],
   // model, budget, account
-  modelTitle:['模型与服务商','Model & Provider'], providerLabel:['服务商 (Provider)','Provider'], modelLabel:['模型 (Model)','Model'],
-  manualModel:['手动输入模型名','Custom Model Name'], selectPresetModel:['选择预设模型','Select Preset Model'], endpointLabel:['接口地址 (Base URL)','Base URL'], resetDefault:['恢复默认','Reset Default'], keyLabel:['API 密钥 (API Key)','API Key'],
-  keySaved:['密钥已配置','Key configured'], keyEnv:['由服务器环境提供','Set by server env'], replaceKey:['更换','Change'], keyNone:['未配置密钥 (请在下方填入)','No key configured (enter below)'],
-  customHint:['支持标准 OpenAI / Gemini 兼容格式（自动请求 /chat/completions）。','Supports standard OpenAI / Gemini compatible endpoints (/chat/completions).'],
+  setGroupModel:['模型与花费','Model & cost'], setGroupAssistant:['助理','Assistant'], setGroupConnect:['连接','Connect'], setGroupGeneral:['通用','General'], setGroupSystem:['系统','System'],
+  modelTitle:['模型','Model'], modelLabel:['选择模型','Choose a model'], otherModel:['其他模型（自行填写）…','Other model (enter yourself)…'],
+  providersHint:['保存多个模型供应商，随时切换；只有当前使用的那个会计入花费。','Keep several model providers and switch anytime; only the active one is used and counted.'],
+  providersEmpty:['还没有模型，先添加一个。','No model yet. Add one below.'],
+  addProvider:['添加模型供应商','Add a model provider'], providerFormTitle:['模型供应商','Model provider'],
+  pKind:['供应商','Provider'], pKindCustom:['自定义端点','Custom endpoint'], pName:['名称（可选）','Name (optional)'], pApi:['接口协议','API protocol'], pBase:['接口地址（https）','Endpoint (https)'], pModel:['模型名称','Model name'], pKey:['API Key（留空沿用已保存）','API key (blank keeps saved)'],
+  apiOpenAI:['OpenAI 兼容（Chat Completions）','OpenAI-compatible (Chat Completions)'], apiAnthropic:['Anthropic Messages','Anthropic Messages'], apiResponses:['OpenAI Responses','OpenAI Responses'],
+  providerActive:['使用中','In use'], providerUse:['使用','Use'], providerEdit:['编辑','Edit'], providerDelete:['删除','Delete'],
+  providerPrice:['输入 ${n} · 输出 ${m} / 百万 tokens','Input ${n} · output ${m} per 1M tokens'],
+  providerNoKey:['还没有密钥','No key yet'], providerSaved:['已保存，下一条消息使用新模型','Saved. The next message uses the new model'],
+  providerBusy:['Bob 正在忙，稍后再切换','Bob is busy, try again later'],
+  err_BAD_PROVIDER:['这个供应商配置不完整','That provider configuration is incomplete'], err_BAD_KIND:['不支持的供应商','Unsupported provider'], err_BAD_API:['不支持的接口协议','Unsupported API protocol'], err_BAD_LIMIT:['上下文或输出长度无效','Invalid context or output length'], err_TOO_MANY_PROVIDERS:['最多保存 12 个供应商','At most 12 providers'], err_NO_PROVIDER:['找不到这个供应商','No such provider'],
+  keySaved:['密钥已保存','Key saved'], keyEnv:['由服务器环境提供','Set by the server'], replaceKey:['更换','Replace'], keyNone:['还没有密钥，请先填写','No key yet. Add one below'],
+  customHint:['填写兼容 Anthropic Messages 协议的服务（实际请求地址为：接口地址 + /v1/messages）。这是实验功能，尚未验证。','An Anthropic Messages-compatible service (requests go to the endpoint + /v1/messages). Experimental and not verified.'],
   cEndpoint:['接口地址（https）','Endpoint (https)'], cModel:['模型名称','Model name'], cKey:['API Key（留空沿用已保存）','API key (blank keeps saved)'],
   priceWhy:['价格用于统计月度花费上限','Prices are used for the monthly spending limit'], cIn:['输入价格（美元/百万 tokens）','Input price (USD per 1M tokens)'], cOut:['输出价格（美元/百万 tokens）','Output price (USD per 1M tokens)'],
   capTitle:['本月花费','This month'], capLabel:['每月模型花费上限（美元）','Monthly model spending limit (USD)'],
@@ -1016,7 +1060,7 @@ function show(view) {
   else drawAttachments()
   if (view === 'chat') atEnd()
   if (view === 'clerk') loadClerk()
-  if (view === 'settings') { loadModelCard().catch(() => {}); loadExtensions(); loadClerk(); loadPushState(); loadFeatures(); loadProactive(); loadMemory() }
+  if (view === 'settings') { loadProviders().catch(() => {}); showSettingsGroup(settingsGroupSaved(), false); loadExtensions(); loadClerk(); loadPushState(); loadFeatures(); loadProactive(); loadMemory() }
   refreshOrb(); refreshBanner(); setHero()
 }
 document.querySelectorAll('nav button').forEach(b => { b.onclick = () => show(b.dataset.view) })
@@ -1026,6 +1070,7 @@ function poke() {
   for (const orb of document.querySelectorAll('[data-orb]:not(.static)')) {
     orb.classList.remove('poke'); void orb.offsetWidth; orb.classList.add('poke')
   }
+  dropGL.poke()
 }
 document.addEventListener('animationend', e => { if (e.animationName === 'poke') e.target.closest('.orb')?.classList.remove('poke') })
 
@@ -1045,6 +1090,123 @@ function layoutHero() {
   app.style.setProperty('--wtop', (top + D + gap) + 'px')
 }
 new ResizeObserver(layoutHero).observe($('viewChat'))
+
+// The big drop on the empty page, drawn with WebGL. The shape follows the same rule as the CSS drop: one value k,
+// x = k and y = 1 / k, so its area never changes. Light comes from a made-up studio around it (the page behind is
+// a flat colour, so there is nothing real to refract): a soft window up and to the left, seen upright in the
+// surface and upside down through the water, a Fresnel edge, and a highlight that slides as the drop deforms.
+// Cost is kept small: at most 30 frames a second, nothing drawn while the shape holds still, and no frames at all
+// once the chat starts, while the page is hidden, or with reduced motion (one still frame then).
+const dropGL = (() => {
+  const stub = { poke() {}, wake() {} }
+  const btn = $('orbBtn'), orb = $('hOrb'), app = $('app')
+  const cv = document.createElement('canvas')
+  cv.className = 'drop-gl'; cv.setAttribute('aria-hidden', 'true')
+  let gl = null
+  try { gl = cv.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: false, powerPreference: 'low-power' }) } catch { /* no WebGL */ }
+  if (!gl) return stub
+  const VS = 'attribute vec2 a; varying vec2 v; void main() { v = a; gl_Position = vec4(a, 0.0, 1.0); }'
+  const FS = `precision highp float;
+varying vec2 v;
+uniform float uK, uPad, uEdge, uDark, uThink, uWait;
+vec3 env(vec2 d) {
+  float y = d.y;
+  vec3 top = mix(vec3(0.94, 0.97, 1.0), vec3(0.34, 0.45, 0.64), uDark);
+  vec3 hor = mix(vec3(0.80, 0.88, 0.97), vec3(0.16, 0.22, 0.34), uDark);
+  vec3 bot = mix(vec3(0.60, 0.72, 0.87), vec3(0.06, 0.08, 0.13), uDark);
+  vec3 c = mix(mix(bot, hor, smoothstep(-1.0, 0.0, y)), top, smoothstep(0.0, 1.0, y));
+  vec2 w = (d - vec2(-0.42, 0.50)) * vec2(1.0, 1.5);
+  float win = exp(-pow(length(w) / 0.27, 4.0));
+  c += win * mix(vec3(1.0), vec3(0.82, 0.92, 1.0), uDark) * (1.2 + 0.5 * uThink);
+  c += smoothstep(0.55, 0.0, length(d - vec2(0.62, -0.42))) * mix(vec3(0.30, 0.42, 0.55), vec3(0.20, 0.35, 0.60), uDark);
+  return c;
+}
+void main() {
+  vec2 p = v * uPad;
+  vec2 q = vec2(p.x / uK, p.y * uK);
+  float r = length(q);
+  float mask = 1.0 - smoothstep(1.0 - uEdge, 1.0, r);
+  if (mask <= 0.0) { gl_FragColor = vec4(0.0); return; }
+  float z = sqrt(max(0.0, 1.0 - min(r * r, 1.0)));
+  vec3 N = normalize(vec3(q, z));
+  vec3 R = reflect(vec3(0.0, 0.0, -1.0), N);
+  float fres = 0.03 + 0.97 * pow(1.0 - z, 4.0);
+  vec3 water = mix(vec3(0.80, 0.90, 1.0), vec3(0.55, 0.76, 1.0), uDark);
+  vec3 trans = env(-q * 1.15) * mix(vec3(1.0), water, 0.55);
+  vec3 col = mix(trans, env(R.xy), fres);
+  vec3 L = normalize(vec3(-0.5, 0.62, 0.62));
+  float spec = pow(max(dot(R, L), 0.0), 140.0) * (1.5 + 0.8 * uThink);
+  spec += pow(max(dot(R, normalize(vec3(0.55, -0.5, 0.67))), 0.0), 60.0) * 0.25;
+  col += spec;
+  col *= 1.0 - 0.16 * smoothstep(0.72, 1.0, r);
+  col += smoothstep(0.6, 0.0, length(q - vec2(0.33, -0.48))) * 0.22 * mix(vec3(1.0), vec3(0.6, 0.8, 1.0), uDark);
+  float low = smoothstep(0.2, -0.95, q.y);
+  col = mix(col, col * vec3(1.06, 0.94, 0.78) + vec3(0.30, 0.16, 0.0), uWait * low * 0.75);
+  float alpha = mix(mix(0.58, 0.55, uDark), 0.96, fres);
+  alpha = clamp(alpha + spec, 0.0, 1.0) * mask;
+  gl_FragColor = vec4(min(col, 1.0) * alpha, alpha);
+}`
+  const shader = (type, src) => { const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh); return gl.getShaderParameter(sh, gl.COMPILE_STATUS) ? sh : null }
+  const vs = shader(gl.VERTEX_SHADER, VS), fs = shader(gl.FRAGMENT_SHADER, FS)
+  if (!vs || !fs) return stub
+  const prog = gl.createProgram(); gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog)
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return stub
+  gl.useProgram(prog)
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer())
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
+  const loc = gl.getAttribLocation(prog, 'a'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
+  const u = Object.fromEntries(['uK', 'uPad', 'uEdge', 'uDark', 'uThink', 'uWait'].map(n => [n, gl.getUniformLocation(prog, n)]))
+  const PAD = 1.1 // the canvas reaches past the drop, so a stretched drop is never clipped
+  btn.append(cv); orb.classList.add('gl')
+
+  // the same keyframes as the CSS drop, eased in and out between each pair
+  const curve = (frames, f) => {
+    for (let i = 1; i < frames.length; i++) {
+      const [f1, v1] = frames[i]
+      if (f <= f1) { const [f0, v0] = frames[i - 1]; const x = (f - f0) / (f1 - f0 || 1); return v0 + (v1 - v0) * x * x * (3 - 2 * x) }
+    }
+    return frames[frames.length - 1][1]
+  }
+  const TENSION = [[0, 1], [.18, 1], [.32, .975], [.46, 1.018], [.60, .992], [.74, 1.004], [.88, 1], [1, 1]]
+  const POKE = [[0, 1], [.14, .955], [.32, 1.03], [.50, .988], [.68, 1.005], [1, 1]]
+  const PERIOD = { nap: 9, think: 4, speak: 5, wait: 9 }
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)')
+  let raf = 0, lastT = 0, lastDraw = 0, phase = 0, pokeAt = -1e9, wait = 0, think = 0, drawn = ''
+
+  function frame(now) {
+    raf = 0
+    if (!app.classList.contains('hero') || app.hidden || document.hidden) return // wake() starts it again
+    raf = requestAnimationFrame(frame)
+    if (now - lastDraw < 32) return
+    const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now; lastDraw = now
+    const still = reduce.matches, state = orb.dataset.state
+    if (!still) phase = (phase + dt / (PERIOD[state] ?? 9)) % 1
+    const k = still ? 1 : curve(TENSION, phase) * curve(POKE, Math.min(1, (now - pokeAt) / 1300))
+    const ease = still ? 1 : Math.min(1, dt * 3)
+    wait += ((state === 'wait' ? 1 : 0) - wait) * ease
+    think += ((state === 'think' ? 1 : 0) - think) * ease
+    const dark = document.documentElement.dataset.theme === 'dark' ? 1 : 0
+    const dpr = Math.min(3, window.devicePixelRatio || 1)
+    const size = Math.max(2, Math.round(btn.clientWidth * PAD * dpr))
+    const key = [k.toFixed(4), wait.toFixed(3), think.toFixed(3), dark, size].join()
+    if (key === drawn) return // the shape is holding still: nothing to draw
+    drawn = key
+    if (cv.width !== size) { cv.width = cv.height = size }
+    gl.viewport(0, 0, size, size)
+    gl.uniform1f(u.uK, k); gl.uniform1f(u.uPad, PAD); gl.uniform1f(u.uEdge, 2.4 * PAD / size)
+    gl.uniform1f(u.uDark, dark); gl.uniform1f(u.uThink, think); gl.uniform1f(u.uWait, wait)
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT)
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+  }
+  function wake() { if (!raf) { lastT = performance.now(); drawn = ''; raf = requestAnimationFrame(frame) } }
+  document.addEventListener('visibilitychange', wake)
+  new MutationObserver(wake).observe(app, { attributes: true, attributeFilter: ['class', 'hidden'] })
+  new MutationObserver(wake).observe(orb, { attributes: true, attributeFilter: ['data-state'] })
+  new MutationObserver(wake).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+  cv.addEventListener('webglcontextlost', e => { e.preventDefault(); orb.classList.remove('gl'); cv.remove() })
+  wake()
+  return { poke() { pokeAt = performance.now(); wake() }, wake }
+})()
 // On a phone the keyboard covers the page without resizing it, so the app follows the visible part of the screen.
 ;(() => {
   const vv = window.visualViewport
@@ -1280,6 +1442,28 @@ function infoCard(card) {
   return c
 }
 
+/** A page Bob published: a sandboxed preview with no access to the app, plus a plain link to open it. */
+function pageCard(page) {
+  const c = el('div', 'page-card')
+  const head = el('div', 'page-head')
+  head.append(el('b', '', page.title))
+  const open = el('a', 'link', t('openPage'))
+  open.href = page.url
+  open.target = '_blank'
+  open.rel = 'noopener noreferrer'
+  head.append(open)
+  c.append(head)
+  const frame = document.createElement('iframe')
+  frame.src = page.url
+  frame.loading = 'lazy'
+  frame.setAttribute('sandbox', 'allow-scripts')
+  frame.setAttribute('referrerpolicy', 'no-referrer')
+  frame.title = page.title
+  frame.style.height = `${Math.min(800, Math.max(160, Number(page.height) || 360))}px`
+  c.append(frame)
+  return c
+}
+
 // ---- cards ----
 const ACTIONS = { command:'actCommand', read:'actRead', list:'actList', write:'actWrite' }
 const baseName = p => String(p).split('/').filter(Boolean).pop() ?? p
@@ -1350,20 +1534,28 @@ function buildCard(e, kind) {
   if (detail) c.append(el('pre', 'detail' + (e.kind === 'command' ? '' : ' soft'), detail))
   if (e.screenshot) { const img = new Image(); img.alt = ''; img.src = 'data:image/jpeg;base64,' + e.screenshot; c.append(img) }
   const row = el('div', 'actions')
+  let decide = null
   if (kind === 'approval') {
-    const go = async allow => {
-      const { status } = await post('/api/approve', { id: e.id, allow })
+    decide = async decision => {
+      const { status } = await post('/api/approve', { id: e.id, allow: decision !== 'task', scope: decision === 'task' ? 'task' : 'once' })
       if (status === 404) closeCard(e.id, t('expired'), false)
     }
-    const no = el('button', 'btn', t('cancel')); no.onclick = () => go(false)
+    const no = el('button', 'btn', t('cancel')); no.onclick = () => decide(false)
     const yesLabel = e.kind === 'clerk' ? (e.action === 'create' ? t('confirmAdd') : e.action === 'delete' ? t('confirmDeleteBtn') : t('confirm')) : t('allow')
-    const yes = el('button', 'btn primary', yesLabel); yes.onclick = () => go(true)
+    const yes = el('button', 'btn primary', yesLabel); yes.onclick = () => decide(true)
     row.append(no, yes)
   } else {
     const openBtn = el('button', 'btn primary', t('openWindow')); openBtn.onclick = openBrowser
     row.append(openBtn)
   }
   c.append(row)
+  if (kind === 'approval' && e.allowTask) {
+    const task = el('button', 'btn block', t('allowTask'))
+    task.onclick = () => decide('task')
+    c.append(task)
+    if (e.kind === 'command') c.append(el('p', 'hint', t('allowTaskHint')))
+    if (e.kind === 'write') c.append(el('p', 'hint', t('allowTaskWriteHint')))
+  }
   const list = cards.get(e.id) ?? []
   list.push({ c, row }); cards.set(e.id, list)
   return c
@@ -1410,12 +1602,12 @@ function render(e) {
   else if (e.type === 'step') step(e.name)
   else if (e.type === 'error') notice(e.text, true)
   else if (e.type === 'notice') notice(t(e.code === 'BUDGET_NEAR' ? 'budgetNear' : e.code === 'EXTENSIONS_BROKEN' ? 'extensionsBroken' : 'budgetExceeded'), true)
-  else if (e.type === 'card') add(e.card.kind === 'job' ? jobCard(e.card.job, e.card.timezone, true, e.card.created) : e.card.kind === 'todo' ? todoCard(e.card.todo, e.card.timezone, e.card.created) : infoCard(e.card), 'card')
+  else if (e.type === 'card') add(e.card.kind === 'job' ? jobCard(e.card.job, e.card.timezone, true, e.card.created) : e.card.kind === 'todo' ? todoCard(e.card.todo, e.card.timezone, e.card.created) : e.card.kind === 'page' ? pageCard(e.card.page) : infoCard(e.card), 'card')
   else if (e.type === 'approval' || e.type === 'takeover') {
     add(buildCard(e, e.type), 'card')
     if (!open.has(e.id)) closeCard(e.id, t('expired'), false) // an old request nobody can answer any more
   }
-  else if (e.type === 'approval_done') closeCard(e.id, t(e.allowed ? 'approved' : 'rejected'), e.allowed)
+  else if (e.type === 'approval_done') closeCard(e.id, t(e.allowed ? (e.scope === 'task' ? 'approvedTask' : 'approved') : 'rejected'), e.allowed)
   else if (e.type === 'takeover_done') closeCard(e.id, t('doneTakeover'))
 }
 let workSteps = 0 // real work done in this turn, which is what makes a turn worth saving as a routine
@@ -1840,15 +2032,24 @@ function inboxItem(n) {
   const top = el('div', 'top')
   top.append(el('span', 'title', n.title), el('time', '', fmtWhen(n.at, clerkData.timezone)))
   item.append(top)
-  if (n.text) item.append(el('div', 'body', n.text))
-  for (const card of n.cards ?? []) item.append(infoCard(card))
+  // The Clerk page shows a short result; the full text and cards live in the job's own conversation.
+  if (n.text) item.append(el('div', 'body' + (n.cid ? ' compact' : ''), n.text))
+  if (!n.cid) for (const card of n.cards ?? []) item.append(infoCard(card))
   // Where it went, in one quiet line; only a failure gets its own line and colour.
   const delivery = n.delivery ?? []
   const reached = delivery.filter(d => d.ok).map(d => d.channel)
   const note = (text, bad) => { const line = el('div', 'sent' + (bad ? ' bad' : '')); line.insertAdjacentHTML('afterbegin', icon(bad ? 'cross' : 'tick')); line.append(el('span', '', text)); item.append(line) }
   if (reached.length) note(t('inboxSent', reached.join('、')), false)
   for (const d of delivery.filter(x => !x.ok)) note(`${d.channel} ${t('inboxNotSent')}${d.error ? `：${d.error}` : ''}`, true)
-  item.onclick = () => item.classList.toggle('open')
+  if (n.cid) {
+    const open = el('div', 'sent')
+    open.append(el('span', '', `${t('openConversation')} ›`))
+    item.append(open)
+    item.onclick = () => {
+      if (!n.read) post('/api/clerk/inbox/read', { id: n.id }).then(() => loadClerk()).catch(() => {})
+      selectConv(n.cid)
+    }
+  } else item.onclick = () => item.classList.toggle('open')
   return item
 }
 const CHANNEL_TYPES = ['wechat', 'lark', 'wecom', 'telegram', 'discord']
@@ -2436,268 +2637,173 @@ $('composer').onsubmit = async e => {
 }
 
 // ---- settings ----
-let appState = {}
-const PRESET_PROVIDERS = {
-  gemini: {
-    name: 'Google Gemini',
-    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
-    models: [
-      { id: 'gemini-4-neon', name: 'gemini-4-neon (推荐 · 今日新上线 · 速度与深度兼备)' },
-      { id: 'gemini-4-carbon', name: 'gemini-4-carbon (Gemini 4 最强推理旗舰)' },
-      { id: 'gemini-4-argon', name: 'gemini-4-argon (Gemini 4 Argon)' },
-      { id: 'gemini-3.8-flash', name: 'gemini-3.8-flash (3.8 Flash 轻量高吞吐)' }
-    ],
-    defaultModel: 'gemini-4-neon',
-    placeholder: 'AIzaSy... (Google AI Studio Key)'
-  },
-  openai: {
-    name: 'OpenAI',
-    baseUrl: 'https://api.openai.com/v1',
-    models: [
-      { id: 'gpt-6.2-sol', name: 'gpt-6.2-sol (推荐 · 6.2 世代高效主力)' },
-      { id: 'gpt-6.2-astra', name: 'gpt-6.2-astra (6.2 世代前沿复杂推理旗舰)' },
-      { id: 'gpt-5.6-tera', name: 'gpt-5.6-tera (5.6 世代高性价比均衡)' },
-      { id: 'gpt-5.6-luna', name: 'gpt-5.6-luna (5.6 世代超轻量)' }
-    ],
-    defaultModel: 'gpt-6.2-sol',
-    placeholder: 'sk-...'
-  },
-  openrouter: {
-    name: 'OpenRouter',
-    baseUrl: 'https://openrouter.ai/api/v1',
-    models: [
-      { id: 'google/gemini-4-neon', name: 'google/gemini-4-neon' },
-      { id: 'google/gemini-4-carbon', name: 'google/gemini-4-carbon' },
-      { id: 'openai/gpt-6.2-astra', name: 'openai/gpt-6.2-astra' },
-      { id: 'openai/gpt-6.2-sol', name: 'openai/gpt-6.2-sol' },
-      { id: 'anthropic/claude-opus-5', name: 'anthropic/claude-opus-5' },
-      { id: 'qwen/qwen4-max', name: 'qwen/qwen4-max' },
-      { id: 'deepseek/deepseek-v4.1-flash', name: 'deepseek/deepseek-v4.1-flash' }
-    ],
-    defaultModel: 'google/gemini-4-neon',
-    placeholder: 'sk-or-v1-...'
-  },
-  xai: {
-    name: 'xAI (Grok)',
-    baseUrl: 'https://api.x.ai/v1',
-    models: [
-      { id: 'grok-4.7', name: 'grok-4.7 (最新多模态旗舰 · 可调推理深度)' },
-      { id: 'grok-4.6', name: 'grok-4.6 (500K 上下文旗舰)' },
-      { id: 'grok-4.3', name: 'grok-4.3 (主力版)' }
-    ],
-    defaultModel: 'grok-4.7',
-    placeholder: 'xai-...'
-  },
-  deepseek: {
-    name: 'DeepSeek',
-    baseUrl: 'https://api.deepseek.com/v1',
-    models: [
-      { id: 'deepseek-flash', name: 'deepseek-flash (推荐 · V4.1-Flash-1017 默认主力)' },
-      { id: 'deepseek-v4-pro', name: 'deepseek-v4-pro (V4 Pro 旗舰推理)' }
-    ],
-    defaultModel: 'deepseek-flash',
-    placeholder: 'sk-... (DeepSeek API Key)'
-  },
-  moonshot: {
-    name: 'Moonshot (Kimi)',
-    baseUrl: 'https://api.moonshot.cn/v1',
-    models: [
-      { id: 'kimi-k3.1-pro', name: 'kimi-k3.1-pro (最新 3T 级旗舰 · 百万上下文)' },
-      { id: 'kimi-k3.1-pro-highspeed', name: 'kimi-k3.1-pro-highspeed (2-3倍极速版)' },
-      { id: 'kimi-k3.1', name: 'kimi-k3.1 (标准版)' },
-      { id: 'kimi-k3', name: 'kimi-k3 (K3 长程思考)' }
-    ],
-    defaultModel: 'kimi-k3.1-pro',
-    placeholder: 'sk-... (Moonshot API Key)'
-  },
-  qwen: {
-    name: '阿里通义千问 (Qwen)',
-    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    models: [
-      { id: 'qwen4-max', name: 'qwen4-max (最新 Qwen 4 旗舰 · 多模态深度推理)' },
-      { id: 'qwen3.8-flash', name: 'qwen3.8-flash (极速高并发 · 1M 上下文)' },
-      { id: 'qwen3.8-max', name: 'qwen3.8-max (Q3.8 旗舰)' }
-    ],
-    defaultModel: 'qwen4-max',
-    placeholder: 'sk-... (DashScope API Key)'
-  },
-  zhipu: {
-    name: '智谱 AI (GLM)',
-    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-    models: [
-      { id: 'glm-5.3-flash', name: 'glm-5.3-flash (推荐 · 极速多模态免费高并发)' },
-      { id: 'glm-5.3', name: 'glm-5.3 (744B 旗舰 · 1M 上下文)' },
-      { id: 'glm-5.3-flashx-legal', name: 'glm-5.3-flashx-legal (法律文档专项)' }
-    ],
-    defaultModel: 'glm-5.3-flash',
-    placeholder: 'your-zhipu-api-key'
-  },
-  doubao: {
-    name: '火山引擎 (豆包 Doubao)',
-    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
-    models: [
-      { id: 'doubao-seed-2-1-turbo-260813', name: 'doubao-seed-2-1-turbo-260813 (2.1 Turbo)' },
-      { id: 'doubao-seed-2-0-code-260813', name: 'doubao-seed-2-0-code-260813 (编程专用)' },
-      { id: 'doubao-seed-2-0-mini-260215', name: 'doubao-seed-2-0-mini-260215 (轻量快速)' }
-    ],
-    defaultModel: 'doubao-seed-2-1-turbo-260813',
-    placeholder: 'your-volcengine-api-key'
-  },
-  custom: {
-    name: '自定义 OpenAI 兼容接口',
-    baseUrl: '',
-    models: [],
-    defaultModel: '',
-    placeholder: 'API Key'
-  }
+let appState = {}, providerData = { items: [], presets: [], activeId: null }, editingProvider = null
+const SAVE_GROUP_KEY = 'bobbot.settings.group'
+// Suggestions only: the server accepts any model id for a saved vendor, and these are just quick picks.
+const MODEL_HINTS = {
+  deepseek: [],
+  openai: ['gpt-4.1-mini', 'gpt-4.1', 'gpt-4o-mini'],
+  anthropic: ['claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-opus-4-1'],
+  google: ['gemini-2.5-flash', 'gemini-2.5-pro'],
+  openrouter: ['deepseek/deepseek-chat', 'openai/gpt-4.1-mini', 'anthropic/claude-sonnet-4.5', 'google/gemini-2.5-flash'],
+  custom: [],
 }
-
-let isManualModel = false
-
+const PRICE_HINTS = {
+  'gpt-4.1-mini': [0.4, 1.6], 'gpt-4.1': [2, 8], 'gpt-4o-mini': [0.15, 0.6],
+  'claude-sonnet-4-5': [3, 15], 'claude-haiku-4-5': [1, 5], 'claude-opus-4-1': [15, 75],
+  'gemini-2.5-flash': [0.3, 2.5], 'gemini-2.5-pro': [1.25, 10],
+  'deepseek/deepseek-chat': [0.27, 1.1],
+}
+const settingsGroupSaved = () => { try { return localStorage.getItem(SAVE_GROUP_KEY) || 'model' } catch { return 'model' } }
+function showSettingsGroup(name, persist = true) {
+  if (!['model', 'assistant', 'connect', 'general', 'system'].includes(name)) name = 'model'
+  for (const b of $('settingsNav').querySelectorAll('button')) {
+    const on = b.dataset.panel === name
+    b.classList.toggle('on', on)
+    b.setAttribute('aria-selected', String(on))
+    if (on) b.scrollIntoView({ block: 'nearest', inline: 'center' })
+  }
+  for (const panel of document.querySelectorAll('#viewSettings .settings-panel')) panel.hidden = panel.dataset.panel !== name
+  if (persist) { try { localStorage.setItem(SAVE_GROUP_KEY, name) } catch { /* private mode */ } }
+}
+$('settingsNav').addEventListener('click', e => {
+  const b = e.target.closest('button[data-panel]')
+  if (b) showSettingsGroup(b.dataset.panel)
+})
 function showBuild(s) {
   const b = s?.build
   if (!b?.commit) return
   const commit = b.commit === 'dev' ? 'dev' : b.commit.slice(0, 7)
   $('buildInfo').textContent = t('build') + ' ' + commit + (b.at ? ' · ' + b.at : '')
 }
-
-function syncProviderUI(keepEndpoint) {
-  const pKey = $('providerSel').value
-  const preset = PRESET_PROVIDERS[pKey] || PRESET_PROVIDERS.custom
-  
-  if (!keepEndpoint || !$('cEndpoint').value) {
-    $('cEndpoint').value = preset.baseUrl || ''
+const presetOf = kind => providerData.presets.find(p => p.kind === kind) ?? null
+const providerLabel = kind => kind === 'custom' ? t('pKindCustom') : (presetOf(kind)?.label ?? kind)
+function fillKindOptions() {
+  $('pKind').replaceChildren(...providerData.presets.map(p => new Option(p.kind === 'custom' ? t('pKindCustom') : p.label, p.kind)))
+  $('pApi').replaceChildren(
+    new Option(t('apiOpenAI'), 'openai-completions'),
+    new Option(t('apiAnthropic'), 'anthropic-messages'),
+    new Option(t('apiResponses'), 'openai-responses'),
+  )
+}
+function providerFields(kind) {
+  const preset = presetOf(kind)
+  const custom = kind === 'custom'
+  $('pApi').hidden = !custom
+  $('pBase').hidden = !custom
+  $('pPriceRow').hidden = kind === 'deepseek'
+  if (preset && !custom) { $('pBase').value = preset.baseUrl; $('pApi').value = preset.api }
+  const hints = MODEL_HINTS[kind] ?? []
+  $('modelHints').replaceChildren(...hints.map(id => { const o = document.createElement('option'); o.value = id; return o }))
+}
+$('pKind').onchange = () => {
+  if (editingProvider) return
+  const kind = $('pKind').value, preset = presetOf(kind)
+  providerFields(kind)
+  $('pName').value = providerLabel(kind)
+  $('pModel').value = preset?.model ?? ''
+  const prices = PRICE_HINTS[preset?.model] ?? []
+  $('pIn').value = prices[0] ?? ''
+  $('pOut').value = prices[1] ?? ''
+  $('pMsg').textContent = ''
+}
+function providerRow(p) {
+  const row = el('div', 'prov' + (p.active ? ' on' : ''))
+  const head = el('div', 'prov-head')
+  head.append(el('b', '', p.name || p.model))
+  if (p.active) head.append(el('span', 'mini', t('providerActive')))
+  row.append(head)
+  row.append(el('div', 'prov-meta', `${providerLabel(p.kind)} · ${p.model}`))
+  row.append(el('div', 'prov-meta', p.hasKey ? (p.keyHint === 'env' ? t('keyEnv') : p.keyHint) : t('providerNoKey')))
+  if (p.kind !== 'deepseek' && Number.isFinite(Number(p.inputUsd)) && Number.isFinite(Number(p.outputUsd))) {
+    row.append(el('div', 'prov-price', t('providerPrice', { n: p.inputUsd, m: p.outputUsd })))
   }
-  
-  const sel = $('modelSel')
-  sel.textContent = ''
-  for (const m of preset.models) {
-    sel.append(new Option(m.name, m.id))
-  }
-  
-  if (preset.models.length > 0) {
-    $('toggleCustomModel').hidden = false
-    if (!isManualModel) {
-      $('modelSel').hidden = false
-      $('customModelInput').hidden = true
-      $('toggleCustomModel').textContent = t('manualModel')
+  const actions = el('div', 'prov-actions')
+  if (!p.active && p.hasKey) {
+    const use = el('button', 'btn', t('providerUse')); use.type = 'button'
+    use.onclick = async () => {
+      const r = await post('/api/providers/activate', { id: p.id })
+      if (r.status === 200) { providerData = r.data; renderProviders(); toast(t('providerSaved')) }
+      else toast(errText(r.data, r.status), true)
     }
-  } else {
-    isManualModel = true
-    $('modelSel').hidden = true
-    $('customModelInput').hidden = false
-    $('toggleCustomModel').hidden = true
+    actions.append(use)
   }
-  
-  $('key').placeholder = preset.placeholder || 'API Key'
-  renderKeyState()
+  const edit = el('button', 'btn', t('providerEdit')); edit.type = 'button'
+  edit.onclick = () => openProviderForm(p)
+  const del = el('button', 'btn danger', t('providerDelete')); del.type = 'button'
+  del.onclick = async () => {
+    if (!confirm(t('confirmDelete', p.name))) return
+    const r = await post('/api/providers/delete', { id: p.id })
+    if (r.status === 200) { providerData = r.data; renderProviders(); toast(t('saved')) }
+    else toast(errText(r.data, r.status), true)
+  }
+  actions.append(edit, del)
+  row.append(actions)
+  return row
 }
-
-function renderKeyState() {
-  const pKey = $('providerSel').value
-  const pInfo = appState.savedProviders?.[pKey] || (appState.provider === pKey ? { hasKey: appState.hasKey, keyHint: appState.keyHint } : null)
-  const has = !!(pInfo && pInfo.hasKey)
-  
-  const ks = $('keyState')
-  ks.className = 'keystate' + (has ? '' : ' none')
-  ks.textContent = ''
-  ks.insertAdjacentHTML('afterbegin', icon(has ? 'tick' : 'shield'))
-  ks.append(el('span', '', t(has ? 'keySaved' : 'keyNone')))
-  if (has && pInfo.keyHint) ks.append(el('code', '', pInfo.keyHint))
+function renderProviders() {
+  $('providerList').replaceChildren(...providerData.items.map(providerRow))
+  $('providerEmpty').hidden = providerData.items.length > 0
 }
-
-async function loadModelCard() {
+function openProviderForm(p = null) {
+  fillKindOptions()
+  editingProvider = p?.id ?? null
+  $('pKind').disabled = Boolean(p)
+  $('pKind').value = p?.kind ?? 'deepseek'
+  providerFields($('pKind').value)
+  $('pName').value = p?.name ?? providerLabel($('pKind').value)
+  $('pModel').value = p?.model ?? presetOf($('pKind').value)?.model ?? ''
+  $('pBase').value = p?.baseUrl ?? presetOf($('pKind').value)?.baseUrl ?? ''
+  $('pApi').value = p?.api ?? presetOf($('pKind').value)?.api ?? 'openai-completions'
+  $('pIn').value = p?.inputUsd ?? (PRICE_HINTS[p?.model] ?? [])[0] ?? ''
+  $('pOut').value = p?.outputUsd ?? (PRICE_HINTS[p?.model] ?? [])[1] ?? ''
+  $('pKey').value = ''
+  $('pMsg').textContent = ''
+  $('providerForm').hidden = false
+  $('pKey').placeholder = p?.hasKey ? t('pKey') : 'sk-...'
+  $('pKey').focus()
+  $('providerForm').scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+}
+function closeProviderForm() {
+  $('providerForm').hidden = true
+  editingProvider = null
+  $('pKind').disabled = false
+  $('pMsg').textContent = ''
+}
+$('addProvider').onclick = () => openProviderForm()
+$('cancelProvider').onclick = closeProviderForm
+$('saveProvider').onclick = async () => {
+  const kind = $('pKind').value
+  const body = {
+    id: editingProvider ?? undefined, kind,
+    name: $('pName').value.trim(), api: $('pApi').value,
+    baseUrl: $('pBase').value.trim(), model: $('pModel').value.trim(),
+    key: $('pKey').value.trim(), inputUsd: $('pIn').value, outputUsd: $('pOut').value,
+    activate: true,
+  }
+  $('saveProvider').disabled = true
   try {
-    appState = await (await fetch('/api/state')).json()
-  } catch (e) {
-    appState = {}
-  }
+    const { status, data } = await post('/api/providers', body)
+    if (status === 200) {
+      providerData = data
+      renderProviders()
+      closeProviderForm()
+      toast(t('providerSaved'))
+      await loadProviders()
+    } else $('pMsg').textContent = errText(data, status)
+  } finally { $('saveProvider').disabled = false }
+}
+async function loadProviders() {
+  appState = await (await fetch('/api/state')).json()
   showBuild(appState)
-  
-  const activeP = appState.provider || 'gemini'
-  $('providerSel').value = activeP
-  syncProviderUI(true)
-  
-  if (appState.model) {
-    const opts = Array.from($('modelSel').options)
-    if (opts.some(o => o.value === appState.model)) {
-      $('modelSel').value = appState.model
-      isManualModel = false
-      $('modelSel').hidden = false
-      $('customModelInput').hidden = true
-      $('toggleCustomModel').textContent = t('manualModel')
-    } else {
-      isManualModel = true
-      $('modelSel').hidden = true
-      $('customModelInput').hidden = false
-      $('customModelInput').value = appState.model
-      $('toggleCustomModel').textContent = t('selectPresetModel')
-    }
-  }
-  if (appState.baseUrl) {
-    $('cEndpoint').value = appState.baseUrl
-  }
-  renderKeyState()
-}
-
-$('providerSel').onchange = () => {
-  isManualModel = false
-  syncProviderUI(false)
-  const pKey = $('providerSel').value
-  const pInfo = appState.savedProviders?.[pKey]
-  if (pInfo && pInfo.model) {
-    const opts = Array.from($('modelSel').options)
-    if (opts.some(o => o.value === pInfo.model)) {
-      $('modelSel').value = pInfo.model
-    } else {
-      isManualModel = true
-      $('modelSel').hidden = true
-      $('customModelInput').hidden = false
-      $('customModelInput').value = pInfo.model
-      $('toggleCustomModel').textContent = t('selectPresetModel')
-    }
-    if (pInfo.baseUrl) $('cEndpoint').value = pInfo.baseUrl
-  } else if (PRESET_PROVIDERS[pKey]?.defaultModel) {
-    $('modelSel').value = PRESET_PROVIDERS[pKey].defaultModel
-  }
-}
-
-$('toggleCustomModel').onclick = () => {
-  isManualModel = !isManualModel
-  $('modelSel').hidden = isManualModel
-  $('customModelInput').hidden = !isManualModel
-  $('toggleCustomModel').textContent = t(isManualModel ? 'selectPresetModel' : 'manualModel')
-  if (isManualModel) {
-    $('customModelInput').value = $('modelSel').value
-    $('customModelInput').focus()
-  }
-}
-
-$('resetEndpoint').onclick = () => {
-  const pKey = $('providerSel').value
-  const preset = PRESET_PROVIDERS[pKey] || PRESET_PROVIDERS.custom
-  $('cEndpoint').value = preset.baseUrl || ''
-}
-
-$('saveModel').onclick = async () => {
-  const provider = $('providerSel').value
-  const model = isManualModel ? $('customModelInput').value.trim() : $('modelSel').value
-  const baseUrl = $('cEndpoint').value.trim()
-  const key = $('key').value.trim()
-  
-  if (!model) {
-    $('settingsMsg').textContent = '请选择或输入模型名称'
-    return
-  }
-  
-  const { status, data } = await post('/api/model', { provider, model, baseUrl, key })
-  if (status === 200) {
-    $('key').value = ''
-    await loadModelCard()
-    $('settingsMsg').textContent = t('saved')
-  } else {
-    $('settingsMsg').textContent = errText(data, status)
-  }
+  try {
+    const [providers, models] = await Promise.all([fetch('/api/providers').then(r => r.json()), post('/api/models', {})])
+    if (!Array.isArray(providers?.items)) throw new Error('NO_PROVIDERS')
+    providerData = providers
+    MODEL_HINTS.deepseek = models.data?.deepseek ?? []
+  } catch { providerData = { items: [], presets: [], activeId: null } }
+  fillKindOptions()
+  renderProviders()
 }
 $('saveCap').onclick = async () => {
   const { status, data } = await post('/api/budget', { capUsd: Number($('cap').value) })
@@ -2945,7 +3051,7 @@ async function boot() {
   showBuild(s)
   setBadge(s.unread)
   show('chat')
-  if (!s.hasKey) { $('settingsMsg').textContent = t('noKey'); show('settings') }
+  if (!s.hasKey) { $('settingsMsg').textContent = t('noKey'); show('settings'); showSettingsGroup('model') }
   connect()
   reportPresence(true)
   loadClerk() // the front page shows what is waiting

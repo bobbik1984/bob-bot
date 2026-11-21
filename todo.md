@@ -22,6 +22,9 @@
 - [x] 手机端多模型/多服务商预设（国内外主流服务商下拉：Gemini, DeepSeek, OpenAI, Moonshot, Qwen, GLM, Doubao, OpenRouter, Custom）
 - [x] Base URL / 模型名称 / 各服务商 API Key 独立持久化记录与免输入一键切换
 - [x] 统一 OpenAI + Gemini 协议双核流式 SSE 推理
+- [x] 多供应商模型档案（DeepSeek/OpenAI/Anthropic/Gemini/OpenRouter/自定义）与设置页五组导航
+- [x] 对话内发布图表页（沙箱预览 + 打开链接）与审批「本任务内同类操作」放行
+- [x] Bob Life (`0.4.0-life.3`) 移动日程与日常模块上线，并通过 `scripts/deploy-gcp.py` 一键编译发布至 GCP
 
 ## 🔜 下一步（原型优先级）
 

@@ -1,0 +1,51 @@
+package main
+
+import (
+	"bobbot/life"
+	"context"
+	"log"
+	"net/http"
+	"path/filepath"
+	"strings"
+)
+
+func mountLife(mux *http.ServeMux) {
+	app, err := life.Open(filepath.Join("data", "life"))
+	if err != nil {
+		log.Fatal("life storage: ", err)
+	}
+	app.Mount(mux, life.Host{
+		Authorized: authed,
+		Classic: func(w http.ResponseWriter, r *http.Request) {
+			b, e := embeddedPublic.ReadFile("public/index.html")
+			if e != nil {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write(b)
+		},
+		VisionConfig: func() (string, float64) {
+			cfgLock.RLock()
+			defer cfgLock.RUnlock()
+			key := ""
+			if p, ok := cfg.Providers["openai"]; ok && strings.TrimRight(p.BaseURL, "/") == "https://api.openai.com/v1" {
+				key = p.APIKey
+			}
+			if cfg.ActiveProvider == "openai" && strings.TrimRight(cfg.ActiveBaseURL, "/") == "https://api.openai.com/v1" && cfg.ActiveAPIKey != "" {
+				key = cfg.ActiveAPIKey
+			}
+			return key, cfg.BudgetCapUsd - cfg.BudgetSpentUsd
+		},
+	})
+	go app.Run(context.Background())
+}
+
+func lifeSessionSecret() string {
+	key, err := life.SessionSecret(filepath.Join("data", "life"))
+	if err != nil {
+		log.Fatalf("session key: %v", err)
+	}
+	return key
+}

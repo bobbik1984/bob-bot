@@ -93,7 +93,7 @@ When a scheduled run reaches something that needs approval (a command, writing a
 Every chat, WeChat conversation and scheduled task now receives what Bob remembers: unfinished work and preferences first, then whatever the message mentions, up to about 1500 characters. A new chat also gets open to-dos, scheduled jobs and what the last few chats were about. Memory supplies facts such as your city. Weather is always fetched fresh.
 
 - **Dreaming** runs once a night between 03:30 and 08:00 and retries if it fails, so it works with check-ins off. Settings shows the last failure. A single dream can remove at most 3 memories, and what it removed is logged.
-- **Check-ins** are off by default. The switch controls only whether Bob may message you first. Memory, dreaming, reminders and tasks work either way. The level sets the daily message limit and tone, and adds check moments at 12:30, 15:30 and 20:30 when your own times are too few for that limit.
+- **Check-ins** are off by default. The switch controls only whether Bob may message you first. Memory, dreaming, reminders and tasks work either way. The level sets the daily message limit and tone, and adds check moments at 12:30, 15:30 and 20:30 when your own times are too few for that limit. A check-in is written to one "提醒" chat and sent as a phone notification; it is not added to the Clerk inbox, which holds scheduled reminders and task results.
 
 ## Bob changing himself: feature packages
 
@@ -154,6 +154,12 @@ Commands run as the user who started BobBot, with API keys and tokens removed fr
 
 Read each command before you allow it. A command can do anything its user can do, and the file block does not apply to commands. If that user has passwordless `sudo`, an approved command can act as root, and text from a web page or a file could try to talk Bob into asking for something harmful.
 
+When a command, read, list or workspace write would repeat, the card offers **Allow similar actions for this task**. It lasts only until the turn ends, and the card says what it covers. Web clicks and typing, uploads, package installs, MCP/skill changes and schedule changes still ask every time.
+
+## Charts and pages in the chat
+
+Ask for a chart, a visual report or a dashboard and Bob builds a self-contained HTML page and calls `publish_page`. The page appears in the chat in a sandboxed preview with an **Open** link to `/a/<id>`. It may use inline CSS, SVG and JavaScript, but no external scripts, fonts or images and no network; it cannot read the app or its login. The link needs your login, so it is not a public address. Bob is told to use this instead of trying to host a page with shell commands or by writing program files.
+
 ## The browser window
 
 The cloud browser takes the shape of the device that opens it. On a phone it is a phone: a phone-sized page, a mobile user agent and touch, so sites such as ctrip.com serve their mobile version, readable at your screen's scale. On a PC it is a PC: a desktop page as wide as the window, a mouse that can hover, the wheel, and your keyboard typing straight into the page (use the box below the page for Chinese). Rotating the phone or resizing the window fits the page again.
@@ -173,9 +179,11 @@ Bob reads the visible page as numbered elements, including iframes, open shadow 
 
 ## Models and keys
 
-Settings shows whether a key is saved (as `sk-••••1234`, never the full key) and lets you replace it. The model dropdown lists the DeepSeek models your key can use.
+Settings → Model & cost keeps a list of saved providers. Each card has its own name, endpoint, model, key and prices, so a DeepSeek key and a Claude key can stay saved at the same time; press Use to switch. Keys are shown only as `sk-••••1234`, never in full, and changing the active provider starts a fresh conversation.
 
-**Other model (experimental):** choose "Other model" to enter your own endpoint, model name, key and prices. DeepSeek Harness speaks the Anthropic Messages protocol, so the service must support it, and requests go to `<endpoint>/v1/messages`. The endpoint must be https and public, and the prices (USD per 1M tokens) are what the monthly limit counts. This path is not verified against any real service yet, so treat it as a trial. Changing the model starts a fresh conversation.
+Presets are DeepSeek, OpenAI, Anthropic, Google Gemini, OpenRouter and a custom endpoint. DeepSeek and an Anthropic Messages-compatible custom endpoint use DSH's direct DeepSeek adapter. The other vendors are mounted through DSH's pi-ai adapter as one route for the active provider; switching writes a small patch in `data/provider.patch.yml` without any key and restarts Bob. Custom endpoints must be https and public.
+
+Prices are in USD per 1M tokens and drive the monthly limit. DeepSeek uses the prices in `prices.json`; every other provider needs the input and output prices you enter, and the two cannot both be zero. Only the active provider is counted. A saved provider with no key shows "No key yet" and cannot answer until you edit it. The native presets are wired and covered by a fake OpenAI-compatible endpoint in the test suite, but no real OpenAI/Gemini/OpenRouter key has been verified here, so check the model id and prices yourself. Existing single-model installations are migrated into the first saved provider on startup.
 
 ## Attachments
 
@@ -184,6 +192,8 @@ The paperclip next to the message box attaches up to 5 text files (txt, md, csv,
 PDF, Word, Excel and images are not supported yet. For a spreadsheet, export it as CSV first.
 
 ## Settings
+
+The page is split into five tabs: **Model & cost** (saved providers, monthly limit), **Assistant** (check-ins, memory, features), **Connect** (message channels, phone notifications), **General** (theme, language, time zone) and **System** (extensions, PIN, build).
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -195,6 +205,7 @@ PDF, Word, Excel and images are not supported yet. For a spreadsheet, export it 
 | `BOBBOT_CHROME_NO_SANDBOX` | off | Set to `1` only when running Chromium as root in a container |
 | `BOBBOT_DATA` | `./data` | Login, key, browser profile and chat history |
 | `BOBBOT_DEBUG` | off | Print DSH logs and events |
+| `BOBBOT_TEST_ENDPOINTS` | off | Tests only: lets a saved provider point at a loopback fake server |
 
 ## How it works
 

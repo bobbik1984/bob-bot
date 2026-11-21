@@ -18,6 +18,8 @@ import { webFetch } from './web-fetch.mjs'
 import { startCompatApi } from './compat-api.mjs'
 import { Features } from './features.mjs'
 import { Memory } from './memory.mjs'
+import { Pages, checkPage } from './pages.mjs'
+import { Providers, PRESETS, checkProfile } from './providers.mjs'
 import { WriteBehind, writeAtomic } from './store.mjs'
 import QRCode from 'qrcode'
 import * as webpush from 'web-push'
@@ -47,6 +49,9 @@ const host = createHostTools(DATA_DIR)
 const writes = new WriteBehind()
 const clerk = new Clerk(DATA_DIR)
 const extensions = new Extensions(DATA_DIR)
+const providers = new Providers(path.join(DATA_DIR, 'providers.json'))
+const pages = new Pages(path.join(DATA_DIR, 'pages'))
+const TEST_ENDPOINTS = process.env.BOBBOT_TEST_ENDPOINTS === '1' // lets the test suite use a fake provider on loopback
 const TRIAL_MS = Number(process.env.BOBBOT_TRIAL_MS || 3 * 60 * 1000)
 const features = new Features(path.join(DATA_DIR, 'features'), {
   // Kept, rejected, timed out or crashed: the page is told, and Bob's tool list is rebuilt.
@@ -145,6 +150,9 @@ const publishBudget = () => push({ type: 'budget', ...budget.status() }, false, 
 
 // ---- shared-control gates ----
 const approvals = new Map()
+const taskGrants = new Set() // "allow similar actions for this task", cleared when the turn ends
+const taskGrantKey = kind => `${runningCid ?? lastPromptCid ?? ''}\n${kind}`
+const clearTaskGrants = () => taskGrants.clear()
 let takeover = null
 let viewer = null
 
@@ -169,17 +177,27 @@ async function requireApproval({ kind, summary, target = '', detail = '', screen
     activeRun.skipped.push(summary)
     throw new Error('This is a scheduled run, so nobody is there to approve this action. Do not try another way: finish what you can and report what you skipped.')
   }
+  // A grant covers only low-risk, repetitive work in this turn: commands, reading, listing and writes inside the
+  // workspace. Clicks, typing, uploads, installs and settings changes always ask again.
+  let inWorkspace = false
+  if (kind === 'write') { try { inWorkspace = host.classify(target).inWorkspace } catch { inWorkspace = false } }
+  const grantable = kind === 'command' || kind === 'read' || kind === 'list' || (kind === 'write' && inWorkspace)
+  const grantKey = taskGrantKey(kind)
+  if (grantable && taskGrants.has(grantKey)) return
   const id = crypto.randomUUID()
   const shot = screenshot ? await browser.screenshot().catch(() => null) : null
-  const payload = push({ type: 'approval', id, kind, summary, target, detail: detail.slice(0, 2000), screenshot: shot, ...extra })
+  const payload = push({ type: 'approval', id, kind, summary, target, detail: detail.slice(0, 2000), screenshot: shot, allowTask: grantable, ...extra })
   pending.set(id, payload)
   notifyOwner('Bob 需要你确认', kind === 'type' ? '确认一次网页输入' : summary.slice(0, 80), chatLink(payload.cid)) // typed text stays out of the notification
+  let decision = false
   const allowed = await new Promise(resolve => {
     const timer = setTimeout(() => { approvals.delete(id); resolve(false) }, APPROVAL_TIMEOUT_MS)
-    approvals.set(id, value => { clearTimeout(timer); approvals.delete(id); resolve(value) })
+    approvals.set(id, value => { clearTimeout(timer); approvals.delete(id); decision = value; resolve(value === true || value === 'task') })
   })
   pending.delete(id)
-  push({ type: 'approval_done', id, allowed })
+  const scope = decision === 'task' && grantable ? 'task' : 'once'
+  if (scope === 'task') taskGrants.add(grantKey)
+  push({ type: 'approval_done', id, allowed, scope })
   if (!allowed) throw new Error(`The user did not approve this action: ${summary}`)
 }
 
@@ -305,6 +323,11 @@ const TOOLS = [
     items: { type: 'array', items: { type: 'string' }, description: 'Up to 12 short bullet points' },
     note: { type: 'string' },
   }, ['title']],
+  ['publish_page', 'Publish a self-contained HTML page (a chart, visual report or dashboard) into this chat. It appears with a preview and an Open link. Use inline CSS, SVG and JavaScript only: external scripts, fonts, images and network requests are blocked. Do not try to host pages with commands or by writing program files.', {
+    title: { type: 'string', description: 'Short name for the page' },
+    html: { type: 'string', description: 'A complete HTML document that renders without the internet' },
+    height: { type: 'integer', description: 'Preview height in pixels, 160 to 800; default 360' },
+  }, ['title', 'html']],
   ['ext_list', 'List the MCP servers and skills that are installed.', {}, []],
   ['install_package', 'Install packages on the server with npm (global), pip (in BobBot\'s own virtualenv) or apt (needs sudo), after the user confirms the exact command. Package names only.', { manager: { type: 'string', enum: ['npm', 'pip', 'apt'] }, packages: { type: 'array', items: { type: 'string' } } }, ['manager', 'packages']],
   ['mcp_add', 'Add an MCP server so you gain its tools, after the user confirms. Give command and args for a local server (for example npx with ["-y", "<package>"]), or url for a remote https one. env_names lists secrets it needs, which the user enters in Settings, never in chat. You get the tools after this reply, when Bob restarts.', {
@@ -365,6 +388,7 @@ async function callTool(name, args) {
   if (['list_files', 'read_file', 'write_file', 'run_command'].includes(name)) return hostTool(name, args)
   if (name === 'web_fetch') return webFetch(String(args.url ?? ''))
   if (name === 'show_card') return showCard(args)
+  if (name === 'publish_page') return publishPage(args)
   if (name === 'routine_steps') return (tracesOf(runningCid).map(s => `${s.ok ? 'ok' : 'FAILED'}: ${s.line}`).join('\n')) || 'No tool steps in this chat yet.'
   if (name === 'routine_save') return routineSave(args)
   if (name === 'run_report') {
@@ -638,7 +662,7 @@ async function dream({ test = false } = {}) {
   if (runningCid || activeRun || takeover) return { ok: false, reason: 'busy' }
   if (budget.status().exceeded) return { ok: false, reason: 'the monthly spending limit has been reached' }
   const cfg = modelConfig()
-  const apiKey = loadKey(cfg.kind)
+  const apiKey = loadKey(cfg)
   if (!apiKey) return { ok: false, reason: 'no key' }
   const since = memory.state.lastDreamAt || Date.now() - 24 * 3600 * 1000
   const sources = convs.filter(c => c.title && c.updatedAt > since && !c.job && c.id !== proactive.cid).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 8)
@@ -705,6 +729,21 @@ const proactive = Object.assign(
   readJson(PROACTIVE_FILE, {}),
 )
 const saveProactive = () => writeAtomic(PROACTIVE_FILE, JSON.stringify(proactive))
+
+/**
+ * Check-ins used to be copied into the Clerk inbox. They now live only in the 提醒 chat, with a phone notification,
+ * so the old copies are cleared once at startup and the chat that holds them gets its new name.
+ */
+function migrateCheckIns() {
+  const conv = proactive.cid ? convOf(proactive.cid) : null
+  if (conv?.title === '主动关心') {
+    conv.title = '提醒'
+    saveConvs()
+  }
+  const dropped = clerk.pruneInbox(entry => entry.title === '主动关心' && !entry.jobId)
+  if (dropped) console.log(`[clerk] dropped ${dropped} old check-in(s) from the inbox`)
+}
+
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 const QUIET_FROM = 22
 const QUIET_TO = 8
@@ -802,7 +841,7 @@ async function runProactive({ test = false, slot = null } = {}) {
   if (runningCid || activeRun || takeover) return { ok: false, reason: 'busy' }
   if (budget.status().exceeded) return { ok: false, reason: 'the monthly spending limit has been reached' }
   const cfg = modelConfig()
-  const apiKey = loadKey(cfg.kind)
+  const apiKey = loadKey(cfg)
   if (!apiKey) return { ok: false, reason: 'no key' }
   const now = Date.now()
   if (!test) {
@@ -816,7 +855,7 @@ async function runProactive({ test = false, slot = null } = {}) {
   }
   let cid = proactive.cid && convOf(proactive.cid) ? proactive.cid : null
   if (!cid) {
-    const conv = createConversation('主动关心')
+    const conv = createConversation('提醒')
     cid = conv.id
     proactive.cid = cid
     saveProactive()
@@ -851,8 +890,6 @@ async function runProactive({ test = false, slot = null } = {}) {
   remember(silent ? 'silent' : 'sent')
   if (silent) return { ok: true, sent: false }
   push({ type: 'message', role: 'assistant', text }, true, cid)
-  clerk.addInbox({ title: '主动关心', text })
-  broadcast({ type: 'clerk' })
   sendPush({ title: '主动关心', body: text.slice(0, 300), url: chatLink(cid) }).catch(() => {})
   return { ok: true, sent: true, text, cid }
 }
@@ -917,7 +954,7 @@ function waitBridgeReply(cid, ms = 180_000) {
 
 async function askFromBridge({ from, name, text, conversationId }) {
   const cfg = modelConfig()
-  const apiKey = loadKey(cfg.kind)
+  const apiKey = loadKey(cfg)
   if (!apiKey) return { reply: 'Bob 还没有设置模型的 API Key，请先在网页版 bob-bot 里配置。', cid: '' }
   if (!priceOf(cfg)) return { reply: '这个模型没有设置价格，无法统计花费。', cid: '' }
   if (budget.status().exceeded) return { reply: '本月的花费额度已经用完，暂时不能回复。', cid: '' }
@@ -955,11 +992,41 @@ function showCard(args) {
   return 'The card is shown to the user. Add at most one short line of text.'
 }
 
+/** A chart or report page in the chat, with its own Open link. Nothing from it can read the app or the network. */
+function publishPage(args) {
+  let page
+  try { page = pages.save(checkPage(args)) } catch (error) { throw new Error(`Bad page: ${error.code ?? error.message}`) }
+  push({ type: 'card', card: { kind: 'page', page: { ...page, url: `/a/${page.id}` } } })
+  return 'The page is shown in the chat with an Open link. Reply with one short line.'
+}
+
+/** One chat holds reminders and check-ins, so a delivered reminder has a place in the conversation list. */
+function reminderConversation() {
+  if (proactive.cid) {
+    const existing = convOf(proactive.cid)
+    if (existing) return existing
+  }
+  const conv = createConversation('提醒')
+  proactive.cid = conv.id
+  saveProactive()
+  broadcast({ type: 'conversations' })
+  return conv
+}
+
+/** The conversation a Clerk result row opens: the job's own chat, or the shared reminder chat for reminders. */
+function inboxCid(entry) {
+  const job = entry.jobId ? clerk.job(entry.jobId) : null
+  if (job?.cid && convOf(job.cid)) return job.cid
+  if (job?.kind === 'reminder' && proactive.cid && convOf(proactive.cid)) return proactive.cid
+  return null
+}
+
 function clerkView() {
   return {
     timezone: clerk.timezone, timezoneChosen: clerk.timezoneChosen, busy: Boolean(runningCid),
     jobs: clerk.jobs.filter(j => !j.todoId).map(jobView), todos: clerk.todos,
-    inbox: clerk.inbox, channels: clerk.channels.map(publicChannel), unread: clerk.unread(),
+    inbox: clerk.inbox.map(entry => ({ ...entry, cid: inboxCid(entry) })),
+    channels: clerk.channels.map(publicChannel), unread: clerk.unread(),
     drafts: clerk.pendingDrafts().map(({ action, ...rest }) => rest),
   }
 }
@@ -999,6 +1066,7 @@ const runMeta = run => run ? { ms: Date.now() - run.startedAt, costUsd: Math.max
 
 async function reportFailure(job, reason, run = null) {
   const text = `This task could not run: ${reason}`
+  if (job.cid && convOf(job.cid)) push({ type: 'message', role: 'assistant', text }, true, job.cid)
   const delivery = await deliver(job, text)
   recordRun(job, 'failed', text, { ...runMeta(run), delivery })
 }
@@ -1027,6 +1095,8 @@ async function startAssist(job) {
 /** @returns {'started'|'done'|'busy'} Reminders finish at once; tasks start Bob and finish later in finishRun. */
 async function startJob(job) {
   if (job.kind === 'reminder') {
+    const conv = reminderConversation()
+    push({ type: 'message', role: 'assistant', text: job.text }, true, conv.id)
     await deliver(job, job.text)
     recordRun(job, 'ok', job.text)
     return 'done'
@@ -1034,7 +1104,7 @@ async function startJob(job) {
   if (runningCid || activeRun) return 'busy'
   if (budget.status().exceeded) { await reportFailure(job, 'the monthly spending limit has been reached.'); return 'done' }
   const cfg = modelConfig()
-  const apiKey = loadKey(cfg.kind)
+  const apiKey = loadKey(cfg)
   if (!apiKey || !priceOf(cfg)) { await reportFailure(job, 'no model is set up.'); return 'done' }
   if (!job.cid || !convOf(job.cid)) clerk.update(job, { cid: createConversation(job.title, { job: true }).id })
   const cid = job.cid
@@ -1063,6 +1133,7 @@ async function finishRun(status, detail = '', { stop = false } = {}) {
   if (!text && !run.cards.length) return reportFailure(job, 'it finished without producing a result.', run)
   const summary = text || cardText(run.cards[0])
   if (run.needsHuman) {
+    push({ type: 'message', role: 'assistant', text: `Needs you: ${run.needsHuman.reason}` }, true, run.cid)
     const delivery = await deliver(job, `${text}\n\nNeeds you: ${run.needsHuman.reason}. Open this job in the Clerk tab to finish it, and Bob will run it again.`.trim(), run.cards)
     if (!job.channels.some(id => clerk.channel(id)?.type === 'webpush')) notifyOwner('Bob 需要你帮忙', job.title, CLERK_LINK)
     return recordRun(job, 'needs_you', summary, { ...runMeta(run), delivery, assist: { ...run.needsHuman, at: Date.now() } })
@@ -1080,6 +1151,7 @@ async function finishRun(status, detail = '', { stop = false } = {}) {
     else if (report.missing_data) { outcome = 'partial'; notes.push(`The source data was missing: ${report.evidence}`) }
     else if (!report.met) { outcome = 'failed'; notes.push(`The success check was not met: ${report.evidence}`) }
   }
+  if (notes.length) push({ type: 'message', role: 'assistant', text: notes.join('\n') }, true, run.cid)
   const delivery = await deliver(job, [text, ...notes].filter(Boolean).join('\n\n'), run.cards)
   recordRun(job, outcome, notes.length && outcome !== 'drafted' ? notes.at(-1) : summary, { ...runMeta(run), delivery, skipped: run.skipped.slice(0, 5), ...(report ? { check: report } : {}) })
 }
@@ -1490,6 +1562,8 @@ const frameSdk = theme => `(() => {
 const STYLE_OFF_LIMITS = '.card.ask, .card.help, #trialHost, #login, #browser'
 // The page itself loads nothing from other sites, so styling from a feature cannot send anything out through an image address.
 const PAGE_CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; frame-src 'self'; object-src 'none'; base-uri 'none'"
+// Published pages are self-contained: inline CSS/SVG/JS, data: images only, and no way to call the network.
+const PAGE_ARTIFACT_CSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'"
 
 async function featureTool(name, args) {
   if (name === 'feature_list') {
@@ -1528,14 +1602,46 @@ async function featureTool(name, args) {
 
 async function ensureAgent(cfg, apiKey) {
   const extras = extensions.launchExtras()
-  const base = { apiKey, mcpUrl, mcpToken, model: cfg.model, baseUrl: cfg.kind === 'custom' ? cfg.baseUrl : undefined }
+  // DeepSeek and Anthropic-compatible endpoints keep the direct DeepSeek Messages adapter. Other providers are
+  // mounted as one pi-ai route named "bob", in a patch written for this launch, so the direct route stays untouched.
+  const direct = cfg.kind === 'deepseek' || (cfg.kind === 'custom' && cfg.api === 'anthropic-messages')
+  let providerPatch = null
+  if (!direct) {
+    providerPatch = path.join(DATA_DIR, 'provider.patch.yml')
+    const yaml = [
+      '- insert:',
+      '    - id: llm-pi-ai',
+      "      name: '@deepseek-ai/dsh-llm-pi-ai'",
+      '      config:',
+      '        providers:',
+      '          bob:',
+      `            displayName: ${JSON.stringify(cfg.name || 'Model')}`,
+      `            api: ${JSON.stringify(cfg.api || 'openai-completions')}`,
+      `            baseURL: ${JSON.stringify(cfg.baseUrl || '')}`,
+      '            apiKeyEnv: BOBBOT_PROVIDER_KEY',
+      `            defaultContextWindow: ${Number(cfg.contextWindow) || 1000000}`,
+      `            defaultMaxTokens: ${Number(cfg.maxTokens) || 8192}`,
+      '            models:',
+      `              - id: ${JSON.stringify(cfg.model)}`,
+      '',
+    ].join('\n')
+    writeAtomic(providerPatch, yaml)
+  }
+  const base = {
+    apiKey, mcpUrl, mcpToken, model: cfg.model,
+    provider: direct ? 'deepseek-official' : 'bob',
+    // The official DeepSeek route keeps its default (or DEEPSEEK_BASE_URL from the environment); only a custom
+    // Messages-compatible endpoint needs an explicit base URL.
+    baseUrl: direct && cfg.kind === 'custom' ? cfg.baseUrl : undefined,
+  }
+  const patches = providerPatch ? [...extras.patches, providerPatch] : extras.patches
   try {
-    await agent.ensure({ ...base, patches: extras.patches, extraEnv: extras.env })
+    await agent.ensure({ ...base, patches, extraEnv: extras.env })
   } catch (error) {
     if (!extras.patches.length) throw error
     // An installed extension stopped DSH from starting. Keep Bob alive without extensions rather than locking him out.
     agent.stop()
-    await agent.ensure({ ...base, patches: [], extraEnv: { BOBBOT_SKILLS_DIR: extensions.skillsDir } })
+    await agent.ensure({ ...base, patches: providerPatch ? [providerPatch] : [], extraEnv: { BOBBOT_SKILLS_DIR: extensions.skillsDir } })
     push({ type: 'notice', code: 'EXTENSIONS_BROKEN' }, false, runningCid ?? lastPromptCid)
     console.error(`[bobbot] extensions disabled after a startup error: ${error.message}`)
   }
@@ -1563,6 +1669,7 @@ agent.on('status', (cid, status) => {
     if (!waiter && activeRun?.cid !== cid && !bridgeWaiters.has(cid) && !turns.has(cid)) turns.set(cid, { startedAt: Date.now(), steps: 0, text: '' })
   } else {
     if (runningCid === cid) runningCid = null
+    clearTaskGrants()
     finishTurn(cid)
     if (waiter?.started) waiter.finish()
     bridgeWaiters.get(cid)?.finish()
@@ -1579,6 +1686,7 @@ agent.on('exit', code => {
   for (const waiter of [...turnWaiters.values()]) waiter.finish()
   const cid = runningCid ?? lastPromptCid
   runningCid = null
+  clearTaskGrants()
   if (cid && turns.has(cid)) finishTurn(cid, 'Bob 中断了，请回来看看')
   if (cid && convOf(cid)) push({ type: 'error', text: `Agent stopped unexpectedly (${code}). Send a message to restart it.` }, true, cid)
   if (cid) push({ type: 'status', status: 'idle' }, false, cid)
@@ -1602,35 +1710,102 @@ agent.on('usage', (cid, model, usage) => {
 })
 
 // ---- model settings ----
-// 'deepseek' uses DeepSeek's own endpoint. 'custom' is any Anthropic Messages-compatible endpoint the owner enters.
+// The active saved provider is the model. Older installs kept one model in model.json; migrateProviders() turns it
+// into the first profile, so upgrading does not ask for the key again.
 function modelConfig() {
-  const saved = readJson(MODEL_FILE, null)
-  if (saved?.kind === 'custom' || saved?.kind === 'deepseek') return saved
-  return { kind: 'deepseek', model: DEFAULT_MODEL }
+  return providers.active() ?? {
+    id: null, name: 'DeepSeek', kind: 'deepseek', api: 'anthropic-messages',
+    baseUrl: PRESETS.deepseek.baseUrl, model: DEFAULT_MODEL, inputUsd: null, outputUsd: null,
+    contextWindow: PRESETS.deepseek.contextWindow, maxTokens: PRESETS.deepseek.maxTokens,
+  }
 }
-const priceOf = cfg => cfg.kind === 'custom'
-  ? { input: cfg.inputUsd, output: cfg.outputUsd, currency: 'USD' }
-  : registryPrices[cfg.model]
+const priceOf = cfg => cfg.kind === 'deepseek'
+  ? registryPrices[cfg.model]
+  : { input: cfg.inputUsd ?? 0, output: cfg.outputUsd ?? 0, currency: 'USD' }
 
 const readKeys = () => readJson(KEY_FILE, {})
 function writeKey(kind, key) {
   writeAtomic(KEY_FILE, JSON.stringify({ ...readKeys(), [kind]: key }))
 }
-const loadKey = (kind = modelConfig().kind) => {
+const providerKeyName = id => `p:${id}`
+function writeProviderKey(id, key) {
+  if (!id) return
+  writeAtomic(KEY_FILE, JSON.stringify({ ...readKeys(), [providerKeyName(id)]: key }))
+}
+function deleteProviderKey(id) {
+  const all = readKeys()
+  if (!all[providerKeyName(id)]) return
+  delete all[providerKeyName(id)]
+  writeAtomic(KEY_FILE, JSON.stringify(all))
+}
+const legacyKey = kind => {
   if (kind === 'deepseek' && process.env.DEEPSEEK_API_KEY) return process.env.DEEPSEEK_API_KEY
   return readKeys()[kind] ?? null
 }
-const keyHint = kind => {
-  if (kind === 'deepseek' && process.env.DEEPSEEK_API_KEY) return 'env'
-  const key = readKeys()[kind]
-  return key ? (key.length > 12 ? `${key.slice(0, 3)}••••${key.slice(-4)}` : '••••') : null
+/** Accepts a profile, or a legacy kind string for the old single-model paths. */
+const loadKey = (profile = modelConfig()) => {
+  if (typeof profile === 'string') return legacyKey(profile)
+  if (!profile) return null
+  if (profile.kind === 'deepseek' && process.env.DEEPSEEK_API_KEY) return process.env.DEEPSEEK_API_KEY
+  return readKeys()[providerKeyName(profile.id)] ??
+    (profile.legacyKey ? readKeys()[profile.legacyKey] : null) ??
+    (profile.kind === 'deepseek' ? readKeys().deepseek : null) ??
+    (profile.kind === 'custom' && profile.api === 'anthropic-messages' ? readKeys().custom : null) ?? null
 }
-const publicModel = cfg => ({ kind: cfg.kind, model: cfg.model, baseUrl: cfg.baseUrl ?? null, inputUsd: cfg.inputUsd ?? null, outputUsd: cfg.outputUsd ?? null })
+const maskKey = key => key ? (key.length > 12 ? `${key.slice(0, 3)}••••${key.slice(-4)}` : '••••') : null
+const keyHint = profile => {
+  if (typeof profile === 'string') {
+    if (profile === 'deepseek' && process.env.DEEPSEEK_API_KEY) return 'env'
+    return maskKey(readKeys()[profile])
+  }
+  if (profile?.kind === 'deepseek' && process.env.DEEPSEEK_API_KEY) return 'env'
+  return maskKey(loadKey(profile))
+}
+const publicModel = cfg => ({
+  id: cfg.id ?? null, name: cfg.name ?? 'DeepSeek', kind: cfg.kind ?? 'deepseek', api: cfg.api ?? 'anthropic-messages',
+  model: cfg.model, baseUrl: cfg.baseUrl ?? null, inputUsd: cfg.inputUsd ?? null, outputUsd: cfg.outputUsd ?? null,
+  contextWindow: cfg.contextWindow ?? null, maxTokens: cfg.maxTokens ?? null,
+})
+function providersView() {
+  const activeId = providers.activeId ?? providers.active()?.id ?? null
+  return {
+    activeId,
+    items: providers.items.map(p => ({
+      ...publicModel(p), active: p.id === activeId, hasKey: Boolean(loadKey(p)), keyHint: keyHint(p),
+      createdAt: p.createdAt ?? null, updatedAt: p.updatedAt ?? null,
+    })),
+    presets: Object.entries(PRESETS).map(([kind, p]) => ({
+      kind, label: p.label, api: p.api, baseUrl: p.baseUrl, model: p.model,
+      contextWindow: p.contextWindow, maxTokens: p.maxTokens, registryPrices: Boolean(p.registryPrices),
+    })),
+  }
+}
+
+/** Turns the old single model.json into the first profile, keeping the key it already had. */
+function migrateProviders() {
+  if (providers.exists) return
+  const legacy = readJson(MODEL_FILE, null)
+  const keys = readKeys()
+  let input
+  try {
+    input = legacy?.kind === 'custom' && legacy.baseUrl && legacy.model
+      ? { name: '自定义模型', kind: 'custom', api: 'anthropic-messages', baseUrl: legacy.baseUrl, model: legacy.model, inputUsd: legacy.inputUsd, outputUsd: legacy.outputUsd, legacyKey: 'custom' }
+      : { name: 'DeepSeek', kind: 'deepseek', model: legacy?.kind === 'deepseek' && registryPrices[legacy.model] ? legacy.model : DEFAULT_MODEL, legacyKey: 'deepseek' }
+    providers.seed([input])
+  } catch (error) {
+    console.error(`[providers] could not migrate the old model settings (${error.code ?? error.message}); starting with DeepSeek`)
+    providers.seed([{ name: 'DeepSeek', kind: 'deepseek', model: DEFAULT_MODEL, legacyKey: 'deepseek' }])
+  }
+  const profile = providers.active()
+  if (profile?.legacyKey && keys[profile.legacyKey]) writeProviderKey(profile.id, keys[profile.legacyKey])
+  if (profile) console.log(`[providers] migrated "${profile.name}"`)
+}
 
 let modelListCache = { at: 0, ids: null }
 async function deepseekModels() {
   const known = Object.keys(registryPrices)
-  const key = loadKey('deepseek')
+  // Use the saved DeepSeek profile's key, so editing it in Settings also refreshes the model list.
+  const key = loadKey(providers.items.find(p => p.kind === 'deepseek') ?? 'deepseek')
   if (!key || process.env.DEEPSEEK_BASE_URL) return known
   if (Date.now() - modelListCache.at < 10 * 60 * 1000 && modelListCache.ids) return modelListCache.ids
   try {
@@ -1741,7 +1916,7 @@ async function route(req, res) {
     const cfg = modelConfig()
     return send(res, 200, {
       authed: ok, pinSet: hasPin(),
-      ...(ok ? { hasKey: Boolean(loadKey(cfg.kind)), keyHint: keyHint(cfg.kind), model: publicModel(cfg), budget: budget.status(), unread: clerk.unread(), build: readBuild() } : {}),
+      ...(ok ? { hasKey: Boolean(loadKey(cfg)), keyHint: keyHint(cfg), model: publicModel(cfg), budget: budget.status(), unread: clerk.unread(), build: readBuild() } : {}),
     })
   }
   if (req.method === 'GET' && pathname === '/api/version') {
@@ -1754,6 +1929,16 @@ async function route(req, res) {
     return send(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(req, session.value, session.maxAge) })
   }
   if (!authed(req)) return send(res, 401, { error: 'UNAUTHORIZED' })
+  if (req.method === 'GET' && pathname.startsWith('/a/')) {
+    const html = pages.read(pathname.slice(3))
+    if (html === null) return send(res, 404, { error: 'NO_PAGE' })
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'SAMEORIGIN', 'Content-Security-Policy': PAGE_ARTIFACT_CSP,
+    })
+    return res.end(html)
+  }
+  if (req.method === 'GET' && pathname === '/api/providers') return send(res, 200, providersView())
   if (req.method === 'GET' && pathname.startsWith('/f/')) {
     const parts = pathname.split('/').filter(Boolean) // ['f', name, file]
     const text = parts.length === 3 ? features.readFile(parts[1], parts[2]) : null
@@ -1847,7 +2032,7 @@ async function route(req, res) {
       if (!text && !files.length) return send(res, 400, { error: 'EMPTY' })
       if (body.cid !== undefined && body.cid !== null && !convOf(body.cid)) return send(res, 404, { error: 'NO_CONVERSATION' })
       const cfg = modelConfig()
-      const apiKey = loadKey(cfg.kind)
+      const apiKey = loadKey(cfg)
       if (!apiKey) return send(res, 400, { error: 'NO_KEY' })
       if (!priceOf(cfg)) return send(res, 400, { error: 'NO_PRICE' })
       if (budget.status().exceeded) return send(res, 402, { error: 'BUDGET_EXCEEDED' })
@@ -1855,6 +2040,7 @@ async function route(req, res) {
       if (runningCid && runningCid !== cid) return send(res, 409, { error: 'BUSY_OTHER' })
       const conv = convOf(cid)
       if (!conv.title) conv.title = titleFrom(text, files)
+      clearTaskGrants()
       lastPromptCid = cid
       runningCid = cid
       const prior = priorContext(cid)
@@ -1874,6 +2060,10 @@ async function route(req, res) {
       if (!key) return send(res, 400, { error: 'EMPTY' })
       await checkKey(key)
       writeKey('deepseek', key)
+      let profile = providers.items.find(p => p.kind === 'deepseek' && p.id === providers.activeId) ?? providers.items.find(p => p.kind === 'deepseek')
+      if (!profile) profile = providers.add({ name: 'DeepSeek', kind: 'deepseek', model: DEFAULT_MODEL })
+      writeProviderKey(profile.id, key)
+      providers.activate(profile.id)
       modelListCache = { at: 0, ids: null }
       agent.stop()
       runningCid = null
@@ -1881,32 +2071,87 @@ async function route(req, res) {
     }
     case '/api/models':
       return send(res, 200, { deepseek: await deepseekModels(), current: publicModel(modelConfig()) })
+    case '/api/providers': {
+      if (runningCid || activeRun || takeover) return send(res, 409, { error: 'BUSY' })
+      const id = String(body.id ?? '')
+      const kind = String(body.kind ?? 'custom')
+      const preset = PRESETS[kind]
+      if (!preset) return send(res, 400, { error: 'BAD_KIND' })
+      const input = {
+        name: body.name, kind, api: body.api,
+        baseUrl: String(body.baseUrl ?? preset.baseUrl ?? '').trim(),
+        model: body.model, inputUsd: body.inputUsd, outputUsd: body.outputUsd,
+        contextWindow: body.contextWindow, maxTokens: body.maxTokens,
+      }
+      let clean
+      try { clean = checkProfile(input, { allowHttp: TEST_ENDPOINTS }) } catch (error) { return send(res, 400, { error: error.code ?? 'BAD_PROVIDER' }) }
+      if (clean.kind === 'deepseek' && !registryPrices[clean.model]) return send(res, 400, { error: 'UNKNOWN_MODEL' })
+      if (clean.kind !== 'deepseek' && !TEST_ENDPOINTS) {
+        try { await assertPublicUrl(clean.baseUrl) } catch { return send(res, 400, { error: 'BAD_ENDPOINT' }) }
+      }
+      const key = typeof body.key === 'string' ? body.key.trim() : ''
+      const existing = id ? providers.get(id) : null
+      if (id && !existing) return send(res, 404, { error: 'NO_PROVIDER' })
+      if (existing && existing.kind !== clean.kind) return send(res, 400, { error: 'BAD_KIND' }) // add a new profile to change vendor
+      if (clean.kind !== 'deepseek' && !key && !(existing && loadKey(existing))) return send(res, 400, { error: 'NO_KEY' })
+      if (key && clean.kind === 'deepseek') {
+        try { await checkKey(key) } catch (error) { return send(res, 400, { error: error.message }) }
+      }
+      let profile
+      try { profile = existing ? providers.update(existing.id, clean, { allowHttp: TEST_ENDPOINTS }) : providers.add(clean, { allowHttp: TEST_ENDPOINTS }) } catch (error) { return send(res, 400, { error: error.code ?? 'BAD_PROVIDER' }) }
+      if (key) writeProviderKey(profile.id, key)
+      if (body.activate === true || !providers.activeId) providers.activate(profile.id)
+      if (providers.activeId === profile.id) { agent.stop(); runningCid = null }
+      const view = providersView()
+      return send(res, 200, { ok: true, item: view.items.find(p => p.id === profile.id), ...view })
+    }
+    case '/api/providers/activate': {
+      if (runningCid || activeRun || takeover) return send(res, 409, { error: 'BUSY' })
+      try { providers.activate(String(body.id ?? '')) } catch (error) { return send(res, 404, { error: error.code ?? 'NO_PROVIDER' }) }
+      agent.stop()
+      runningCid = null
+      return send(res, 200, { ok: true, ...providersView() })
+    }
+    case '/api/providers/delete': {
+      if (runningCid || activeRun || takeover) return send(res, 409, { error: 'BUSY' })
+      const id = String(body.id ?? '')
+      const item = providers.get(id)
+      if (!item) return send(res, 404, { error: 'NO_PROVIDER' })
+      providers.remove(id)
+      deleteProviderKey(id)
+      agent.stop()
+      runningCid = null
+      return send(res, 200, { ok: true, ...providersView() })
+    }
     case '/api/model': {
+      // The older single-model form still works: it updates or creates the matching saved profile.
       const kind = body.kind
       const key = typeof body.key === 'string' ? body.key.trim() : ''
-      let cfg
+      let input, existing
       if (kind === 'deepseek') {
         const model = String(body.model ?? '')
         if (!registryPrices[model]) return send(res, 400, { error: 'UNKNOWN_MODEL' })
-        cfg = { kind, model }
         if (key) await checkKey(key)
+        input = { name: 'DeepSeek', kind: 'deepseek', model }
+        existing = providers.items.find(p => p.kind === 'deepseek' && p.legacyKey === 'deepseek') ?? providers.items.find(p => p.kind === 'deepseek')
       } else if (kind === 'custom') {
-        const model = String(body.model ?? '').trim()
-        const inputUsd = Number(body.inputUsd), outputUsd = Number(body.outputUsd)
-        if (!model || model.length > 100 || /[\s\u0000-\u001f]/.test(model)) return send(res, 400, { error: 'BAD_MODEL' })
-        if (![inputUsd, outputUsd].every(n => Number.isFinite(n) && n >= 0 && n <= 10000)) return send(res, 400, { error: 'BAD_PRICE' })
-        const baseUrl = String(body.baseUrl ?? '').trim()
-        if (!/^https:\/\//i.test(baseUrl)) return send(res, 400, { error: 'HTTPS_REQUIRED' })
-        try { await assertPublicUrl(baseUrl) } catch { return send(res, 400, { error: 'BAD_ENDPOINT' }) }
-        if (!key && !readKeys().custom) return send(res, 400, { error: 'NO_KEY' })
-        cfg = { kind, model, baseUrl, inputUsd, outputUsd }
+        try {
+          input = checkProfile({ name: '自定义模型', kind: 'custom', api: 'anthropic-messages', baseUrl: body.baseUrl, model: body.model, inputUsd: body.inputUsd, outputUsd: body.outputUsd }, { allowHttp: TEST_ENDPOINTS })
+        } catch (error) { return send(res, 400, { error: error.code ?? 'BAD_PROVIDER' }) }
+        // The legacy form is public-only even under the test endpoint switch; only the saved-provider API uses it.
+        try { await assertPublicUrl(input.baseUrl) } catch { return send(res, 400, { error: 'BAD_ENDPOINT' }) }
+        existing = providers.items.find(p => p.kind === 'custom' && p.api === 'anthropic-messages' && p.legacyKey === 'custom') ?? providers.items.find(p => p.kind === 'custom' && p.api === 'anthropic-messages')
+        if (!key && !(existing && loadKey(existing)) && !readKeys().custom) return send(res, 400, { error: 'NO_KEY' })
       } else return send(res, 400, { error: 'BAD_KIND' })
-      if (key) writeKey(kind, key)
-      writeAtomic(MODEL_FILE, JSON.stringify(cfg))
+      let profile
+      try { profile = existing ? providers.update(existing.id, input, { allowHttp: TEST_ENDPOINTS }) : providers.add(input, { allowHttp: TEST_ENDPOINTS }) } catch (error) { return send(res, 400, { error: error.code ?? 'BAD_PROVIDER' }) }
+      if (key) { writeKey(kind, key); writeProviderKey(profile.id, key) }
+      providers.activate(profile.id)
+      writeAtomic(MODEL_FILE, JSON.stringify({ kind: profile.kind, model: profile.model, baseUrl: profile.baseUrl, inputUsd: profile.inputUsd, outputUsd: profile.outputUsd }))
       modelListCache = { at: 0, ids: null }
       agent.stop()
       runningCid = null
-      return send(res, 200, { ok: true, model: publicModel(cfg), hasKey: Boolean(loadKey(kind)), keyHint: keyHint(kind) })
+      return send(res, 200, { ok: true, model: publicModel(profile), hasKey: Boolean(loadKey(profile)), keyHint: keyHint(profile) })
     }
     case '/api/budget': {
       const cap = Number(body.capUsd)
@@ -1918,7 +2163,7 @@ async function route(req, res) {
     case '/api/approve': {
       const resolve = approvals.get(body.id)
       if (!resolve) return send(res, 404, { error: 'EXPIRED' })
-      resolve(body.allow === true)
+      resolve(body.scope === 'task' && body.allow !== false ? 'task' : body.allow === true)
       return send(res, 200, { ok: true })
     }
     case '/api/takeover/done':
@@ -2097,10 +2342,13 @@ async function route(req, res) {
       if (result === 'busy') return send(res, 409, { error: 'BUSY' })
       return send(res, 200, { ok: true, result })
     }
-    case '/api/clerk/inbox/read':
-      clerk.markAllRead()
+    case '/api/clerk/inbox/read': {
+      if (body.id) {
+        if (!clerk.markRead(String(body.id))) return send(res, 404, { error: 'NO_ENTRY' })
+      } else clerk.markAllRead()
       broadcast({ type: 'clerk' })
       return send(res, 200, { ok: true })
+    }
     case '/api/extensions/secret': {
       try { extensions.setSecret(String(body.server ?? ''), String(body.name ?? ''), body.value) } catch (error) { return send(res, 400, { error: error.message }) }
       extensionsChanged()
@@ -2222,6 +2470,8 @@ mcpUrl = `http://127.0.0.1:${mcpServer.address().port}/mcp`
 const undone = features.recover()
 if (undone) console.log(`[features] undid the unanswered trial of "${undone.name}"`)
 await features.loadAll()
+migrateProviders()
+migrateCheckIns()
 
 server.listen(PORT, HOST, () => {
   // bob-agent's wechat-bot-bridge speaks this contract, so it can talk to BobBot without changes.

@@ -56,8 +56,25 @@ const fake = http.createServer((req, res) => {
 })
 await new Promise(r => fake.listen(0, '127.0.0.1', r))
 
+// A second fake, this time OpenAI-compatible, so the saved-provider path through pi-ai is exercised for real.
+const openaiRequests = []
+const openai = http.createServer((req, res) => {
+  let raw = ''
+  req.on('data', c => { raw += c })
+  req.on('end', () => {
+    if (req.method !== 'POST' || !req.url.includes('/chat/completions')) return res.writeHead(404).end('{}')
+    openaiRequests.push(JSON.parse(raw))
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    const chunk = extra => `data: ${JSON.stringify({ id: 'chatcmpl-e2e', object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: 'fake-openai', ...extra })}\n\n`
+    res.write(chunk({ choices: [{ index: 0, delta: { role: 'assistant', content: 'Hello from the fake OpenAI provider.' }, finish_reason: null }] }))
+    res.write(chunk({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 1000, completion_tokens: 500, total_tokens: 1500 } }))
+    res.end('data: [DONE]\n\n')
+  })
+})
+await new Promise(r => openai.listen(0, '127.0.0.1', r))
+
 // ---- server under test ----
-const env = { ...process.env, BOBBOT_NO_NIGHTLY: '1', BOBBOT_TRIAL_MS: '2500', BOBBOT_DATA: data, PORT: String(PORT), HOST: '127.0.0.1', DEEPSEEK_API_KEY: 'test-key', BOBBOT_TICK_MS: '1000', BOB_COMPAT_PORT: '3731', WECHAT_BRIDGE_URL: 'http://127.0.0.1:3999', DEEPSEEK_BASE_URL: `http://127.0.0.1:${fake.address().port}` }
+const env = { ...process.env, BOBBOT_NO_NIGHTLY: '1', BOBBOT_TRIAL_MS: '2500', BOBBOT_DATA: data, PORT: String(PORT), HOST: '127.0.0.1', DEEPSEEK_API_KEY: 'test-key', BOBBOT_TICK_MS: '1000', BOB_COMPAT_PORT: '3731', WECHAT_BRIDGE_URL: 'http://127.0.0.1:3999', DEEPSEEK_BASE_URL: `http://127.0.0.1:${fake.address().port}`, BOBBOT_TEST_ENDPOINTS: '1' }
 const setPin = pin => spawnSync(process.execPath, ['set-pin.mjs', pin], { cwd: root, env, encoding: 'utf8' })
 const server = spawn(process.execPath, ['server.mjs'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] })
 let log = ''
@@ -167,6 +184,7 @@ try {
     approval = await waitEvent(e => e.type === 'approval')
     assert.equal(approval.summary, 'Click "Post"')
     assert.ok(approval.screenshot?.length > 100)
+    assert.equal(approval.allowTask, false, 'a risky click must not offer a task-wide grant')
   })
   await check('non-risky click ran without approval', () => {
     assert.ok(requests.length >= 5)
@@ -295,6 +313,12 @@ try {
     assert.equal((await post('/api/approve', { id: ask.id, allow })).status, 200)
     return ask
   }
+  const decideTask = async (match = () => true) => {
+    const ask = await waitEvent(e => e.type === 'approval' && !answered.has(e.id) && match(e))
+    answered.add(ask.id)
+    assert.equal((await post('/api/approve', { id: ask.id, allow: true, scope: 'task' })).status, 200)
+    return ask
+  }
   const outside = path.join(os.tmpdir(), `bobbot-outside-${Date.now()}.txt`)
   fs.writeFileSync(outside, 'outside-content')
   let toolCid
@@ -343,6 +367,43 @@ try {
     const seen = JSON.stringify(requests.at(-1).messages)
     assert.ok(!seen.includes('test-key') && !seen.includes('DEEPSEEK_API_KEY'), 'a key leaked into the command environment')
     await waitAfter(t0, e => e.type === 'status' && e.status === 'idle' && e.cid === toolCid)
+  })
+  await check('allowing commands for the task stops the same prompt repeating', async () => {
+    const t0 = Date.now()
+    script.push(
+      use('run_command', { command: 'echo grant-one' }),
+      use('run_command', { command: 'echo grant-two' }),
+      say('grants done'),
+    )
+    assert.equal((await post('/api/chat', { cid: toolCid, text: 'run two commands' })).status, 200)
+    const first = await decideTask(e => e.kind === 'command' && e.detail === 'echo grant-one')
+    assert.equal(first.allowTask, true)
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'grants done')
+    const asked = events.filter(e => e.at >= t0 && e.type === 'approval')
+    assert.equal(asked.length, 1, 'the second command asked for approval again')
+    const seen = JSON.stringify(requests.at(-1).messages)
+    assert.ok(seen.includes('grant-one') && seen.includes('grant-two'), 'not every command ran')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle' && e.cid === toolCid)
+  })
+  await check('a chart page is published into the chat with a link and sandbox headers', async () => {
+    const t0 = Date.now()
+    script.push(
+      use('publish_page', {
+        title: 'Test chart', height: 300,
+        html: '<!doctype html><meta charset="utf-8"><h1>chart-ok</h1><svg width="10" height="10"><rect width="10" height="10"/></svg>',
+      }),
+      say('chart ready'),
+    )
+    assert.equal((await post('/api/chat', { text: 'make a chart page' })).status, 200)
+    const card = await waitAfter(t0, e => e.type === 'card' && e.card.kind === 'page')
+    assert.match(card.card.page.url, /^\/a\/[a-f0-9]{12}$/)
+    assert.equal(card.card.page.height, 300)
+    const page = await fetch(base + card.card.page.url, { headers: { cookie } })
+    assert.equal(page.status, 200)
+    assert.match(await page.text(), /chart-ok/)
+    assert.match(page.headers.get('content-security-policy'), /default-src 'none'/)
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'chart ready')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
   })
   await check('a chat keeps its memory after the agent restarts', async () => {
     const first = Date.now()
@@ -403,6 +464,9 @@ try {
     assert.equal(run.status, 200); assert.equal(run.data.result, 'done')
     const view = await clerkView()
     assert.equal(view.inbox[0].text, 'Call mom now'); assert.equal(view.unread, 1); assert.equal(view.jobs[0].lastStatus, 'ok')
+    assert.ok(view.inbox[0].cid, 'the reminder has no conversation to open')
+    const conv = (await getJson(`/api/conversations/${view.inbox[0].cid}`)).body
+    assert.ok(conv.events.some(e => e.type === 'message' && e.text === 'Call mom now'), 'the reminder is not in its chat')
     assert.equal((await getJson('/api/state')).body.unread, 1)
     assert.equal((await post('/api/clerk/inbox/read')).status, 200)
     assert.equal((await clerkView()).unread, 0)
@@ -493,6 +557,7 @@ try {
     const view = await clerkView()
     assert.equal(view.inbox[0].cards.length, 1); assert.equal(view.inbox[0].cards[0].title, 'Shanghai today')
     const task = view.jobs.find(j => j.id === taskId)
+    assert.equal(view.inbox[0].cid, task.cid, 'the result row does not open its task conversation')
     const saved = (await getJson(`/api/conversations/${task.cid}`)).body.events
     assert.ok(saved.some(e => e.type === 'card' && e.card.title === 'Shanghai today'), 'the card is not saved with the conversation')
   })
@@ -858,7 +923,11 @@ try {
     script.push(async () => { await sleep(1500); return say('你今天有两个待办，要我帮你排一下吗？') })
     const sent = await post('/api/proactive/run', {})
     assert.equal(sent.data.sent, true)
-    assert.ok((await clerkView()).inbox.some(n => n.title === '主动关心'), 'the check-in did not reach the inbox')
+    // A check-in lives in its chat, not in the Clerk inbox: that panel is for reminders and task results.
+    assert.ok(!(await clerkView()).inbox.some(n => n.title === '主动关心'), 'the check-in reached the Clerk inbox')
+    const conv = (await getJson(`/api/conversations/${sent.data.cid}`)).body
+    assert.ok(conv.events.some(e => e.type === 'message' && e.role === 'assistant' && e.text.includes('待办')), 'the check-in was not kept in its chat')
+    assert.equal((await getJson('/api/conversations')).body.items.find(c => c.id === sent.data.cid)?.title, '提醒')
     script.push(say('[SILENT]'))
     const quiet = await post('/api/proactive/run', {})
     assert.equal(quiet.data.sent, false)
@@ -1075,10 +1144,38 @@ try {
     await sleep(500)
     assert.equal(requests.length, count)
   })
+
+  console.log('Saved providers')
+  await check('a second provider is saved, used through pi-ai, and switched back without losing the first', async () => {
+    await post('/api/budget', { capUsd: 10 })
+    const added = await post('/api/providers', {
+      name: 'Fake OpenAI', kind: 'custom', api: 'openai-completions',
+      baseUrl: `http://127.0.0.1:${openai.address().port}/v1`, model: 'fake-openai',
+      key: 'fake-key', inputUsd: 1, outputUsd: 2, activate: true,
+    })
+    assert.equal(added.status, 200)
+    const view = await getJson('/api/providers')
+    assert.ok(view.body.items.length >= 2, 'both providers should be saved')
+    assert.ok(view.body.items.some(p => p.kind === 'deepseek'))
+    assert.equal(view.body.items.find(p => p.active).name, 'Fake OpenAI')
+    const t0 = Date.now()
+    assert.equal((await post('/api/chat', { text: 'which provider?' })).status, 200)
+    await waitAfter(t0, e => e.type === 'message' && e.text === 'Hello from the fake OpenAI provider.')
+    await waitAfter(t0, e => e.type === 'status' && e.status === 'idle')
+    assert.equal(openaiRequests.length, 1, 'the fake OpenAI provider was not called')
+    assert.equal(openaiRequests[0].model, 'fake-openai')
+    const deepseek = view.body.items.find(p => p.kind === 'deepseek')
+    assert.equal((await post('/api/providers/activate', { id: deepseek.id })).status, 200)
+    const after = await getJson('/api/providers')
+    assert.equal(after.body.items.find(p => p.active).kind, 'deepseek')
+    assert.equal(after.body.items.length, view.body.items.length)
+  })
 } finally {
   server.kill()
   fake.close()
   fake.closeAllConnections()
+  openai.close()
+  openai.closeAllConnections()
 }
 
 const failed = results.filter(r => !r).length

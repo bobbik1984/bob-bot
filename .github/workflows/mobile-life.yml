@@ -1,0 +1,28 @@
+name: Mobile life tests
+on:
+  push:
+    branches: [prototype/mobile-life]
+    paths: ['gateway/life/**', 'scripts/deploy-life.py', 'scripts/life_release.py', 'scripts/deploy-gcp*', 'scripts/test_deploy_gcp.py', 'scripts/build-gcp.sh', 'scripts/life-host.go.in', '.github/workflows/mobile-life.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache: false
+      - working-directory: gateway/life
+        run: go test -race ./...
+      - run: |
+          node --input-type=module --check < gateway/life/web/life.js
+          node --check gateway/life/web/sw.js
+          node --test gateway/life/calendar.test.mjs
+          python3 -m py_compile scripts/deploy-life.py scripts/life_release.py scripts/deploy-gcp.py
+          python3 scripts/test_deploy_gcp.py
+          bash -n scripts/build-gcp.sh
+          python3 -c "import runpy; print(runpy.run_path('scripts/life_release.py')['REMOTE'])" | bash -n

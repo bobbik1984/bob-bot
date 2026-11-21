@@ -152,6 +152,39 @@ try {
     }
     await waitFor(async () => (await cloud.evaluate('document.getElementById("i").value')) === 'hi', 5000)
   })
+
+  console.log('Settings')
+  await check('the five settings groups switch, and the saved provider is shown', async () => {
+    await phone.evaluate("show('settings')")
+    await waitFor(() => phone.evaluate("document.getElementById('providerList').children.length > 0"), 10000)
+    for (const group of ['model', 'assistant', 'connect', 'general', 'system']) {
+      await phone.evaluate(`showSettingsGroup('${group}')`)
+      const shown = await phone.evaluate("[...document.querySelectorAll('#viewSettings .settings-panel')].filter(p => !p.hidden).map(p => p.dataset.panel)")
+      assert.deepEqual(shown, [group])
+    }
+    assert.equal(await phone.evaluate("document.querySelector('#providerList .prov b')?.textContent || ''"), 'DeepSeek')
+  })
+  await check('the add-provider form adapts to the chosen vendor', async () => {
+    await phone.evaluate("showSettingsGroup('model'); document.getElementById('addProvider').click()")
+    await waitFor(() => phone.evaluate("!document.getElementById('providerForm').hidden"), 5000)
+    assert.equal(await phone.evaluate("!document.getElementById('pPriceRow').hidden"), false)
+    await phone.evaluate("const s=document.getElementById('pKind'); s.value='openai'; s.dispatchEvent(new Event('change'))")
+    const fields = await phone.evaluate("({ price: !document.getElementById('pPriceRow').hidden, base: document.getElementById('pBase').hidden, model: document.getElementById('pModel').value })")
+    assert.equal(fields.price, true); assert.equal(fields.base, true); assert.equal(fields.model, 'gpt-4.1-mini')
+    await phone.evaluate("document.getElementById('cancelProvider').click()")
+  })
+  await check('a published page card embeds a sandboxed frame and a link', async () => {
+    const r = await phone.evaluate("(() => { const n=pageCard({title:'chart',url:'/a/abcdefabcdef',height:300}); const f=n.querySelector('iframe'); return { sandbox:f.getAttribute('sandbox'), h:f.style.height, href:n.querySelector('a')?.getAttribute('href') } })()")
+    assert.equal(r.sandbox, 'allow-scripts'); assert.equal(r.h, '300px'); assert.equal(r.href, '/a/abcdefabcdef')
+  })
+  await check('a published page actually renders inside its sandboxed frame', async () => {
+    const id = 'abcdefabcdef'
+    fs.mkdirSync(path.join(data, 'pages'), { recursive: true })
+    fs.writeFileSync(path.join(data, 'pages', `${id}.html`), '<!doctype html><meta charset="utf-8"><h1>page-ok</h1><script>document.title="page-ok"</script>')
+    await phone.evaluate("show('chat')")
+    await phone.evaluate(`(() => { window.__pageLoaded=false; const n=pageCard({title:'chart',url:'/a/${id}',height:300}); n.querySelector('iframe').addEventListener('load',()=>window.__pageLoaded=true); document.getElementById('feed').append(n) })()`)
+    await waitFor(() => phone.evaluate('window.__pageLoaded'), 8000)
+  })
   cloud.close(); phone.close()
 } catch (error) {
   results.push(false)
