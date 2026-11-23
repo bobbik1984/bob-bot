@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Bob</title>
+<style>
+:root{color-scheme:light dark;--bg:Canvas;--ink:CanvasText;--muted:GrayText;--line:color-mix(in srgb,var(--muted) 35%,transparent);--accent:LinkText;--panel:color-mix(in srgb,var(--muted) 6%,var(--bg));font:16px/1.55 system-ui,sans-serif;scrollbar-gutter:stable}
+*{box-sizing:border-box}body{margin:auto;padding:20px 16px 48px;max-width:620px;color:var(--ink);background:var(--bg)}a{color:var(--accent)}h1{font-size:1.55rem;margin:16px 0}h2{font-size:1.05rem}section,details{border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0}summary,button{cursor:pointer}label,textarea,input,select{display:block;width:100%}label{margin:12px 0}textarea,input,select,button{padding:9px;border:1px solid var(--line);background:var(--bg);color:inherit;border-radius:8px;font:inherit}button{color:var(--accent);margin:3px 4px 3px 0}input[type=checkbox]{display:inline;width:auto}ul,ol{padding-left:22px}li{margin:7px 0}p,li,output{overflow-wrap:anywhere}blockquote{border-left:3px solid var(--line);margin:10px 0;padding:6px 12px;white-space:pre-wrap}small{color:var(--muted)}[hidden]{display:none!important}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px}
+</style>
+<body><a href="/" id="home">Bob</a> · <a href="/wechat" id="inbox"></a><h1 id="heading"></h1><p id="notice" role="status"></p><main></main>
+<script type="module">
+const zh=(localStorage.getItem('bobbot.lang')||navigator.language).startsWith('zh')
+const tr=(cn,en)=>zh?cn:en
+document.documentElement.lang=zh?'zh-CN':'en'
+const root=document.querySelector('main'),notice=document.querySelector('#notice')
+const task=location.pathname.split('/')[1]==='task'?location.pathname.split('/')[2]:''
+const heading=tr('微信收件箱','WeChat inbox')
+document.title=heading+' · Bob';document.querySelector('#inbox').textContent=heading
+document.querySelector('#heading').textContent=task?tr('收件详情','Receipt'):heading
+function node(tag,text,parent=root){const n=document.createElement(tag);if(text)n.textContent=text;parent.append(n);return n}
+function link(parent,label,href){const a=node('a',label,parent);a.href=href;return a}
+function field(parent,label,type='text',value=''){const l=node('label',label,parent),i=node(type==='textarea'?'textarea':'input','',l);if(type!=='textarea')i.type=type;i.value=value??'';return i}
+function button(parent,label,fn){const b=node('button',label,parent);b.type='button';b.onclick=async()=>{b.disabled=true;notice.textContent='';try{await fn()}catch(e){notice.textContent=e.message}finally{b.disabled=false}};return b}
+const api=async(path,body)=>{const file=body instanceof FormData
+ const r=await fetch(path,body===undefined?{}:{method:'POST',headers:file?{}:{'Content-Type':'application/json'},body:file?body:JSON.stringify(body)})
+ if(!r.ok){if(r.status===401){login();throw Error(tr('请先解锁 Bob。','Unlock Bob first.'))}if(r.status===409)throw Error(tr('活动已有新版本，请重新解析后确认。','A newer revision exists. Run extraction again before confirming.'));throw Error(tr('操作失败，请检查输入后重试。','Check your input and try again.')+' ('+r.status+')')}
+ return r.json()
+}
+const statuses={received:tr('已收件','Received'),extracting:tr('正在解析','Extracting'),needs_input:tr('待确认','Needs input'),todo_pending:tr('正在记待办','Saving task'),done:tr('已完成','Done'),failed:tr('解析失败','Could not extract')}
+function login(){root.replaceChildren();const s=node('form',''),pin=field(s,tr('输入 Bob 的 PIN','Enter your Bob PIN'),'password');pin.inputMode='numeric';pin.required=true;node('button',tr('解锁','Unlock'),s);s.onsubmit=async e=>{e.preventDefault();try{await api('/api/login',{pin:pin.value});notice.textContent='';await load()}catch{notice.textContent=tr('请检查 PIN 后重试。','Check the PIN and try again.')}}}
+function setup(){
+ const box=node('details','');node('summary',tr('连接 iPhone 快捷指令','Connect iPhone Shortcuts'),box)
+ const ol=node('ol','',box)
+ node('li',tr('在「快捷指令」新建「交给 Bob」，开启「在共享表单中显示」，接收文件、图像和文本。没有输入时获取剪贴板。','Create “Send to Bob” in Shortcuts, enable Show in Share Sheet, accept files, images and text, and use the clipboard if there is no input.'),ol)
+ node('li',tr('添加「获取 URL 内容」，方法 POST，请求体选「表单」。文件或截图用 file（文件，值为快捷指令输入）；复制的文字用 text（文本）。图片可先用「转换图像」转 JPEG。','Add Get Contents of URL, method POST, body Form. For files or screenshots set file to the shortcut input as File. For copied text set text as Text. Convert images to JPEG if needed.'),ol)
+ const endpoint=field(box,tr('收件地址','Intake URL'),'url',location.origin+'/api/ingest');endpoint.readOnly=true
+ node('li',tr('添加请求头 Authorization，值为 Bearer、一个空格和下面的收件密钥。最后读取返回字典的 message 并显示通知；需要看详情时打开 view_url。','Set the Authorization header to Bearer, a space, and the intake key below. Show the returned message as a notification, or open view_url for details.'),ol)
+ node('li',tr('复制这条指令为「交给 Bob（带口令）」，添加「请求输入」，把听写或键入的结果放到表单的 instruction。背面轻点版可在开头添加「截屏」并转成 JPEG，再到「设置 → 辅助功能 → 触控 → 轻点背面」绑定。','Duplicate the shortcut, add Ask for Input, and pass typed or dictated text as instruction. For Back Tap, take a screenshot and convert it to JPEG, then assign the shortcut under Settings → Accessibility → Touch → Back Tap.'),ol)
+ node('p',tr('微信没有系统分享菜单时，复制消息或用截屏指令。首次运行时按 iPhone 的提示允许访问目标站点。','When WeChat does not offer the system share sheet, copy the message or use the screenshot shortcut. Allow access to the destination on first run.'),box)
+ button(box,tr('生成或更换收件密钥','Generate or replace intake key'),async()=>{if(!confirm(tr('生成新密钥后，已有快捷指令需要换成新密钥。继续？','Existing shortcuts will need the new key. Continue?')))return
+ const v=await api('/api/intake/token',{});let f=box.querySelector('[data-token]');if(!f){f=field(box,'Authorization');f.readOnly=true;f.dataset.token=''}f.value='Bearer '+v.token;f.select()})
+ const bark=field(box,tr('Bark 设备 Key（可选，官方服务）','Bark device key (optional, official service)'),'password')
+ button(box,tr('保存 Bark 设置','Save Bark settings'),async()=>{await api('/api/intake/bark',{key:bark.value.trim()});bark.value='';notice.textContent=tr('已保存。','Saved.')})
+}
+function inbox(list){
+ const form=node('section','');const text=field(form,tr('粘贴微信文字','Paste WeChat text'),'textarea'),file=field(form,tr('或选择截图、PDF、聊天 ZIP、TXT、CSV、XLSX','Or select an image, PDF, ZIP, TXT, CSV or XLSX'),'file')
+ file.accept='.png,.jpg,.jpeg,.txt,.zip,.pdf,.csv,.xlsx';const instruction=field(form,tr('处理口令（可选）','Instruction (optional)'))
+ button(form,tr('交给 Bob','Send to Bob'),async()=>{if(!text.value.trim()&&!file.files.length)throw Error(tr('请先粘贴文字或选择文件。','Paste text or select a file.'))
+ const f=new FormData();if(file.files[0])f.append('file',file.files[0]);else f.append('text',text.value);f.append('source','web');f.append('instruction',instruction.value);const v=await api('/api/ingest',f);location.assign('/task/'+v.task_id)})
+ setup();const s=node('section','');node('h2',tr('最近收件','Recent receipts'),s);if(!list.length)node('p',tr('还没有收件。','No receipts yet.'),s)
+ const ul=node('ul','',s);for(const t of list){const li=node('li','',ul);link(li,t.name+' · '+(statuses[t.status]||t.status),'/task/'+t.id);node('small',' '+t.created+' UTC',li)}
+ link(s,tr('下载当前活动台账','Download current workbook'),'/api/files/latest.xlsx')
+}
+const fields={brand:tr('品牌','Brand'),month:tr('月份（YYYY-MM）','Month (YYYY-MM)'),threshold:tr('单笔门槛（元）','Threshold (CNY)'),multiplier:tr('积分倍数','Points multiplier'),meaning:tr('计算口径','Calculation'),quote:tr('原话','Source quote'),title:tr('待办','Task'),due:tr('截止时间','Due')}
+const meanings={total:tr('含基础积分','Includes base points'),extra:tr('额外加赠','Extra points')}
+function detail(t){
+ const s=node('section','');node('h2',statuses[t.status],s);node('p',t.name,s)
+ if(t.instruction)node('blockquote',t.instruction,s)
+ const d=t.draft||{}
+ if(t.status==='done'&&t.after){const a=t.after,b=t.before||{}
+ node('h2',a.brand+' · '+a.month+' · v'+t.version,s)
+ for(const k of ['threshold','multiplier','meaning']){const fmt=v=>k==='meaning'?(meanings[v]||'—'):v
+ node('p',fields[k]+' · '+(b[k]!=null&&b[k]!==a[k]?fmt(b[k])+' → ':'')+fmt(a[k]),s)}
+ node('blockquote',a.quote,s);link(s,tr('下载此版 Excel','Download this revision'),'/api/files/latest.xlsx?version='+t.revision)
+ if(t.sources){const ul=node('ul','',s);for(const r of t.sources){const li=node('li','',ul);link(li,'v'+r.version+' · '+r.name,'/task/'+r.task)}}
+ }else if(t.status==='done'){node('p',[d.title,d.due].filter(Boolean).join(' · '),s);link(s,tr('打开 Bob 文员','Open Bob Clerk'),'/?v=clerk')}
+ if(t.status==='needs_input'){
+ const cfg=node('section','');if(t.summary==='changed')link(cfg,tr('查看当前台账','View current workbook'),'/api/files/latest.xlsx');node('h2',tr('核对后保存','Review and save'),cfg)
+ const mode=node('select','',cfg);mode.setAttribute('aria-label',tr('用途','Workflow'))
+ for(const [v,l] of [['campaign',tr('积分活动','Points campaign')],['todo',tr('待办','Task')]])mode.add(new Option(l,v))
+ mode.value=d.workflow==='todo'?'todo':'campaign'
+ const campaign=node('div','',cfg),todo=node('div','',cfg),inputs={}
+ for(const k of ['brand','month','threshold','multiplier'])inputs[k]=field(campaign,fields[k],['threshold','multiplier'].includes(k)?'number':'text',d[k])
+ const ml=node('label',fields.meaning,campaign),meaning=node('select','',ml);meaning.add(new Option('—',''));for(const [v,l] of Object.entries(meanings))meaning.add(new Option(l,v));meaning.value=d.meaning||''
+ const label=node('label','',campaign),remember=node('input','',label);remember.type='checkbox';label.append(tr(' 记住该品牌的积分口径',' Remember this brand’s points convention'))
+ for(const k of ['title','due'])inputs[k]=field(todo,fields[k],'text',d[k])
+ const toggle=()=>{campaign.hidden=mode.value!=='campaign';todo.hidden=!campaign.hidden};mode.onchange=toggle;toggle()
+ inputs.quote=field(cfg,fields.quote,'textarea',d.quote);button(cfg,tr('确认保存','Confirm'),async()=>{const draft={...d,workflow:mode.value,meaning:meaning.value}
+ for(const [k,f] of Object.entries(inputs))draft[k]=['threshold','multiplier'].includes(k)?(f.value===''?null:Number(f.value)):f.value.trim()
+ if(mode.value==='campaign'&&(!draft.brand||!/^20\d\d-(0[1-9]|1[0-2])$/.test(draft.month)||!draft.quote))throw Error(tr('请填写品牌、月份和原话。','Enter the brand, month and quote.'))
+ if(mode.value==='todo'&&!draft.title)throw Error(tr('请填写待办。','Enter a task.'))
+ const status=await api('/api/tasks/'+task+'/resolve',{draft,remember:remember.checked});await load();if(status==='changed')notice.textContent=tr('该活动已有其他修订，请核对最新台账再确认。','This campaign has another revision. Check the latest workbook before confirming.');if(status==='needs_input')notice.textContent=tr('仍需补充门槛、倍数或计算口径。','Complete the threshold, multiplier or calculation.')})
+ }
+ if(t.status==='failed'||t.status==='needs_input'){
+ const retry=node('details','');node('summary',tr('补充说明并重新解析','Clarify and retry'),retry)
+ if(t.status==='failed')node('small',tr('原因代码','Reason')+' · '+t.summary,retry)
+ const note=field(retry,tr('补充说明','Instruction'),'textarea',t.instruction)
+ button(retry,tr('重新解析','Retry extraction'),async()=>{await api('/api/tasks/'+task+'/retry',{instruction:note.value});load()})
+ }
+ const orig=link(s,tr('下载原始材料','Download original'),'/api/tasks/'+task+'/original');orig.download=t.name
+ if(['received','extracting','todo_pending'].includes(t.status))setTimeout(load,1800)
+}
+async function load(){try{const v=await api(task?'/api/tasks/'+encodeURIComponent(task):'/api/tasks');root.replaceChildren();if(task)detail(v);else inbox(v)}catch(e){notice.textContent=e.message}}
+load()
+</script></body></html>

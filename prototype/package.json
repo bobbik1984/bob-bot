@@ -1,0 +1,25 @@
+{
+  "name": "bobbot-prototype",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.9.0"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "set-pin": "node set-pin.mjs",
+    "test": "node test/e2e.mjs",
+    "test:ui": "node test/ui-click.mjs",
+    "test:unit": "node test/unit.mjs",
+    "test:browser": "node test/browser.mjs",
+    "test:plugins": "node test/plugins.mjs"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.2.2-rc.1",
+    "@earendil-works/pi-ai": "1.5.0",
+    "ws": "8.22.1",
+    "qrcode": "^1.5.4",
+    "web-push": "^4.0.0"
+  }
+}

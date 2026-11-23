@@ -1,0 +1,36 @@
+# Applied on top of DSH's sdk-minimal profile.
+# Removes the shell and local file tools so the agent can only act through BobBot's gated browser tools.
+- id: terminal-bash
+  disabled: true
+- id: terminal-pwsh
+  disabled: true
+- id: persistent-bash
+  disabled: true
+- id: persistent-pwsh
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-working-directory
+  disabled: true
+- insert:
+    - id: mcp-bobbot
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: bobbot
+        transport: streamable-http
+        url: !!js process.env.BOBBOT_MCP_URL
+        headers:
+          Authorization: !!js '`Bearer ${process.env.BOBBOT_MCP_TOKEN}`'
+        toolCallTimeoutMs: 1200000
+        failOnStartupError: true
+    # Skills the owner installs live as folders with a SKILL.md and are picked up without a restart.
+    - id: skill-registry
+      name: '@deepseek-ai/dsh-skill'
+    - id: skill-filesystem
+      name: '@deepseek-ai/dsh-skill-filesystem'
+      config:
+        includeDefaultRoots: false
+        customSkillDirs:
+          - !!js process.env.BOBBOT_SKILLS_DIR
+    - id: tool-skill
+      name: '@deepseek-ai/dsh-tool-skill'

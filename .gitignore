@@ -1,0 +1,16 @@
+node_modules/
+data/
+.env
+.env.*
+!.env.example
+*.log
+*.pem
+*.key
+*.p12
+*.shortcut
+*.sqlite*
+*.db
+__pycache__/
+debug/
+uploads/
+outputs/

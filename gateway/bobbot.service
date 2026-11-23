@@ -1,0 +1,18 @@
+[Unit]
+Description=Bob-Bot Pure Binary Gateway (Gemini API)
+After=network.target
+
+[Service]
+Type=simple
+User=bobbot
+WorkingDirectory=/opt/bob-bot
+Environment=PORT=8080
+EnvironmentFile=/etc/bobbot/gateway.env
+Environment=BOBBOT_MODEL=gemini-2.5-flash
+ExecStart=/opt/bob-bot/bobbot
+Restart=always
+RestartSec=5
+MemoryMax=300M
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,33 @@
+#define name Bob
+#define glyph checklist
+#define color blue
+#define inputs text, image
+#define from sharesheet
+#define noinput getclipboard
+#include 'actions/text'
+#include 'actions/web'
+#question pair "粘贴 Bob 微信收件箱里的连接码（仅首次安装填写）" ""
+const code = text(pair)
+const sample = text("Bob")
+const textType = typeOf(sample)
+const kind = typeOf(ShortcutInput)
+if kind == textType {
+    @note = getText(ShortcutInput)
+} else {
+    @note = getTextFromImage(ShortcutInput)
+}
+if !@note {
+    show("没有可读取的文字。请复制微信消息，或分享一张文字清晰的截图。")
+    stop()
+}
+if @note == code {
+    show("剪贴板里还是连接码。请先复制一条微信消息。")
+    stop()
+}
+const receipt = formRequest("https://your-instance.example.invalid/api/ingest", "POST", {"text":"{@note}", "source":"iphone", "instruction":"提取聊天里明确需要跟进的待办，用原文确定期限。没有明确行动或有多件无关事项时留待确认。"}, {"Authorization":"Bearer {code}"})
+const task = getValue(receipt, "task_id")
+if task {
+    showNotification("可在「文员 → 微信收件箱」查看待办和待确认事项。", "Bob 已收件")
+} else {
+    show("Bob 没有确认收件。请检查网络和安装时填写的连接码。")
+}
