@@ -2919,6 +2919,11 @@ server.listen(PORT, HOST, () => {
     conversations: listConversations,
   })
   console.log(`BobBot prototype: http://${HOST}:${PORT}`)
+  if (process.platform === 'win32' && HOST === '127.0.0.1' && process.env.BOBBOT_OPEN_LOCAL === '1') {
+    const opener = spawn('rundll32.exe', ['url.dll,FileProtocolHandler', `http://127.0.0.1:${PORT}/`], { windowsHide: true, stdio: 'ignore' })
+    opener.on('error', () => console.log('Open the local address above in your browser.'))
+    opener.unref()
+  }
   if (!hasPin()) console.log('No PIN set yet. Run: node set-pin.mjs --stdin')
 })
 

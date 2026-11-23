@@ -1,0 +1,8 @@
+nodeLinker: hoisted
+fetchTimeout: 600000
+allowBuilds:
+  '@deepseek-ai/dsh-subprocess-local': true
+  '@google/genai': true
+  koffi: true
+  node-pty: true
+  protobufjs: true
